@@ -86,21 +86,43 @@ def select_mates(population, niche1_classes, niche2_classes):
         print("  - Could not find a suitable pair of parents from complementary niches. Skipping mating for this generation.")
         return None, None
 
-def merge(parent1, parent2):
+def merge(parent1, parent2, strategy='average'):
     """
-    Merges two parent models to create a new child model by averaging their weights.
-    This is a simplified version of the paper's "crossover".
+    Merges two parent models to create a new child model.
+    Supports different merging strategies:
+    - 'average': Simple weight averaging.
+    - 'fitness_weighted': Weighted average based on parent fitness.
     """
-    print("Merging parent models to create child...")
+    print(f"Merging parent models to create child using '{strategy}' strategy...")
     child_wrapper = ModelWrapper(niche_classes=list(range(10)), device=parent1.device)
     child_model_state_dict = child_wrapper.model.state_dict()
 
     parent1_state_dict = parent1.model.state_dict()
     parent2_state_dict = parent2.model.state_dict()
 
-    for key in child_model_state_dict:
-        # Average the parameters from both parents
-        child_model_state_dict[key] = (parent1_state_dict[key] + parent2_state_dict[key]) / 2.0
+    if strategy == 'fitness_weighted':
+        total_fitness = parent1.fitness + parent2.fitness
+        # Avoid division by zero if both parents have zero fitness
+        if total_fitness == 0:
+            weight1, weight2 = 0.5, 0.5
+            print("  - Both parents have 0 fitness, falling back to simple average.")
+        else:
+            weight1 = parent1.fitness / total_fitness
+            weight2 = parent2.fitness / total_fitness
+            print(f"  - Parent 1 Fitness: {parent1.fitness:.2f}% (Weight: {weight1:.2f})")
+            print(f"  - Parent 2 Fitness: {parent2.fitness:.2f}% (Weight: {weight2:.2f})")
+
+        # Apply weighted average
+        for key in child_model_state_dict:
+            child_model_state_dict[key] = (parent1_state_dict[key] * weight1) + (parent2_state_dict[key] * weight2)
+
+    elif strategy == 'average':
+        # Apply simple average
+        for key in child_model_state_dict:
+            child_model_state_dict[key] = (parent1_state_dict[key] + parent2_state_dict[key]) / 2.0
+
+    else:
+        raise ValueError(f"Unknown merge strategy: {strategy}")
 
     child_wrapper.model.load_state_dict(child_model_state_dict)
     print("Merging complete.")
