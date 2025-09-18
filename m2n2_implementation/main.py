@@ -46,21 +46,23 @@ def main():
     # Check if there are models to load
     model_files = glob.glob(os.path.join(model_dir, "*.pth"))
 
-    initial_specialization_done = False
     if model_files:
         print(f"Found {len(model_files)} models in {model_dir}. Loading them.")
         for f in model_files:
-            # Extract niche from filename, e.g., "model_niche_0_fitness_10.00.pth" -> [0]
-            match = re.search(r'model_niche_([\d_]+)_fitness', os.path.basename(f))
+            # Extract niche and fitness from filename, e.g., "model_niche_0_fitness_10.00.pth"
+            match = re.search(r'model_niche_([\d_]+)_fitness_([\d\.]+)\.pth', os.path.basename(f))
             if match:
                 niche_str = match.group(1)
+                fitness_str = match.group(2)
                 niche_classes = [int(n) for n in niche_str.split('_')]
+                fitness = float(fitness_str)
 
-                # Create a wrapper and load the state dict
+                # Create a wrapper, load the state dict, and set the fitness
                 wrapper = ModelWrapper(niche_classes=niche_classes, device=DEVICE)
                 wrapper.model.load_state_dict(torch.load(f, map_location=DEVICE))
+                wrapper.fitness = fitness
                 population.append(wrapper)
-                print(f"  - Loaded model for niche {niche_classes} from {os.path.basename(f)}")
+                print(f"  - Loaded model for niche {niche_classes} (Fitness: {fitness:.2f}) from {os.path.basename(f)}")
             else:
                 print(f"  - WARNING: Could not parse niche from filename: {os.path.basename(f)}")
 
@@ -79,7 +81,6 @@ def main():
         for model_wrapper in population:
             specialize(model_wrapper, epochs=1) # Initial specialization
         print("")
-        initial_specialization_done = True
 
     fitness_history = []
 
@@ -87,12 +88,12 @@ def main():
     for generation in range(NUM_GENERATIONS):
         print(f"\n--- GENERATION {generation + 1}/{NUM_GENERATIONS} ---")
 
-        # --- 3. Specialization Phase ---
-        # Skip specialization on the first generation if we just did it during init.
-        if not (generation == 0 and initial_specialization_done):
+        # --- 3. Specialization Phase (if needed) ---
+        if generation > 0:
             print("--- Specializing Models ---")
             for model_wrapper in population:
-                if model_wrapper.niche_classes != list(range(10)): # Don't re-specialize generalists
+                # Only specialize the specialists, not the generalist children
+                if model_wrapper.niche_classes != list(range(10)):
                     specialize(model_wrapper, epochs=1)
             print("")
 
@@ -134,6 +135,12 @@ def main():
     model_dir = "m2n2_implementation/pretrained_models"
     if not os.path.exists(model_dir):
         os.makedirs(model_dir)
+    else:
+        # Clear out old models before saving the new generation
+        print("Clearing stale models from previous run...")
+        files = glob.glob(os.path.join(model_dir, "*.pth"))
+        for f in files:
+            os.remove(f)
 
     for i, model_wrapper in enumerate(population):
         # Niche is a list of integers. Create a string like "1_2_3"
