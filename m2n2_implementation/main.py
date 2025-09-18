@@ -1,4 +1,7 @@
 import torch
+import os
+import glob
+import re
 from evolution import ModelWrapper, specialize, evaluate, select_mates, merge, mutate, finetune, create_next_generation
 
 def main():
@@ -35,13 +38,48 @@ def main():
     NICHES = [[i] for i in range(10)] # e.g., [[0], [1], [2], ...]
     NUM_GENERATIONS = 2 # Keep low for testing
 
-    # --- 2. Initialize Population ---
-    print("--- STEP 1: Initializing Population ---")
+    # --- 2. Initialize or Load Population ---
+    print("--- STEP 1: Initializing or Loading Population ---")
+    model_dir = "m2n2_implementation/pretrained_models"
     population = []
-    for i in range(POPULATION_SIZE):
-        niche = NICHES[i]
-        population.append(ModelWrapper(niche_classes=niche, device=DEVICE))
-    print(f"Initialized population of {len(population)} models, one for each class.\n")
+
+    # Check if there are models to load
+    model_files = glob.glob(os.path.join(model_dir, "*.pth"))
+
+    initial_specialization_done = False
+    if model_files:
+        print(f"Found {len(model_files)} models in {model_dir}. Loading them.")
+        for f in model_files:
+            # Extract niche from filename, e.g., "model_niche_0_fitness_10.00.pth" -> [0]
+            match = re.search(r'model_niche_([\d_]+)_fitness', os.path.basename(f))
+            if match:
+                niche_str = match.group(1)
+                niche_classes = [int(n) for n in niche_str.split('_')]
+
+                # Create a wrapper and load the state dict
+                wrapper = ModelWrapper(niche_classes=niche_classes, device=DEVICE)
+                wrapper.model.load_state_dict(torch.load(f, map_location=DEVICE))
+                population.append(wrapper)
+                print(f"  - Loaded model for niche {niche_classes} from {os.path.basename(f)}")
+            else:
+                print(f"  - WARNING: Could not parse niche from filename: {os.path.basename(f)}")
+
+        # If we loaded models, we might need to top-up the population if there aren't enough
+        # For simplicity, this implementation assumes a full set of models exists if any exist.
+
+    else:
+        print("No pretrained models found. Initializing a new population from scratch.")
+        for i in range(POPULATION_SIZE):
+            niche = NICHES[i]
+            population.append(ModelWrapper(niche_classes=niche, device=DEVICE))
+        print(f"Initialized population of {len(population)} models, one for each class.\n")
+
+        # The initial population needs to be specialized
+        print("--- Specializing Initial Models ---")
+        for model_wrapper in population:
+            specialize(model_wrapper, epochs=1) # Initial specialization
+        print("")
+        initial_specialization_done = True
 
     fitness_history = []
 
@@ -50,11 +88,13 @@ def main():
         print(f"\n--- GENERATION {generation + 1}/{NUM_GENERATIONS} ---")
 
         # --- 3. Specialization Phase ---
-        print("--- Specializing Models ---")
-        for model_wrapper in population:
-            if model_wrapper.niche_classes != list(range(10)): # Don't re-specialize generalists
-                specialize(model_wrapper, epochs=1)
-        print("")
+        # Skip specialization on the first generation if we just did it during init.
+        if not (generation == 0 and initial_specialization_done):
+            print("--- Specializing Models ---")
+            for model_wrapper in population:
+                if model_wrapper.niche_classes != list(range(10)): # Don't re-specialize generalists
+                    specialize(model_wrapper, epochs=1)
+            print("")
 
         # --- 4. Evaluation Phase ---
         print("--- Evaluating Population ---")
@@ -88,6 +128,20 @@ def main():
 
     final_best_model = max(population, key=lambda m: m.fitness)
     print(f"\nFinal best model achieved an accuracy of {final_best_model.fitness:.2f}%")
+
+    # --- 7. Save Final Population ---
+    print("\n--- Saving final population to pretrained_models/ ---")
+    model_dir = "m2n2_implementation/pretrained_models"
+    if not os.path.exists(model_dir):
+        os.makedirs(model_dir)
+
+    for i, model_wrapper in enumerate(population):
+        # Niche is a list of integers. Create a string like "1_2_3"
+        niche_str = "_".join(map(str, model_wrapper.niche_classes))
+        model_path = os.path.join(model_dir, f"model_niche_{niche_str}_fitness_{model_wrapper.fitness:.2f}.pth")
+        torch.save(model_wrapper.model.state_dict(), model_path)
+        print(f"  - Saved model to {model_path}")
+
 
 if __name__ == '__main__':
     main()

@@ -26,6 +26,18 @@ The simulation runs for multiple generations. In each generation, a new child is
 - `m2n2_implementation/model.py`: Defines the `CifarCNN` architecture.
 - `m2n2_implementation/data.py`: Handles loading the CIFAR-10 dataset and can create subsets for faster execution.
 - `m2n2_implementation/requirements.txt`: The required Python libraries.
+- `m2n2_implementation/pretrained_models/`: A directory for saving and loading model populations.
+
+## Iterative Evolution: Loading and Saving Models
+
+This implementation supports an iterative workflow where the evolved population from one run can be used as the starting point for the next.
+
+- **Saving:** At the end of each experiment, the final population of models is automatically saved as `.pth` files in the `m2n2_implementation/pretrained_models/` directory.
+- **Loading:** When the `main.py` script is run, it checks the `pretrained_models/` directory.
+    - If it finds model files, it will load them as the initial population, allowing you to continue evolution from where you left off.
+    - If the directory is empty, it will initialize and train a new population of specialists from scratch.
+
+To start fresh, simply clear the contents of the `m2n2_implementation/pretrained_models/` directory.
 
 ## How to Run
 
