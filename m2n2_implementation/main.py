@@ -2,16 +2,29 @@ import torch
 from evolution import ModelWrapper, specialize, evaluate, select_mates, merge, mutate, finetune, create_next_generation
 
 def main():
-    """
-    The main script to run the M2N2-inspired evolutionary experiment.
-    This script simulates one generation of evolution:
-    1. Initialize a population of models, each assigned to a data niche.
-    2. Train (specialize) each model on its niche.
-    3. Evaluate all models on the full dataset to find their fitness.
-    4. Select the best models from complementary niches to be parents.
-    5. Merge (mate) the parents to create a child.
-    6. Mutate the child to introduce diversity.
-    7. Evaluate the final child and compare its performance to its parents.
+    """Runs the main M2N2-inspired evolutionary experiment.
+
+    This script orchestrates a multi-generational simulation of model evolution.
+    The process for each generation is as follows:
+    1.  **Initialization**: A population of specialist models is created,
+        each assigned to a specific data niche (one for each CIFAR-10 class).
+    2.  **Specialization**: Each specialist model is trained on the data
+        from its assigned niche. This step is skipped for generalist models
+        in subsequent generations.
+    3.  **Evaluation**: All models in the population are evaluated on the
+        full, general dataset to determine their fitness score.
+    4.  **Mating**: An advanced selection strategy picks two parents: the
+        fittest model overall (Parent 1) and the specialist for that
+        model's weakest class (Parent 2).
+    5.  **Crossover & Mutation**: The parents are merged to create a new
+        child model, which is then mutated to introduce genetic diversity
+        and fine-tuned on the general dataset.
+    6.  **Selection**: The new child competes with the existing population.
+        The fittest individuals are selected to form the next generation
+        (elitism).
+
+    The simulation runs for a configured number of generations, printing a
+    summary of fitness scores at the end.
     """
     # --- 1. Configuration ---
     DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")

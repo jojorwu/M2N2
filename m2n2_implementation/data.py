@@ -3,10 +3,29 @@ from torchvision import datasets, transforms
 from torch.utils.data import DataLoader, Subset
 
 def get_cifar10_dataloaders(batch_size=64, niche_classes=None, subset_percentage=1.0):
-    """
-    Loads the CIFAR-10 dataset and returns DataLoaders.
-    Can be configured to load only a specific "niche" of classes and to use
-    a smaller random subset of the data for faster execution.
+    """Loads the CIFAR-10 dataset and returns DataLoaders.
+
+    This function can be configured to load the full dataset, a specific "niche"
+    of classes, or a random subset of the data for faster execution.
+
+    Args:
+        batch_size (int, optional): The number of samples per batch.
+            Defaults to 64.
+        niche_classes (list[int], optional): A list of class indices to
+            include in the training set. If None, all classes are used.
+            For CIFAR-10, classes are 0-9. Defaults to None.
+        subset_percentage (float, optional): A value between 0.0 and 1.0
+            that specifies the percentage of the dataset to use.
+            Helpful for quick testing. Defaults to 1.0 (full dataset).
+
+    Returns:
+        tuple[DataLoader, DataLoader]: A tuple containing:
+            - train_loader (DataLoader): DataLoader for the training set. If
+              `niche_classes` is specified, this loader contains only data
+              from those classes.
+            - test_loader (DataLoader): DataLoader for the test set. This
+              loader always contains data from all classes to ensure
+              evaluation is performed on the general task.
     """
     transform = transforms.Compose([
         transforms.ToTensor(),

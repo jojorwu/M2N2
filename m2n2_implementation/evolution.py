@@ -6,9 +6,19 @@ from data import get_cifar10_dataloaders
 import copy
 
 class ModelWrapper:
-    """
-    A wrapper for a neural network model to hold its metadata, such as its
-    specialized niche and its fitness score.
+    """A wrapper for a neural network model to hold its metadata.
+
+    This class encapsulates a model and its associated evolutionary context,
+    such as its specialized niche and fitness score.
+
+    Attributes:
+        niche_classes (list[int]): The list of class indices this model is
+            specialized in.
+        device (str): The device ('cpu' or 'cuda') on which the model's
+            tensors are allocated.
+        model (CifarCNN): The underlying neural network model instance.
+        fitness (float): The fitness score of the model, typically its
+            accuracy on a general test set. Initialized to 0.0.
     """
     def __init__(self, niche_classes, device='cpu'):
         self.niche_classes = niche_classes
@@ -18,9 +28,15 @@ class ModelWrapper:
         self.fitness = 0.0
 
 def specialize(model_wrapper, epochs=1):
-    """
-    Trains a model on its specialized data niche. This simulates the
-    "resource competition" phase where models become experts in a specific area.
+    """Trains a model on its specialized data niche.
+
+    This simulates the "resource competition" phase where a model becomes an
+    expert in a specific area by training only on data from its assigned niche.
+
+    Args:
+        model_wrapper (ModelWrapper): The model wrapper containing the model
+            and its niche definition.
+        epochs (int, optional): The number of training epochs. Defaults to 1.
     """
     print(f"Specializing model on niche: {model_wrapper.niche_classes} for {epochs} epoch(s)...")
     # Get the dataloader for the model's specific niche, using a subset for speed
@@ -39,9 +55,16 @@ def specialize(model_wrapper, epochs=1):
     print("Specialization complete.")
 
 def evaluate(model_wrapper):
-    """
-    Evaluates the model's fitness on the *full* test dataset.
-    The accuracy on the general task is our measure of fitness.
+    """Evaluates the model's fitness on the full test dataset.
+
+    Fitness is defined as the model's accuracy on the general, complete
+    test set. This score is stored in the model_wrapper's `fitness` attribute.
+
+    Args:
+        model_wrapper (ModelWrapper): The model wrapper to evaluate.
+
+    Returns:
+        float: The calculated accuracy (fitness) of the model as a percentage.
     """
     # We always evaluate on the full test set to measure general performance
     _, test_loader = get_cifar10_dataloaders(subset_percentage=0.1)
@@ -62,9 +85,17 @@ def evaluate(model_wrapper):
     return accuracy
 
 def evaluate_by_class(model_wrapper):
-    """
-    Evaluates a model's accuracy on each class of the CIFAR-10 test set.
-    Returns a list of accuracies for each class.
+    """Evaluates a model's accuracy on each individual class.
+
+    This function is used to identify a model's strengths and weaknesses,
+    which is crucial for the advanced mate selection strategy.
+
+    Args:
+        model_wrapper (ModelWrapper): The model wrapper to evaluate.
+
+    Returns:
+        list[float]: A list of accuracy percentages, where the index of the
+            list corresponds to the class index (0-9 for CIFAR-10).
     """
     _, test_loader = get_cifar10_dataloaders(subset_percentage=0.1)
     model_wrapper.model.eval()
@@ -95,10 +126,23 @@ def evaluate_by_class(model_wrapper):
     return class_accuracies
 
 def select_mates(population):
-    """
-    Selects a complementary pair of parents using an advanced strategy.
-    Parent 1: The model with the highest overall fitness.
-    Parent 2: The specialist model for Parent 1's weakest class.
+    """Selects a complementary pair of parents using an advanced strategy.
+
+    The strategy is as follows:
+    1. Parent 1 is chosen as the model with the highest overall fitness.
+    2. Parent 1 is analyzed to find its weakest class.
+    3. Parent 2 is chosen as the specialist model for that weakest class,
+       ensuring it is a different model from Parent 1.
+
+    This promotes merging models that can compensate for each other's flaws.
+
+    Args:
+        population (list[ModelWrapper]): The current population of models.
+
+    Returns:
+        tuple[ModelWrapper | None, ModelWrapper | None]: A tuple containing
+            the two selected parents. Returns (None, None) if a pair cannot
+            be selected.
     """
     print("Selecting mates with advanced strategy...")
     if not population:
@@ -143,11 +187,26 @@ def select_mates(population):
         return None, None
 
 def merge(parent1, parent2, strategy='average'):
-    """
-    Merges two parent models to create a new child model.
-    Supports different merging strategies:
-    - 'average': Simple weight averaging.
-    - 'fitness_weighted': Weighted average based on parent fitness.
+    """Merges two parent models to create a new child model.
+
+    This function combines the weights of two parent models to produce a
+    new "child" model.
+
+    Args:
+        parent1 (ModelWrapper): The first parent model.
+        parent2 (ModelWrapper): The second parent model.
+        strategy (str, optional): The merging strategy to use.
+            - 'average': Simple arithmetic mean of the weights.
+            - 'fitness_weighted': A weighted average where the contribution
+              of each parent is proportional to its fitness.
+            Defaults to 'average'.
+
+    Returns:
+        ModelWrapper: A new model wrapper containing the merged child model.
+            The child is initialized as a generalist (all classes).
+
+    Raises:
+        ValueError: If an unknown merge strategy is specified.
     """
     print(f"Merging parent models to create child using '{strategy}' strategy...")
     child_wrapper = ModelWrapper(niche_classes=list(range(10)), device=parent1.device)
@@ -185,8 +244,22 @@ def merge(parent1, parent2, strategy='average'):
     return child_wrapper
 
 def mutate(model_wrapper, mutation_rate=0.01, mutation_strength=0.1):
-    """
-    Applies random mutations to the model's weights to maintain genetic diversity.
+    """Applies random mutations to the model's weights.
+
+    This function introduces genetic diversity into the population by
+    randomly altering a fraction of the model's weights in its convolutional
+    and linear layers.
+
+    Args:
+        model_wrapper (ModelWrapper): The model wrapper to mutate.
+        mutation_rate (float, optional): The probability (0.0 to 1.0) that
+            any given weight will be mutated. Defaults to 0.01.
+        mutation_strength (float, optional): The standard deviation of the
+            normal distribution from which mutations are drawn. Controls the
+            magnitude of changes. Defaults to 0.1.
+
+    Returns:
+        ModelWrapper: The mutated model wrapper.
     """
     print("Mutating child model...")
     with torch.no_grad():
@@ -202,9 +275,21 @@ def mutate(model_wrapper, mutation_rate=0.01, mutation_strength=0.1):
     return model_wrapper
 
 def create_next_generation(current_population, new_child, population_size):
-    """
-    Creates the next generation's population by combining the old population
-    with the new child, then selecting the fittest individuals (elitism).
+    """Creates the next generation's population via elitism.
+
+    This function combines the existing population with the new child,
+    evaluates the child's fitness, and then selects the top individuals
+    to form the next generation.
+
+    Args:
+        current_population (list[ModelWrapper]): The list of models in the
+            current generation.
+        new_child (ModelWrapper): The newly created child model.
+        population_size (int): The maximum size of the population.
+
+    Returns:
+        list[ModelWrapper]: The list of models selected for the next
+            generation, sorted by fitness.
     """
     print("Creating the next generation...")
     # Evaluate the new child to make sure its fitness is calculated
@@ -224,9 +309,16 @@ def create_next_generation(current_population, new_child, population_size):
     return next_generation
 
 def finetune(model_wrapper, epochs=1):
-    """
-    Fine-tunes a model on the full dataset. This is useful for the child
-    model to learn how to integrate the knowledge from its parents.
+    """Fine-tunes a model on the full dataset.
+
+    This step is crucial for a newly merged child model, as it helps the
+    model learn how to integrate the knowledge from its two parents into a
+    cohesive whole.
+
+    Args:
+        model_wrapper (ModelWrapper): The model wrapper to fine-tune.
+        epochs (int, optional): The number of fine-tuning epochs.
+            Defaults to 1.
     """
     print(f"Fine-tuning model on the full dataset for {epochs} epoch(s)...")
     # Get the dataloader for the full dataset, using a subset for speed
