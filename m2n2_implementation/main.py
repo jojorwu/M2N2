@@ -18,20 +18,17 @@ def main():
     print(f"--- M2N2 Simplified Implementation ---")
     print(f"Using device: {DEVICE}\n")
 
-    POPULATION_SIZE = 2 # Minimal size for mating
-    # CIFAR-10 classes: 0:airplane, 1:automobile, 2:bird, 3:cat, 4:deer, 5:dog, 6:frog, 7:horse, 8:ship, 9:truck
-    ANIMAL_CLASSES = [2, 3, 4, 5, 6, 7]
-    VEHICLE_CLASSES = [0, 1, 8, 9]
-    NUM_GENERATIONS = 2 # Minimal generations to show evolution
+    POPULATION_SIZE = 10 # One specialist for each of the 10 classes
+    NICHES = [[i] for i in range(10)] # e.g., [[0], [1], [2], ...]
+    NUM_GENERATIONS = 2 # Keep low for testing
 
     # --- 2. Initialize Population ---
     print("--- STEP 1: Initializing Population ---")
     population = []
     for i in range(POPULATION_SIZE):
-        # Assign niches evenly
-        niche = ANIMAL_CLASSES if i % 2 == 0 else VEHICLE_CLASSES
+        niche = NICHES[i]
         population.append(ModelWrapper(niche_classes=niche, device=DEVICE))
-    print(f"Initialized population of {len(population)} models.\n")
+    print(f"Initialized population of {len(population)} models, one for each class.\n")
 
     fitness_history = []
 
@@ -58,7 +55,7 @@ def main():
 
         # --- 5. Mating and Evolution ---
         print("--- Mating and Evolution ---")
-        parent1, parent2 = select_mates(population, ANIMAL_CLASSES, VEHICLE_CLASSES)
+        parent1, parent2 = select_mates(population)
 
         if parent1 and parent2:
             child = merge(parent1, parent2, strategy='fitness_weighted')

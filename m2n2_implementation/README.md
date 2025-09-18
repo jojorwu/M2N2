@@ -2,33 +2,30 @@
 
 This project is a simplified, educational implementation of the concepts from Sakana AI's research paper on M2N2 (Model Merging of Natural Niches). It demonstrates how a population of neural networks can be evolved through specialization, intelligent mating, and merging to produce a more capable, generalist model.
 
-This version of the project runs on the **CIFAR-10 dataset**.
+This version of the project runs on the **CIFAR-10 dataset** and uses an advanced intelligent mating strategy.
 
 ## Core Concepts Demonstrated
 
-- **Specialization (Resource Competition):** We create a population of CNN models and train them on different "niches" of the CIFAR-10 dataset: "animals" vs. "vehicles".
-- **Intelligent Mating:** The best-performing model from each niche is selected to act as a "parent".
-- **Fitness-Weighted Merging (Crossover):** The parent models are merged into a "child" model. This implementation uses a 'fitness_weighted' strategy, where the contribution of each parent to the child's weights is proportional to its fitness score.
-- **Mutation & Fine-tuning:** The child is mutated and then fine-tuned on the full dataset to help it learn how to integrate its parents' knowledge.
+- **Specialization (10 Niches):** The population consists of 10 specialist CNNs, each trained on a single class from the CIFAR-10 dataset (e.g., one model for 'airplane', one for 'cat', etc.).
+- **Advanced Intelligent Mating:** A more sophisticated mating strategy is used:
+    1. The best-performing model in the population (based on overall accuracy) is selected as Parent 1.
+    2. This model is analyzed to find its "weakest" class (the one it performs worst on).
+    3. The specialist model for that weakest class is chosen as Parent 2.
+    This ensures that merging is always targeted at improving a model's specific weaknesses.
+- **Fitness-Weighted Merging (Crossover):** The parent models are merged into a "child" using a 'fitness_weighted' average, where the fitter parent has more influence.
+- **Mutation & Fine-tuning:** The child is mutated and then fine-tuned on the full dataset.
 
 ## Multi-Generational Evolution
 
-This implementation supports a multi-generational evolutionary loop. In each generation:
-1.  The population is specialized and evaluated.
-2.  The best individuals from complementary niches are selected for mating.
-3.  A new, evolved "child" model is created using fitness-weighted merging.
-4.  **Survival of the Fittest:** The child competes with the previous generation, and only the fittest individuals survive to the next generation (elitism).
-
-The simulation is also robust against loss of diversity; if no suitable mates can be found, it will skip a generation of mating and continue.
+The simulation runs for multiple generations. In each generation, a new child is created via the process above and competes with the existing population for survival into the next generation based on fitness (elitism).
 
 ## Project Structure
 
 - `main.py`: The main script that orchestrates the evolutionary experiment.
-- `evolution.py`: Contains the core logic for the evolutionary process, including the fitness-weighted merging strategy.
+- `evolution.py`: Contains the core logic, including the advanced intelligent mating strategy.
 - `model.py`: Defines the `CifarCNN` architecture.
-- `data.py`: Handles loading and creating niches for the CIFAR-10 dataset.
+- `data.py`: Handles loading the CIFAR-10 dataset and can create subsets for faster execution.
 - `requirements.txt`: The required Python libraries.
-- `.gitignore`: Ignores the downloaded dataset and other artifacts.
 
 ## How to Run
 
@@ -42,4 +39,4 @@ The simulation is also robust against loss of diversity; if no suitable mates ca
     python3 main.py
     ```
 
-You can tweak `POPULATION_SIZE` and `NUM_GENERATIONS` in `main.py`, or change the merging strategy in the call to `merge()` inside the main loop. The default is now `'fitness_weighted'`.
+Note: To prevent timeouts in constrained environments, the script currently runs on a small (10%) subset of the CIFAR-10 data. This can be changed by modifying the `subset_percentage` argument in the calls to `get_cifar10_dataloaders` within the `evolution.py` file.

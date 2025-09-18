@@ -2,32 +2,29 @@ import torch
 from torchvision import datasets, transforms
 from torch.utils.data import DataLoader, Subset
 
-def get_cifar10_dataloaders(batch_size=64, niche_classes=None):
+def get_cifar10_dataloaders(batch_size=64, niche_classes=None, subset_percentage=1.0):
     """
-    Loads the CIFAR-10 dataset and returns DataLoaders for training and testing.
-    If `niche_classes` is provided, it filters the dataset to only include those classes,
-    creating a specialized "niche" for training.
+    Loads the CIFAR-10 dataset and returns DataLoaders.
+    Can be configured to load only a specific "niche" of classes and to use
+    a smaller random subset of the data for faster execution.
     """
-    # Transform for CIFAR-10, including normalization for 3-channel color images
     transform = transforms.Compose([
         transforms.ToTensor(),
         transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
     ])
 
-    # Download and load the full training and test datasets
-    full_train_dataset = datasets.CIFAR10(
-        root='./data',
-        train=True,
-        download=True,
-        transform=transform
-    )
+    full_train_dataset = datasets.CIFAR10(root='./data', train=True, download=True, transform=transform)
+    full_test_dataset = datasets.CIFAR10(root='./data', train=False, download=True, transform=transform)
 
-    full_test_dataset = datasets.CIFAR10(
-        root='./data',
-        train=False,
-        download=True,
-        transform=transform
-    )
+    # Create a random subset if specified
+    if subset_percentage < 1.0:
+        num_train = int(len(full_train_dataset) * subset_percentage)
+        train_indices = torch.randperm(len(full_train_dataset))[:num_train]
+        full_train_dataset = Subset(full_train_dataset, train_indices)
+
+        num_test = int(len(full_test_dataset) * subset_percentage)
+        test_indices = torch.randperm(len(full_test_dataset))[:num_test]
+        full_test_dataset = Subset(full_test_dataset, test_indices)
 
     if niche_classes is not None:
         # Create a niche-specific training loader

@@ -23,8 +23,8 @@ def specialize(model_wrapper, epochs=1):
     "resource competition" phase where models become experts in a specific area.
     """
     print(f"Specializing model on niche: {model_wrapper.niche_classes} for {epochs} epoch(s)...")
-    # Get the dataloader for the model's specific niche
-    train_loader, _ = get_cifar10_dataloaders(niche_classes=model_wrapper.niche_classes)
+    # Get the dataloader for the model's specific niche, using a subset for speed
+    train_loader, _ = get_cifar10_dataloaders(niche_classes=model_wrapper.niche_classes, subset_percentage=0.1)
     optimizer = optim.Adam(model_wrapper.model.parameters(), lr=0.001)
 
     model_wrapper.model.train()
@@ -44,7 +44,7 @@ def evaluate(model_wrapper):
     The accuracy on the general task is our measure of fitness.
     """
     # We always evaluate on the full test set to measure general performance
-    _, test_loader = get_cifar10_dataloaders()
+    _, test_loader = get_cifar10_dataloaders(subset_percentage=0.1)
     model_wrapper.model.eval()
     correct = 0
     total = 0
@@ -61,29 +61,85 @@ def evaluate(model_wrapper):
     model_wrapper.fitness = accuracy
     return accuracy
 
-def select_mates(population, niche1_classes, niche2_classes):
+def evaluate_by_class(model_wrapper):
     """
-    Selects two parent models for mating from two complementary niches.
-    Handles cases where one niche might be empty to prevent crashing.
+    Evaluates a model's accuracy on each class of the CIFAR-10 test set.
+    Returns a list of accuracies for each class.
     """
-    print("Selecting best models from each niche for mating...")
-    parent1, parent2 = None, None
+    _, test_loader = get_cifar10_dataloaders(subset_percentage=0.1)
+    model_wrapper.model.eval()
 
-    niche1_candidates = [m for m in population if m.niche_classes == niche1_classes]
-    niche2_candidates = [m for m in population if m.niche_classes == niche2_classes]
+    class_correct = list(0. for i in range(10))
+    class_total = list(0. for i in range(10))
 
-    if niche1_candidates:
-        parent1 = max(niche1_candidates, key=lambda m: m.fitness)
+    with torch.no_grad():
+        for data, target in test_loader:
+            data, target = data.to(model_wrapper.device), target.to(model_wrapper.device)
+            output = model_wrapper.model(data)
+            _, predicted = torch.max(output, 1)
+            c = (predicted == target).squeeze()
 
-    if niche2_candidates:
-        parent2 = max(niche2_candidates, key=lambda m: m.fitness)
+            for i in range(len(target)):
+                label = target[i]
+                class_correct[label] += c[i].item()
+                class_total[label] += 1
+
+    class_accuracies = []
+    for i in range(10):
+        if class_total[i] > 0:
+            accuracy = 100 * class_correct[i] / class_total[i]
+            class_accuracies.append(accuracy)
+        else:
+            class_accuracies.append(0)
+
+    return class_accuracies
+
+def select_mates(population):
+    """
+    Selects a complementary pair of parents using an advanced strategy.
+    Parent 1: The model with the highest overall fitness.
+    Parent 2: The specialist model for Parent 1's weakest class.
+    """
+    print("Selecting mates with advanced strategy...")
+    if not population:
+        return None, None
+
+    # 1. Find the best overall model in the population to be Parent 1.
+    parent1 = max(population, key=lambda m: m.fitness)
+    print(f"  - Parent 1 is the population's best model (Fitness: {parent1.fitness:.2f}%)")
+
+    # 2. Analyze Parent 1 to find its weakest class.
+    print("  - Analyzing Parent 1's performance by class...")
+    class_accuracies = evaluate_by_class(parent1)
+    weakest_class_index = class_accuracies.index(min(class_accuracies))
+    print(f"  - Parent 1's weakest class is {weakest_class_index} (Accuracy: {class_accuracies[weakest_class_index]:.2f}%)")
+
+    # 3. Find the specialist for that weakest class to be Parent 2.
+    parent2 = None
+    # Ensure Parent 2 is not the same model as Parent 1.
+    specialist_candidates = [
+        m for m in population if m.niche_classes == [weakest_class_index] and m is not parent1
+    ]
+
+    if specialist_candidates:
+        # From the candidates, pick the one with the highest fitness.
+        parent2 = max(specialist_candidates, key=lambda m: m.fitness)
+        print(f"  - Found specialist for class {weakest_class_index} as Parent 2 (Fitness: {parent2.fitness:.2f}%)")
+    else:
+        # Fallback: if no suitable specialist is found, pick the second-best model overall.
+        print("  - No suitable specialist found. Using second-best model as fallback Parent 2.")
+        sorted_population = sorted(population, key=lambda m: m.fitness, reverse=True)
+        if len(sorted_population) > 1:
+            parent2 = sorted_population[1]
+        else:
+            print("  - Not enough models in population to select a second parent.")
+            return parent1, None
 
     if parent1 and parent2:
-        print(f"  - Parent 1 (Niche {parent1.niche_classes}, Fitness: {parent1.fitness:.2f}%)")
-        print(f"  - Parent 2 (Niche {parent2.niche_classes}, Fitness: {parent2.fitness:.2f}%)")
         return parent1, parent2
     else:
-        print("  - Could not find a suitable pair of parents from complementary niches. Skipping mating for this generation.")
+        # This case should be rare given the fallbacks, but is here for safety.
+        print("  - Could not select a pair of parents.")
         return None, None
 
 def merge(parent1, parent2, strategy='average'):
@@ -173,8 +229,8 @@ def finetune(model_wrapper, epochs=1):
     model to learn how to integrate the knowledge from its parents.
     """
     print(f"Fine-tuning model on the full dataset for {epochs} epoch(s)...")
-    # Get the dataloader for the full dataset
-    train_loader, _ = get_cifar10_dataloaders()
+    # Get the dataloader for the full dataset, using a subset for speed
+    train_loader, _ = get_cifar10_dataloaders(subset_percentage=0.1)
     optimizer = optim.Adam(model_wrapper.model.parameters(), lr=0.001)
 
     model_wrapper.model.train()
