@@ -1,5 +1,5 @@
 import torch
-from evolution import ModelWrapper, specialize, evaluate, select_mates, merge, mutate, finetune
+from evolution import ModelWrapper, specialize, evaluate, select_mates, merge, mutate, finetune, create_next_generation
 
 def main():
     """
@@ -18,61 +18,66 @@ def main():
     print(f"--- M2N2 Simplified Implementation ---")
     print(f"Using device: {DEVICE}\n")
 
-    POPULATION_SIZE_PER_NICHE = 3  # Keep it small for a quick run
-    NICHE_1_DIGITS = list(range(5))   # Digits 0-4
-    NICHE_2_DIGITS = list(range(5, 10)) # Digits 5-9
+    POPULATION_SIZE = 2 # Minimal size for mating
+    # CIFAR-10 classes: 0:airplane, 1:automobile, 2:bird, 3:cat, 4:deer, 5:dog, 6:frog, 7:horse, 8:ship, 9:truck
+    ANIMAL_CLASSES = [2, 3, 4, 5, 6, 7]
+    VEHICLE_CLASSES = [0, 1, 8, 9]
+    NUM_GENERATIONS = 2 # Minimal generations to show evolution
 
     # --- 2. Initialize Population ---
     print("--- STEP 1: Initializing Population ---")
     population = []
-    for _ in range(POPULATION_SIZE_PER_NICHE):
-        population.append(ModelWrapper(niche_digits=NICHE_1_DIGITS, device=DEVICE))
-        population.append(ModelWrapper(niche_digits=NICHE_2_DIGITS, device=DEVICE))
-    print(f"Initialized population of {len(population)} models ({POPULATION_SIZE_PER_NICHE} per niche).\n")
+    for i in range(POPULATION_SIZE):
+        # Assign niches evenly
+        niche = ANIMAL_CLASSES if i % 2 == 0 else VEHICLE_CLASSES
+        population.append(ModelWrapper(niche_classes=niche, device=DEVICE))
+    print(f"Initialized population of {len(population)} models.\n")
 
-    # --- 3. Specialization Phase ---
-    print("--- STEP 2: Specialization (Training on Niches) ---")
-    for model_wrapper in population:
-        # We train for a few epochs to make them specialists
-        specialize(model_wrapper, epochs=2)
-    print("")
+    fitness_history = []
 
-    # --- 4. Evaluation Phase ---
-    print("--- STEP 3: Evaluating All Specialists ---")
-    for model_wrapper in population:
-        evaluate(model_wrapper)
-    print("")
+    # --- Main Evolutionary Loop ---
+    for generation in range(NUM_GENERATIONS):
+        print(f"\n--- GENERATION {generation + 1}/{NUM_GENERATIONS} ---")
 
-    # --- 5. Mating and Evolution ---
-    print("--- STEP 4: Mating, Merging, and Mutation ---")
-    # Select the fittest model from each niche to act as parents
-    parent1, parent2 = select_mates(population)
+        # --- 3. Specialization Phase ---
+        print("--- Specializing Models ---")
+        for model_wrapper in population:
+            if model_wrapper.niche_classes != list(range(10)): # Don't re-specialize generalists
+                specialize(model_wrapper, epochs=1)
+        print("")
 
-    # Merge the two parents to create a new, more generalist child
-    child = merge(parent1, parent2)
+        # --- 4. Evaluation Phase ---
+        print("--- Evaluating Population ---")
+        for model_wrapper in population:
+            evaluate(model_wrapper)
 
-    # Apply mutation to the child to introduce new "genetic" material
-    child = mutate(child, mutation_rate=0.05, mutation_strength=0.1)
+        best_fitness = max([m.fitness for m in population])
+        avg_fitness = sum([m.fitness for m in population]) / len(population)
+        fitness_history.append((best_fitness, avg_fitness))
+        print(f"\nGeneration {generation + 1} Stats: Best Fitness = {best_fitness:.2f}%, Avg Fitness = {avg_fitness:.2f}%\n")
 
-    # Fine-tune the child on the full dataset to help it learn from the merge
-    finetune(child, epochs=1)
-    print("")
+        # --- 5. Mating and Evolution ---
+        print("--- Mating and Evolution ---")
+        parent1, parent2 = select_mates(population, ANIMAL_CLASSES, VEHICLE_CLASSES)
 
-    # --- 6. Final Evaluation ---
-    print("--- STEP 5: Final Evaluation of Evolved Child ---")
-    child_fitness = evaluate(child)
+        if parent1 and parent2:
+            child = merge(parent1, parent2)
+            child = mutate(child, mutation_rate=0.05, mutation_strength=0.1)
+            finetune(child, epochs=1)
+
+            # --- 6. Create Next Generation ---
+            population = create_next_generation(population, child, POPULATION_SIZE)
+        else:
+            # If no suitable parents were found, the population carries over without a new child
+            print("Population will carry over to the next generation without changes.")
 
     print("\n\n--- EXPERIMENT SUMMARY ---")
-    print(f"Best specialist for {parent1.niche_digits} had a general accuracy of: {parent1.fitness:.2f}%")
-    print(f"Best specialist for {parent2.niche_digits} had a general accuracy of: {parent2.fitness:.2f}%")
-    print("--------------------------------------------------")
-    print(f"The evolved child model achieved a final accuracy of: {child_fitness:.2f}%")
-    print("--------------------------------------------------")
+    print("Fitness history (Best, Average):")
+    for i, (best, avg) in enumerate(fitness_history):
+        print(f"  - Generation {i+1}: Best={best:.2f}%, Avg={avg:.2f}%")
 
-    if child_fitness > parent1.fitness and child_fitness > parent2.fitness:
-        print("\nCONCLUSION: Success! The evolved child outperformed both of its specialist parents.")
-    else:
-        print("\nCONCLUSION: The child did not outperform both parents. This can happen due to the stochastic nature of training and mutation. Try running the experiment again!")
+    final_best_model = max(population, key=lambda m: m.fitness)
+    print(f"\nFinal best model achieved an accuracy of {final_best_model.fitness:.2f}%")
 
 if __name__ == '__main__':
     main()
