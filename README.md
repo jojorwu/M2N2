@@ -1,54 +1,82 @@
 # M2N2: A Simplified Implementation (CIFAR-10 Version)
 
-This project is a simplified, educational implementation of the concepts from Sakana AI's research paper on M2N2 (Model Merging of Natural Niches). It demonstrates how a population of neural networks can be evolved through specialization, intelligent mating, and merging to produce a more capable, generalist model.
+## 1. Purpose
 
-This version of the project runs on the **CIFAR-10 dataset** and uses an advanced intelligent mating strategy.
+This project is a simplified, educational implementation of the concepts from Sakana AI's research paper on **M2N2 (Model Merging of Natural Niches)**. It provides a clear, runnable example of how a population of neural networks can be evolved through specialization, intelligent mating, and merging to produce a more capable, generalist model.
 
-## Core Concepts Demonstrated
+This implementation is designed to be a learning tool for understanding the core principles of the M2N2 paper. It uses the CIFAR-10 dataset and a specific, advanced mating strategy to demonstrate the evolutionary process.
 
-- **Specialization (10 Niches):** The population consists of 10 specialist CNNs, each trained on a single class from the CIFAR-10 dataset (e.g., one model for 'airplane', one for 'cat', etc.).
-- **Advanced Intelligent Mating:** A more sophisticated mating strategy is used:
-    1. The best-performing model in the population (based on overall accuracy) is selected as Parent 1.
+## 2. Core Concepts Demonstrated
+
+The simulation is built around the following key concepts:
+
+- **Specialization (Niche Adaptation):** The initial population consists of 10 specialist Convolutional Neural Networks (CNNs). Each model is trained on only a single class from the CIFAR-10 dataset (e.g., one model for 'airplane', one for 'cat', etc.), forcing it to become an expert in that "niche."
+
+- **Advanced Intelligent Mating:** To create a new "child" model, a sophisticated mating strategy is used:
+    1. The best-performing model in the population (based on overall accuracy on the full test set) is selected as **Parent 1**.
     2. This model is analyzed to find its "weakest" class (the one it performs worst on).
-    3. The specialist model for that weakest class is chosen as Parent 2.
+    3. The specialist model for that weakest class is chosen as **Parent 2**.
     This ensures that merging is always targeted at improving a model's specific weaknesses.
-- **Fitness-Weighted Merging (Crossover):** The parent models are merged into a "child" using a 'fitness_weighted' average, where the fitter parent has more influence.
-- **Mutation & Fine-tuning:** The child is mutated and then fine-tuned on the full dataset.
 
-## Multi-Generational Evolution
+- **Fitness-Weighted Merging (Crossover):** The parent models are merged into a child using a 'fitness_weighted' average of their parameters. The parent with the higher fitness score has more influence on the child's final weights.
 
-The simulation runs for multiple generations. In each generation, a new child is created via the process above and competes with the existing population for survival into the next generation based on fitness (elitism).
+- **Mutation & Fine-tuning:** To introduce genetic diversity, the child's weights are randomly mutated. It is then fine-tuned on the full, general dataset to help it learn to integrate the knowledge from its parents.
 
-## Project Structure
+- **Elitism (Survival of the Fittest):** The simulation runs for multiple generations. In each generation, the new child competes with the existing population. Only the top performers (based on fitness) survive into the next generation.
 
-- `m2n2_implementation/main.py`: The main script that orchestrates the evolutionary experiment.
-- `m2n2_implementation/evolution.py`: Contains the core logic, including the advanced intelligent mating strategy.
-- `m2n2_implementation/model.py`: Defines the `CifarCNN` architecture.
-- `m2n2_implementation/data.py`: Handles loading the CIFAR-10 dataset and can create subsets for faster execution.
-- `m2n2_implementation/requirements.txt`: The required Python libraries.
-- `m2n2_implementation/pretrained_models/`: A directory for saving and loading model populations.
+## 3. How to Run the Experiment
 
-## Iterative Evolution: Loading and Saving Models
+### Prerequisites
+- Python 3.x
+- Pip
 
-This implementation supports an iterative workflow where the evolved population from one run can be used as the starting point for the next.
+### Setup and Execution
 
-- **Saving:** At the end of each experiment, the final population of models is automatically saved as `.pth` files in the `m2n2_implementation/pretrained_models/` directory.
-- **Loading:** When the `main.py` script is run, it checks the `pretrained_models/` directory.
-    - If it finds model files, it will load them as the initial population, allowing you to continue evolution from where you left off.
-    - If the directory is empty, it will initialize and train a new population of specialists from scratch.
+1.  **Clone the repository:**
+    ```bash
+    git clone <repository-url>
+    cd <repository-name>
+    ```
 
-To start fresh, simply clear the contents of the `m2n2_implementation/pretrained_models/` directory.
-
-## How to Run
-
-1.  **Install dependencies:**
+2.  **Install dependencies:**
+    All required libraries are listed in `m2n2_implementation/requirements.txt`.
     ```bash
     pip install -r m2n2_implementation/requirements.txt
     ```
 
-2.  **Run the experiment:**
+3.  **Run the experiment:**
+    Execute the main script from the root directory of the project.
     ```bash
     python3 m2n2_implementation/main.py
     ```
+    The script will print its progress for each generation, including specialization, evaluation, mating, and the creation of the next generation.
 
-Note: To prevent timeouts in constrained environments, the script currently runs on a small (10%) subset of the CIFAR-10 data. This can be changed by modifying the `subset_percentage` argument in the calls to `get_cifar10_dataloaders` within the `m2n2_implementation/evolution.py` file.
+### Performance Note
+To ensure the script runs quickly, it currently operates on a small (10%) subset of the CIFAR-10 data. This can be adjusted by modifying the `subset_percentage` argument in the calls to `get_cifar10_dataloaders` within the `m2n2_implementation/evolution.py` file.
+
+## 4. Iterative Evolution: Loading and Saving Models
+
+This implementation supports an iterative workflow where the evolved population from one run can be used as the starting point for the next.
+
+- **Saving:** At the end of each experiment, the final population of models is automatically saved as `.pth` files in the `m2n2_implementation/pretrained_models/` directory. The filename includes the model's niche and final fitness score.
+
+- **Loading:** When the `main.py` script is run, it first checks the `m2n2_implementation/pretrained_models/` directory.
+    - If it finds model files, it will load them as the initial population, allowing you to continue evolution from where you left off.
+    - If the directory is empty, it will initialize and train a new population of specialists from scratch.
+
+**To start a fresh experiment**, simply clear the contents of the `m2n2_implementation/pretrained_models/` directory before running the script.
+
+## 5. Project Structure
+
+```
+.
+├── .gitignore
+├── README.md                 # This file
+└── m2n2_implementation/
+    ├── main.py               # Main script to run the evolutionary experiment.
+    ├── evolution.py          # Core logic for selection, merging, and mutation.
+    ├── model.py              # Defines the CifarCNN architecture.
+    ├── data.py               # Handles loading and subsetting of CIFAR-10.
+    ├── requirements.txt      # Required Python libraries.
+    └── pretrained_models/    # Directory for saving and loading model populations.
+```

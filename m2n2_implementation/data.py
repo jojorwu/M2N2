@@ -1,3 +1,10 @@
+"""Handles the loading and preparation of the CIFAR-10 dataset.
+
+This module provides a function to create PyTorch DataLoaders for the
+CIFAR-10 dataset. It can be configured to provide the full dataset, a
+niche subset for specialist training, or a smaller random subset for
+rapid testing.
+"""
 import torch
 from torchvision import datasets, transforms
 from torch.utils.data import DataLoader, Subset
@@ -6,7 +13,9 @@ def get_cifar10_dataloaders(batch_size=64, niche_classes=None, subset_percentage
     """Loads the CIFAR-10 dataset and returns DataLoaders.
 
     This function can be configured to load the full dataset, a specific "niche"
-    of classes, or a random subset of the data for faster execution.
+    of classes, or a random subset of the data for faster execution. The test
+    loader always contains the full, general test set to ensure that models
+    are evaluated on their general performance.
 
     Args:
         batch_size (int, optional): The number of samples per batch.
@@ -15,8 +24,8 @@ def get_cifar10_dataloaders(batch_size=64, niche_classes=None, subset_percentage
             include in the training set. If None, all classes are used.
             For CIFAR-10, classes are 0-9. Defaults to None.
         subset_percentage (float, optional): A value between 0.0 and 1.0
-            that specifies the percentage of the dataset to use.
-            Helpful for quick testing. Defaults to 1.0 (full dataset).
+            that specifies the percentage of the dataset to use. This is
+            useful for quick testing. Defaults to 1.0 (full dataset).
 
     Returns:
         tuple[DataLoader, DataLoader]: A tuple containing:
@@ -24,8 +33,7 @@ def get_cifar10_dataloaders(batch_size=64, niche_classes=None, subset_percentage
               `niche_classes` is specified, this loader contains only data
               from those classes.
             - test_loader (DataLoader): DataLoader for the test set. This
-              loader always contains data from all classes to ensure
-              evaluation is performed on the general task.
+              loader always contains data from all classes.
     """
     transform = transforms.Compose([
         transforms.ToTensor(),

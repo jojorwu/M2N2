@@ -1,3 +1,11 @@
+"""Implements the core evolutionary algorithm for the M2N2 simulation.
+
+This module contains the logic for the main steps of the evolutionary
+process, including model specialization, evaluation, mate selection,
+merging (crossover), mutation, and generational selection. It operates on
+`ModelWrapper` objects, which encapsulate the neural network models and their
+associated metadata.
+"""
 import torch
 import torch.optim as optim
 import torch.nn.functional as F
@@ -13,7 +21,7 @@ class ModelWrapper:
 
     Attributes:
         niche_classes (list[int]): The list of class indices this model is
-            specialized in.
+            specialized in. An empty list implies a generalist.
         device (str): The device ('cpu' or 'cuda') on which the model's
             tensors are allocated.
         model (CifarCNN): The underlying neural network model instance.
@@ -21,6 +29,14 @@ class ModelWrapper:
             accuracy on a general test set. Initialized to 0.0.
     """
     def __init__(self, niche_classes, device='cpu'):
+        """Initializes the ModelWrapper.
+
+        Args:
+            niche_classes (list[int]): The list of class indices for the model's
+                specialized niche.
+            device (str, optional): The device to run the model on.
+                Defaults to 'cpu'.
+        """
         self.niche_classes = niche_classes
         self.device = device
         self.model = CifarCNN().to(device)
@@ -190,7 +206,8 @@ def merge(parent1, parent2, strategy='average'):
     """Merges two parent models to create a new child model.
 
     This function combines the weights of two parent models to produce a
-    new "child" model.
+    new "child" model. The child is initialized as a generalist, with a
+    niche covering all classes.
 
     Args:
         parent1 (ModelWrapper): The first parent model.
@@ -203,7 +220,6 @@ def merge(parent1, parent2, strategy='average'):
 
     Returns:
         ModelWrapper: A new model wrapper containing the merged child model.
-            The child is initialized as a generalist (all classes).
 
     Raises:
         ValueError: If an unknown merge strategy is specified.
@@ -248,7 +264,7 @@ def mutate(model_wrapper, mutation_rate=0.01, mutation_strength=0.1):
 
     This function introduces genetic diversity into the population by
     randomly altering a fraction of the model's weights in its convolutional
-    and linear layers.
+    and linear layers. The mutation is applied in-place.
 
     Args:
         model_wrapper (ModelWrapper): The model wrapper to mutate.
@@ -257,9 +273,6 @@ def mutate(model_wrapper, mutation_rate=0.01, mutation_strength=0.1):
         mutation_strength (float, optional): The standard deviation of the
             normal distribution from which mutations are drawn. Controls the
             magnitude of changes. Defaults to 0.1.
-
-    Returns:
-        ModelWrapper: The mutated model wrapper.
     """
     print("Mutating child model...")
     with torch.no_grad():
@@ -272,7 +285,6 @@ def mutate(model_wrapper, mutation_rate=0.01, mutation_strength=0.1):
                 # Apply the mutation where the mask is True
                 param.data += mutation * mutation_mask
     print("Mutation complete.")
-    return model_wrapper
 
 def create_next_generation(current_population, new_child, population_size):
     """Creates the next generation's population via elitism.
@@ -289,7 +301,7 @@ def create_next_generation(current_population, new_child, population_size):
 
     Returns:
         list[ModelWrapper]: The list of models selected for the next
-            generation, sorted by fitness.
+            generation, sorted by fitness in descending order.
     """
     print("Creating the next generation...")
     # Evaluate the new child to make sure its fitness is calculated

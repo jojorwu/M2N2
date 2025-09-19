@@ -1,3 +1,9 @@
+"""Defines the neural network architectures used in the experiment.
+
+This module contains the definitions for the Convolutional Neural Network (CNN)
+models. The primary model is `CifarCNN`, which is designed for the CIFAR-10
+dataset. A simpler `MnistCNN` is also included for reference purposes.
+"""
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -18,6 +24,7 @@ class CifarCNN(nn.Module):
         fc3 (nn.Linear): Output layer (128 -> 10 classes).
     """
     def __init__(self):
+        """Initializes the CifarCNN model layers."""
         super(CifarCNN, self).__init__()
         # Input channels = 3 (for color images), output channels = 32
         self.conv1 = nn.Conv2d(3, 32, kernel_size=3, padding=1)
@@ -65,6 +72,7 @@ class MnistCNN(nn.Module):
         fc2 (nn.Linear): Output layer (128 -> 10 classes).
     """
     def __init__(self):
+        """Initializes the MnistCNN model layers."""
         super(MnistCNN, self).__init__()
         self.conv1 = nn.Conv2d(1, 32, kernel_size=3, stride=1, padding=1)
         self.conv2 = nn.Conv2d(32, 64, kernel_size=3, stride=1, padding=1)
