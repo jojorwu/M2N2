@@ -2,15 +2,15 @@
 
 ## 1. Purpose
 
-This project is a simplified, educational implementation of the concepts from Sakana AI's research paper on **M2N2 (Model Merging of Natural Niches)**. It provides a clear, runnable example of how a population of neural networks can be evolved through specialization, intelligent mating, and merging to produce a more capable, generalist model.
+This project provides a simplified, educational implementation of the concepts from Sakana AI's research paper on **M2N2 (Model Merging of Natural Niches)**. It offers a clear, runnable example of how a population of neural networks can evolve through specialization, intelligent mating, and merging to produce a more capable, generalist model.
 
-This implementation is designed to be a learning tool for understanding the core principles of the M2N2 paper. It uses the CIFAR-10 dataset and a specific, advanced mating strategy to demonstrate the evolutionary process.
+This implementation is designed as a learning tool to understand the core principles of the M2N2 paper. It uses the CIFAR-10 dataset and a specific, advanced mating strategy to demonstrate the evolutionary process in a transparent and accessible way.
 
 ## 2. Core Concepts Demonstrated
 
 The simulation is built around the following key concepts:
 
-- **Specialization (Niche Adaptation):** The initial population consists of 10 specialist Convolutional Neural Networks (CNNs). Each model is trained on only a single class from the CIFAR-10 dataset (e.g., one model for 'airplane', one for 'cat', etc.), forcing it to become an expert in that "niche."
+- **Specialization (Niche Adaptation):** The initial population consists of 10 specialist Convolutional Neural Networks (CNNs). Each model is trained on only a single class from the CIFAR-10 dataset (e.g., one model for 'airplane', one for 'cat'), forcing it to become an expert in that "niche."
 
 - **Advanced Intelligent Mating:** To create a new "child" model, a sophisticated mating strategy is used:
     1. The best-performing model in the population (based on overall accuracy on the full test set) is selected as **Parent 1**.
@@ -38,13 +38,20 @@ The simulation is built around the following key concepts:
     cd <repository-name>
     ```
 
-2.  **Install dependencies:**
+2.  **Create and activate a virtual environment (Recommended):**
+    ```bash
+    python3 -m venv venv
+    source venv/bin/activate
+    # On Windows, use: `venv\Scripts\activate`
+    ```
+
+3.  **Install dependencies:**
     All required libraries are listed in `m2n2_implementation/requirements.txt`.
     ```bash
     pip install -r m2n2_implementation/requirements.txt
     ```
 
-3.  **Run the experiment:**
+4.  **Run the experiment:**
     Execute the main script from the root directory of the project.
     ```bash
     python3 m2n2_implementation/main.py
@@ -80,3 +87,13 @@ This implementation supports an iterative workflow where the evolved population 
     ├── requirements.txt      # Required Python libraries.
     └── pretrained_models/    # Directory for saving and loading model populations.
 ```
+
+## 6. License
+
+This project is licensed under the MIT License. See the details below.
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.

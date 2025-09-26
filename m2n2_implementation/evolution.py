@@ -4,7 +4,7 @@ This module contains the logic for the main steps of the evolutionary
 process, including model specialization, evaluation, mate selection,
 merging (crossover), mutation, and generational selection. It operates on
 `ModelWrapper` objects, which encapsulate the neural network models and their
-associated metadata.
+associated metadata, conforming to Google's Python docstring style.
 """
 import torch
 import torch.optim as optim
@@ -273,6 +273,9 @@ def mutate(model_wrapper, mutation_rate=0.01, mutation_strength=0.1):
         mutation_strength (float, optional): The standard deviation of the
             normal distribution from which mutations are drawn. Controls the
             magnitude of changes. Defaults to 0.1.
+
+    Returns:
+        ModelWrapper: The model wrapper with the mutated model.
     """
     print("Mutating child model...")
     with torch.no_grad():
@@ -285,6 +288,7 @@ def mutate(model_wrapper, mutation_rate=0.01, mutation_strength=0.1):
                 # Apply the mutation where the mask is True
                 param.data += mutation * mutation_mask
     print("Mutation complete.")
+    return model_wrapper
 
 def create_next_generation(current_population, new_child, population_size):
     """Creates the next generation's population via elitism.

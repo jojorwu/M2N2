@@ -3,7 +3,7 @@
 This module provides a function to create PyTorch DataLoaders for the
 CIFAR-10 dataset. It can be configured to provide the full dataset, a
 niche subset for specialist training, or a smaller random subset for
-rapid testing.
+rapid testing, conforming to Google's Python docstring style.
 """
 import torch
 from torchvision import datasets, transforms
@@ -20,20 +20,18 @@ def get_cifar10_dataloaders(batch_size=64, niche_classes=None, subset_percentage
     Args:
         batch_size (int, optional): The number of samples per batch.
             Defaults to 64.
-        niche_classes (list[int], optional): A list of class indices to
-            include in the training set. If None, all classes are used.
-            For CIFAR-10, classes are 0-9. Defaults to None.
+        niche_classes (list[int], optional): A list of class indices (0-9)
+            to include in the training set. If None, all classes are used.
+            Defaults to None.
         subset_percentage (float, optional): A value between 0.0 and 1.0
-            that specifies the percentage of the dataset to use. This is
-            useful for quick testing. Defaults to 1.0 (full dataset).
+            that specifies the percentage of the dataset to use for rapid
+            testing. Defaults to 1.0 (full dataset).
 
     Returns:
-        tuple[DataLoader, DataLoader]: A tuple containing:
-            - train_loader (DataLoader): DataLoader for the training set. If
-              `niche_classes` is specified, this loader contains only data
-              from those classes.
-            - test_loader (DataLoader): DataLoader for the test set. This
-              loader always contains data from all classes.
+        tuple[DataLoader, DataLoader]: A tuple containing the training and
+            test DataLoaders. The `train_loader` will contain either the full
+            dataset or a niche-specific subset, while the `test_loader` always
+            contains the full test set.
     """
     transform = transforms.Compose([
         transforms.ToTensor(),

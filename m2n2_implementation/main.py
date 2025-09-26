@@ -2,8 +2,9 @@
 
 This script orchestrates the entire evolutionary experiment, from initializing
 a population of models to running the generational loop of evaluation,
-selection, merging, and mutation. It also handles the loading and saving of
-model populations to allow for iterative experiments.
+selection, merging, and mutation, conforming to Google's Python docstring style.
+It also handles the loading and saving of model populations to allow for
+iterative experiments.
 """
 import torch
 import os
@@ -24,20 +25,14 @@ def main():
         it initializes a new population of specialist models from scratch
         and trains them on their respective niches.
     3.  **Evolutionary Loop**: For each generation, it performs:
-        a. **Specialization**: Specialist models (not generalist children)
-           are trained on their niche data.
-        b. **Evaluation**: All models are evaluated on the full test set to
-           determine their fitness.
-        c. **Mating**: The advanced `select_mates` strategy is used to pick
-           two parents for crossover.
-        d. **Crossover & Mutation**: The parents are merged into a child,
-           which is then mutated and fine-tuned.
-        e. **Selection**: The new child competes with the old population,
-           and the fittest individuals survive to the next generation.
-    4.  **Summary**: After all generations are complete, it prints a summary
-        of the fitness history.
-    5.  **Save Population**: The final, evolved population is saved to the
-        `pretrained_models/` directory, overwriting any previous run.
+        a. **Specialization**: Specialist models are trained on niche data.
+        b. **Evaluation**: All models are evaluated on the full test set.
+        c. **Mating**: Parents are selected using the `select_mates` strategy.
+        d. **Crossover & Mutation**: Parents are merged, mutated, and fine-tuned.
+        e. **Selection**: The fittest individuals survive to the next generation.
+    4.  **Summary**: Prints a summary of the fitness history.
+    5.  **Save Population**: Saves the final population to the
+        `pretrained_models/` directory.
     """
     # --- 1. Configuration ---
     DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")

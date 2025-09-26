@@ -1,8 +1,9 @@
 """Defines the neural network architectures used in the experiment.
 
 This module contains the definitions for the Convolutional Neural Network (CNN)
-models. The primary model is `CifarCNN`, which is designed for the CIFAR-10
-dataset. A simpler `MnistCNN` is also included for reference purposes.
+models, conforming to Google's Python docstring style. The primary model is
+`CifarCNN`, designed for the CIFAR-10 dataset, and a simpler `MnistCNN`
+is included for reference.
 """
 import torch
 import torch.nn as nn
