@@ -9,39 +9,49 @@ associated metadata, conforming to Google's Python docstring style.
 import torch
 import torch.optim as optim
 import torch.nn.functional as F
-from model import CifarCNN
-from data import get_cifar10_dataloaders
+from model import CifarCNN, MnistCNN
+from data import get_dataloaders
 import copy
 import random
 from tqdm import tqdm
 class ModelWrapper:
     """A wrapper to hold a model and its evolutionary metadata.
 
-    This class encapsulates a CifarCNN model and its associated context,
-    such as its specialized niche (the data it was trained on) and its
-    fitness score (its performance on the general test set).
+    This class encapsulates a model and its associated context, such as its
+    specialized niche, its fitness score, and the model architecture.
 
     Attributes:
+        model_name (str): The name of the model architecture ('CIFAR10' or 'MNIST').
         niche_classes (list[int]): A list of class indices the model is
             specialized in. An empty or full list implies a generalist.
         device (str): The device ('cpu' or 'cuda') on which the model's
             tensors are allocated.
-        model (CifarCNN): The underlying neural network model instance.
+        model (torch.nn.Module): The underlying neural network model instance.
         fitness (float): The fitness score of the model, representing its
             accuracy on the full test set. Initialized to 0.0.
     """
-    def __init__(self, niche_classes, device='cpu'):
+    def __init__(self, model_name, niche_classes, device='cpu'):
         """Initializes the ModelWrapper with a model and its niche.
 
         Args:
+            model_name (str): The name of the model to instantiate.
+                Supported options: 'CIFAR10', 'MNIST'.
             niche_classes (list[int]): The list of class indices for the
                 model's specialized niche.
             device (str, optional): The device to run the model on.
                 Defaults to 'cpu'.
         """
+        self.model_name = model_name
         self.niche_classes = niche_classes
         self.device = device
-        self.model = CifarCNN().to(device)
+
+        if self.model_name == 'CIFAR10':
+            self.model = CifarCNN().to(device)
+        elif self.model_name == 'MNIST':
+            self.model = MnistCNN().to(device)
+        else:
+            raise ValueError(f"Unsupported model name: {self.model_name}")
+
         # Fitness is measured as accuracy on the full test set.
         self.fitness = 0.0
 
@@ -60,7 +70,11 @@ def specialize(model_wrapper, epochs=1):
     """
     print(f"Specializing model on niche: {model_wrapper.niche_classes} for {epochs} epoch(s)...")
     # Get the dataloader for the model's specific niche, using a subset for speed
-    train_loader, _ = get_cifar10_dataloaders(niche_classes=model_wrapper.niche_classes, subset_percentage=0.1)
+    train_loader, _ = get_dataloaders(
+        dataset_name=model_wrapper.model_name,
+        niche_classes=model_wrapper.niche_classes,
+        subset_percentage=0.1
+    )
     optimizer = optim.Adam(model_wrapper.model.parameters(), lr=0.001)
 
     model_wrapper.model.train()
@@ -94,7 +108,7 @@ def _get_fitness_score(model_wrapper):
         float: The calculated accuracy (fitness) of the model as a percentage.
     """
     # We always evaluate on the full test set to measure general performance
-    _, test_loader = get_cifar10_dataloaders(subset_percentage=0.1)
+    _, test_loader = get_dataloaders(dataset_name=model_wrapper.model_name, subset_percentage=0.1)
     model_wrapper.model.eval()
     correct = 0
     total = 0
@@ -142,7 +156,7 @@ def evaluate_by_class(model_wrapper):
         list[float]: A list of 10 accuracy percentages, where the index of
             the list corresponds to a class index from CIFAR-10.
     """
-    _, test_loader = get_cifar10_dataloaders(subset_percentage=0.1)
+    _, test_loader = get_dataloaders(dataset_name=model_wrapper.model_name, subset_percentage=0.1)
     model_wrapper.model.eval()
 
     class_correct = list(0. for i in range(10))
@@ -260,7 +274,7 @@ def merge(parent1, parent2, strategy='average'):
         ValueError: If an unknown merge strategy is specified.
     """
     print(f"Merging parent models to create child using '{strategy}' strategy...")
-    child_wrapper = ModelWrapper(niche_classes=list(range(10)), device=parent1.device)
+    child_wrapper = ModelWrapper(model_name=parent1.model_name, niche_classes=list(range(10)), device=parent1.device)
     child_model_state_dict = child_wrapper.model.state_dict()
 
     parent1_state_dict = parent1.model.state_dict()
@@ -296,7 +310,7 @@ def merge(parent1, parent2, strategy='average'):
         best_child_state_dict = copy.deepcopy(fitter_parent.model.state_dict())
 
         # Evaluate this initial state
-        temp_model_wrapper = ModelWrapper(niche_classes=list(range(10)), device=fitter_parent.device)
+        temp_model_wrapper = ModelWrapper(model_name=fitter_parent.model_name, niche_classes=list(range(10)), device=fitter_parent.device)
         temp_model_wrapper.model.load_state_dict(best_child_state_dict)
         best_fitness = _get_fitness_score(temp_model_wrapper)
         print(f"  - Initial child fitness: {best_fitness:.2f}%")
@@ -426,7 +440,7 @@ def finetune(model_wrapper, epochs=3):
     """
     print(f"Fine-tuning model for {epochs} epoch(s) with LR scheduler...")
     # Get the dataloader for the full dataset, using a subset for speed
-    train_loader, _ = get_cifar10_dataloaders(subset_percentage=0.1)
+    train_loader, _ = get_dataloaders(dataset_name=model_wrapper.model_name, subset_percentage=0.1)
     optimizer = optim.Adam(model_wrapper.model.parameters(), lr=0.001)
     scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=1, gamma=0.7)
 

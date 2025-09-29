@@ -12,6 +12,7 @@ import os
 import glob
 import re
 from evolution import ModelWrapper, specialize, evaluate, select_mates, merge, mutate, finetune, create_next_generation
+from data import get_dataloaders
 
 def main():
     """Runs the main M2N2-inspired evolutionary simulation.
@@ -44,6 +45,7 @@ def main():
         previous run.
     """
     # --- 1. Configuration ---
+    MODEL_CONFIG = 'CIFAR10' # Options: 'CIFAR10', 'MNIST'
     DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"--- M2N2 Simplified Implementation ---")
     print(f"Using device: {DEVICE}\n")
@@ -74,7 +76,7 @@ def main():
                 fitness = float(fitness_str)
 
                 # Create a wrapper, load the state dict, and set the fitness
-                wrapper = ModelWrapper(niche_classes=niche_classes, device=DEVICE)
+                wrapper = ModelWrapper(model_name=MODEL_CONFIG, niche_classes=niche_classes, device=DEVICE)
                 wrapper.model.load_state_dict(torch.load(f, map_location=DEVICE))
                 wrapper.fitness = fitness
                 population.append(wrapper)
@@ -89,7 +91,7 @@ def main():
         print("No pretrained models found. Initializing a new population from scratch.")
         for i in range(POPULATION_SIZE):
             niche = NICHES[i]
-            population.append(ModelWrapper(niche_classes=niche, device=DEVICE))
+            population.append(ModelWrapper(model_name=MODEL_CONFIG, niche_classes=niche, device=DEVICE))
         print(f"Initialized population of {len(population)} models, one for each class.\n")
 
         # The initial population needs to be specialized

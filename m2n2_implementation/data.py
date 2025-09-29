@@ -1,54 +1,56 @@
-"""Handles the loading and preparation of the CIFAR-10 dataset.
+"""Handles the loading and preparation of image classification datasets.
 
-This module provides a function to create PyTorch DataLoaders for the
-CIFAR-10 dataset. It can be configured to provide the full dataset, a
-niche subset for specialist training, or a smaller random subset for
-rapid testing, conforming to Google's Python docstring style.
+This module provides a generic function to create PyTorch DataLoaders for
+different datasets, such as CIFAR-10 and MNIST. It can be configured to
+provide the full dataset, a niche subset for specialist training, or a
+smaller random subset for rapid testing.
 """
 import torch
 from torchvision import datasets, transforms
 from torch.utils.data import DataLoader, Subset
 
-def get_cifar10_dataloaders(batch_size=64, niche_classes=None, subset_percentage=1.0):
-    """Creates and returns PyTorch DataLoaders for the CIFAR-10 dataset.
+def get_dataloaders(dataset_name='CIFAR10', batch_size=64, niche_classes=None, subset_percentage=1.0):
+    """Creates and returns PyTorch DataLoaders for a specified dataset.
 
-    This function prepares the CIFAR-10 dataset for training and testing.
-    It can be configured to serve the full dataset, a "niche" subset of
-    specific classes for specialist model training, or a random subset for
-    rapid testing.
-
-    The data is transformed by converting images to PyTorch tensors and
-    normalizing them to a range of [-1, 1].
+    This function prepares a dataset for training and testing. It can serve
+    the full dataset, a "niche" subset of specific classes, or a random
+    subset for rapid testing. It applies the appropriate transformations
+    based on the dataset name.
 
     Args:
-        batch_size (int, optional): The number of samples per batch in the
-            DataLoaders. Defaults to 64.
-        niche_classes (list[int], optional): A list of class indices (0-9)
-            to be exclusively included in the training set. If `None`, all
-            classes will be included. This is used for specializing models.
-            Defaults to None.
+        dataset_name (str, optional): The name of the dataset to load.
+            Supported options are 'CIFAR10' and 'MNIST'.
+            Defaults to 'CIFAR10'.
+        batch_size (int, optional): The number of samples per batch.
+            Defaults to 64.
+        niche_classes (list[int], optional): A list of class indices to
+            exclusively include in the training set. Defaults to None.
         subset_percentage (float, optional): A float between 0.0 and 1.0
-            that specifies the fraction of the dataset to use. This is
-            useful for quick testing and debugging on a smaller amount of
-            data. Defaults to 1.0 (the entire dataset).
+            specifying the fraction of the dataset to use. Defaults to 1.0.
 
     Returns:
-        tuple[DataLoader, DataLoader]: A tuple containing:
-        - train_loader (DataLoader): The DataLoader for the training set.
-          It will be shuffled and may contain a niche-specific or
-          randomly subsetted dataset.
-        - test_loader (DataLoader): The DataLoader for the test set. It
-          always contains the full, unshuffled test set (or a random
-          subset of it if `subset_percentage` is used) to ensure
-          consistent and comparable evaluation.
-    """
-    transform = transforms.Compose([
-        transforms.ToTensor(),
-        transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
-    ])
+        tuple[DataLoader, DataLoader]: A tuple containing the training and
+            test DataLoaders.
 
-    full_train_dataset = datasets.CIFAR10(root='./data', train=True, download=True, transform=transform)
-    full_test_dataset = datasets.CIFAR10(root='./data', train=False, download=True, transform=transform)
+    Raises:
+        ValueError: If an unsupported `dataset_name` is provided.
+    """
+    if dataset_name == 'CIFAR10':
+        transform = transforms.Compose([
+            transforms.ToTensor(),
+            transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
+        ])
+        full_train_dataset = datasets.CIFAR10(root='./data', train=True, download=True, transform=transform)
+        full_test_dataset = datasets.CIFAR10(root='./data', train=False, download=True, transform=transform)
+    elif dataset_name == 'MNIST':
+        transform = transforms.Compose([
+            transforms.ToTensor(),
+            transforms.Normalize((0.5,), (0.5,))
+        ])
+        full_train_dataset = datasets.MNIST(root='./data', train=True, download=True, transform=transform)
+        full_test_dataset = datasets.MNIST(root='./data', train=False, download=True, transform=transform)
+    else:
+        raise ValueError(f"Unsupported dataset: {dataset_name}. Please use 'CIFAR10' or 'MNIST'.")
 
     # Create a random subset if specified
     if subset_percentage < 1.0:
@@ -61,42 +63,28 @@ def get_cifar10_dataloaders(batch_size=64, niche_classes=None, subset_percentage
         full_test_dataset = Subset(full_test_dataset, test_indices)
 
     if niche_classes is not None:
-        # Create a niche-specific training loader
         train_indices = [i for i, (_, label) in enumerate(full_train_dataset) if label in niche_classes]
         niche_train_subset = Subset(full_train_dataset, train_indices)
         train_loader = DataLoader(dataset=niche_train_subset, batch_size=batch_size, shuffle=True)
-
-        # For evaluation, provide a loader for the full test set
         full_test_loader = DataLoader(dataset=full_test_dataset, batch_size=batch_size, shuffle=False)
-
         return train_loader, full_test_loader
 
-    # If no niche is specified, return DataLoaders for the full dataset
     train_loader = DataLoader(dataset=full_train_dataset, batch_size=batch_size, shuffle=True)
     test_loader = DataLoader(dataset=full_test_dataset, batch_size=batch_size, shuffle=False)
-
     return train_loader, test_loader
 
 if __name__ == '__main__':
-    # Example of how to use the function to create niche dataloaders for CIFAR-10
-    # CIFAR-10 classes: 0:airplane, 1:automobile, 2:bird, 3:cat, 4:deer, 5:dog, 6:frog, 7:horse, 8:ship, 9:truck
+    print("--- Testing CIFAR-10 DataLoaders ---")
+    cifar_train, cifar_test = get_dataloaders('CIFAR10')
+    print(f"CIFAR-10 training samples: {len(cifar_train.dataset)}")
+    print(f"CIFAR-10 test samples: {len(cifar_test.dataset)}")
 
-    # Niche 1: Animals
-    animal_classes = [2, 3, 4, 5, 6, 7]
-    train_loader_1, test_loader_1 = get_cifar10_dataloaders(niche_classes=animal_classes)
-    print(f"Niche 1 (Animals):")
-    print(f"  - Training samples: {len(train_loader_1.dataset)}")
-    print(f"  - Test samples (full): {len(test_loader_1.dataset)}")
+    print("\n--- Testing MNIST DataLoaders ---")
+    mnist_train, mnist_test = get_dataloaders('MNIST')
+    print(f"MNIST training samples: {len(mnist_train.dataset)}")
+    print(f"MNIST test samples: {len(mnist_test.dataset)}")
 
-    # Niche 2: Vehicles
-    vehicle_classes = [0, 1, 8, 9]
-    train_loader_2, test_loader_2 = get_cifar10_dataloaders(niche_classes=vehicle_classes)
-    print(f"Niche 2 (Vehicles):")
-    print(f"  - Training samples: {len(train_loader_2.dataset)}")
-    print(f"  - Test samples (full): {len(test_loader_2.dataset)}")
-
-    # Full dataset
-    full_train_loader, full_test_loader = get_cifar10_dataloaders()
-    print("Full Dataset:")
-    print(f"  - Training samples: {len(full_train_loader.dataset)}")
-    print(f"  - Test samples: {len(full_test_loader.dataset)}")
+    print("\n--- Testing Niche Loader (CIFAR-10) ---")
+    niche_train, niche_test = get_dataloaders('CIFAR10', niche_classes=[0, 1, 2])
+    print(f"Niche training samples: {len(niche_train.dataset)}")
+    print(f"Niche test samples (full): {len(niche_test.dataset)}")
