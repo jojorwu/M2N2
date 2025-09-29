@@ -9,6 +9,7 @@ associated metadata, conforming to Google's Python docstring style.
 import torch
 import torch.optim as optim
 import torch.nn.functional as F
+from .logger_config import logger
 from .model import CifarCNN, MnistCNN, LLMClassifier, ResNetClassifier
 from .data import get_dataloaders
 import copy
@@ -72,7 +73,7 @@ def specialize(model_wrapper, epochs=1, precision='32'):
         precision (str, optional): The training precision ('16', '32', '64').
             Defaults to '32'.
     """
-    print(f"Specializing model on niche {model_wrapper.niche_classes} for {epochs} epoch(s) with {precision}-bit precision...")
+    logger.info(f"Specializing model on niche {model_wrapper.niche_classes} for {epochs} epoch(s) with {precision}-bit precision...")
 
     train_loader, _, _ = get_dataloaders(
         dataset_name=model_wrapper.model_name,
@@ -89,7 +90,7 @@ def specialize(model_wrapper, epochs=1, precision='32'):
 
     for epoch in range(epochs):
         model_wrapper.model.train()
-        print(f"  - Epoch {epoch + 1}/{epochs}")
+        logger.info(f"  - Epoch {epoch + 1}/{epochs}")
         pbar = tqdm(train_loader, desc=f"Specializing Niche {model_wrapper.niche_classes}")
         for batch in pbar:
             optimizer.zero_grad()
@@ -117,7 +118,7 @@ def specialize(model_wrapper, epochs=1, precision='32'):
 
     # The model remains in its trained precision for subsequent evaluation
     model_wrapper.fitness_is_current = False
-    print("Specialization complete.")
+    logger.info("Specialization complete.")
 
 def _get_validation_fitness(model_wrapper, validation_loader):
     """Calculates a fitness score using a provided validation loader.
@@ -221,7 +222,7 @@ def evaluate(model_wrapper):
         float: The calculated accuracy (fitness) of the model as a percentage.
     """
     if model_wrapper.fitness_is_current:
-        # print(f"  - Skipping evaluation for model with up-to-date fitness: {model_wrapper.fitness:.2f}%")
+        logger.debug(f"  - Skipping evaluation for model with up-to-date fitness: {model_wrapper.fitness:.2f}%")
         return model_wrapper.fitness
 
     accuracy = _get_fitness_score(model_wrapper)
@@ -243,7 +244,8 @@ def evaluate_by_class(model_wrapper):
         list[float]: A list of accuracy percentages, where the index of the
             list corresponds to the class index.
     """
-    _, test_loader = get_dataloaders(dataset_name=model_wrapper.model_name, subset_percentage=0.1)
+    # We always evaluate on the full test set to measure general performance
+    _, _, test_loader = get_dataloaders(dataset_name=model_wrapper.model_name, subset_percentage=0.1, validation_split=0) # No validation split needed here
     model_wrapper.model.eval()
 
     num_classes = model_wrapper.model.num_classes
@@ -300,19 +302,19 @@ def select_mates(population):
             the two selected parents. If a suitable pair cannot be found
             (e.g., population is too small), elements can be `None`.
     """
-    print("Selecting mates with advanced strategy...")
+    logger.info("Selecting mates with advanced strategy...")
     if not population:
         return None, None
 
     # 1. Find the best overall model in the population to be Parent 1.
     parent1 = max(population, key=lambda m: m.fitness)
-    print(f"  - Parent 1 is the population's best model (Fitness: {parent1.fitness:.2f}%)")
+    logger.info(f"  - Parent 1 is the population's best model (Fitness: {parent1.fitness:.2f}%)")
 
     # 2. Analyze Parent 1 to find its weakest class.
-    print("  - Analyzing Parent 1's performance by class...")
+    logger.info("  - Analyzing Parent 1's performance by class...")
     class_accuracies = evaluate_by_class(parent1)
     weakest_class_index = class_accuracies.index(min(class_accuracies))
-    print(f"  - Parent 1's weakest class is {weakest_class_index} (Accuracy: {class_accuracies[weakest_class_index]:.2f}%)")
+    logger.info(f"  - Parent 1's weakest class is {weakest_class_index} (Accuracy: {class_accuracies[weakest_class_index]:.2f}%)")
 
     # 3. Find the specialist for that weakest class to be Parent 2.
     parent2 = None
@@ -324,22 +326,22 @@ def select_mates(population):
     if specialist_candidates:
         # From the candidates, pick the one with the highest fitness.
         parent2 = max(specialist_candidates, key=lambda m: m.fitness)
-        print(f"  - Found specialist for class {weakest_class_index} as Parent 2 (Fitness: {parent2.fitness:.2f}%)")
+        logger.info(f"  - Found specialist for class {weakest_class_index} as Parent 2 (Fitness: {parent2.fitness:.2f}%)")
     else:
         # Fallback: if no suitable specialist is found, pick the second-best model overall.
-        print("  - No suitable specialist found. Using second-best model as fallback Parent 2.")
+        logger.info("  - No suitable specialist found. Using second-best model as fallback Parent 2.")
         sorted_population = sorted(population, key=lambda m: m.fitness, reverse=True)
         if len(sorted_population) > 1:
             parent2 = sorted_population[1]
         else:
-            print("  - Not enough models in population to select a second parent.")
+            logger.info("  - Not enough models in population to select a second parent.")
             return parent1, None
 
     if parent1 and parent2:
         return parent1, parent2
     else:
         # This case should be rare given the fallbacks, but is here for safety.
-        print("  - Could not select a pair of parents.")
+        logger.info("  - Could not select a pair of parents.")
         return None, None
 
 def merge(parent1, parent2, strategy='average', validation_loader=None):
@@ -373,7 +375,7 @@ def merge(parent1, parent2, strategy='average', validation_loader=None):
         ValueError: If an unknown merge strategy is specified or if a
             required argument (like `validation_loader`) is missing.
     """
-    print(f"Merging parent models to create child using '{strategy}' strategy...")
+    logger.info(f"Merging parent models to create child using '{strategy}' strategy...")
     child_wrapper = ModelWrapper(model_name=parent1.model_name, niche_classes=list(range(10)), device=parent1.device)
     child_model_state_dict = child_wrapper.model.state_dict()
 
@@ -407,14 +409,14 @@ def merge(parent1, parent2, strategy='average', validation_loader=None):
 
         fitter_parent = parent1 if parent1.fitness >= parent2.fitness else parent2
         weaker_parent = parent2 if parent1.fitness >= parent2.fitness else parent1
-        print(f"  - Using fitter parent (Fitness: {fitter_parent.fitness:.2f}) as base.")
+        logger.info(f"  - Using fitter parent (Fitness: {fitter_parent.fitness:.2f}) as base.")
 
         best_child_state_dict = copy.deepcopy(fitter_parent.model.state_dict())
 
         temp_model_wrapper = ModelWrapper(model_name=fitter_parent.model_name, niche_classes=list(range(10)), device=fitter_parent.device)
         temp_model_wrapper.model.load_state_dict(best_child_state_dict)
         best_fitness = _get_validation_fitness(temp_model_wrapper, validation_loader)
-        print(f"  - Initial child validation fitness: {best_fitness:.2f}%")
+        logger.info(f"  - Initial child validation fitness: {best_fitness:.2f}%")
 
         if fitter_parent.model_name == 'LLM':
             layer_prefixes = ['bert.distilbert.embeddings']
@@ -437,11 +439,11 @@ def merge(parent1, parent2, strategy='average', validation_loader=None):
             current_fitness = _get_validation_fitness(temp_model_wrapper, validation_loader)
 
             if current_fitness > best_fitness:
-                print(f"  - Swapping layer '{prefix}' improved validation fitness to {current_fitness:.2f}%. Keeping it.")
+                logger.info(f"  - Swapping layer '{prefix}' improved validation fitness to {current_fitness:.2f}%. Keeping it.")
                 best_fitness = current_fitness
                 best_child_state_dict = temp_state_dict
             else:
-                print(f"  - Swapping layer '{prefix}' did not improve validation fitness ({current_fitness:.2f}%). Discarding.")
+                logger.info(f"  - Swapping layer '{prefix}' did not improve validation fitness ({current_fitness:.2f}%). Discarding.")
 
         child_model_state_dict = best_child_state_dict
 
@@ -449,7 +451,7 @@ def merge(parent1, parent2, strategy='average', validation_loader=None):
         raise ValueError(f"Unknown merge strategy: {strategy}")
 
     child_wrapper.model.load_state_dict(child_model_state_dict)
-    print("Merging complete.")
+    logger.info("Merging complete.")
     return child_wrapper
 
 def mutate(model_wrapper, generation, mutation_rate=0.01, initial_mutation_strength=0.1, decay_factor=0.9):
@@ -479,7 +481,7 @@ def mutate(model_wrapper, generation, mutation_rate=0.01, initial_mutation_stren
     """
     # Calculate the decayed mutation strength for the current generation
     decayed_strength = initial_mutation_strength * (decay_factor ** generation)
-    print(f"Mutating child model (Gen: {generation}, Strength: {decayed_strength:.4f})...")
+    logger.info(f"Mutating child model (Gen: {generation}, Strength: {decayed_strength:.4f})...")
 
     with torch.no_grad():
         for param in model_wrapper.model.parameters():
@@ -491,7 +493,7 @@ def mutate(model_wrapper, generation, mutation_rate=0.01, initial_mutation_stren
                 # Apply the mutation where the mask is True
                 param.data += mutation * mutation_mask
     model_wrapper.fitness_is_current = False
-    print("Mutation complete.")
+    logger.info("Mutation complete.")
     return model_wrapper
 
 def create_next_generation(current_population, new_child, population_size):
@@ -513,7 +515,7 @@ def create_next_generation(current_population, new_child, population_size):
         list[ModelWrapper]: A new list of models for the next generation,
             sorted by fitness in descending order.
     """
-    print("Creating the next generation...")
+    logger.info("Creating the next generation...")
     # Evaluate the new child to make sure its fitness is calculated
     evaluate(new_child)
 
@@ -526,7 +528,7 @@ def create_next_generation(current_population, new_child, population_size):
     # The next generation consists of the top 'population_size' individuals
     next_generation = full_pool[:population_size]
 
-    print(f"Selected {len(next_generation)} fittest individuals for the next generation.")
+    logger.info(f"Selected {len(next_generation)} fittest individuals for the next generation.")
 
     return next_generation
 
@@ -544,7 +546,7 @@ def finetune(model_wrapper, epochs=3, precision='32'):
         precision (str, optional): The training precision ('16', '32', '64').
             Defaults to '32'.
     """
-    print(f"Fine-tuning model for {epochs} epoch(s) with {precision}-bit precision and LR scheduler...")
+    logger.info(f"Fine-tuning model for {epochs} epoch(s) with {precision}-bit precision and LR scheduler...")
 
     train_loader, _, _ = get_dataloaders(dataset_name=model_wrapper.model_name, subset_percentage=0.1)
     optimizer = optim.Adam(model_wrapper.model.parameters(), lr=0.001)
@@ -557,7 +559,7 @@ def finetune(model_wrapper, epochs=3, precision='32'):
 
     for epoch in range(epochs):
         model_wrapper.model.train()
-        print(f"  - Epoch {epoch + 1}/{epochs}")
+        logger.info(f"  - Epoch {epoch + 1}/{epochs}")
         pbar = tqdm(train_loader, desc=f"Fine-tuning Child")
         for batch in pbar:
             optimizer.zero_grad()
@@ -587,4 +589,4 @@ def finetune(model_wrapper, epochs=3, precision='32'):
 
     # The model remains in its trained precision for subsequent evaluation
     model_wrapper.fitness_is_current = False
-    print("Fine-tuning complete.")
+    logger.info("Fine-tuning complete.")
