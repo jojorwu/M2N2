@@ -105,14 +105,52 @@ def specialize(model_wrapper, epochs=1):
             pbar.set_postfix({'loss': loss.item()})
     print("Specialization complete.")
 
+def _get_validation_fitness(model_wrapper, validation_loader):
+    """Calculates a fitness score using a provided validation loader.
+
+    This is the fastest evaluation function, designed for the high-frequency
+    evaluations that occur during the sequential constructive crossover. It
+    uses a small, pre-made validation set to quickly estimate a model's
+    performance without touching the final test set.
+
+    Args:
+        model_wrapper (ModelWrapper): The model wrapper to evaluate.
+        validation_loader (DataLoader): The pre-made loader for the validation set.
+
+    Returns:
+        float: The calculated accuracy on the validation set.
+    """
+    model_wrapper.model.eval()
+    correct = 0
+    total = 0
+
+    with torch.no_grad():
+        for batch in validation_loader:
+            if model_wrapper.model_name == 'LLM':
+                input_ids = batch['input_ids'].to(model_wrapper.device)
+                attention_mask = batch['attention_mask'].to(model_wrapper.device)
+                labels = batch['labels'].to(model_wrapper.device)
+                outputs = model_wrapper.model(input_ids=input_ids, attention_mask=attention_mask)
+                _, predicted = torch.max(outputs, 1)
+                total += labels.size(0)
+                correct += (predicted == labels).sum().item()
+            else:
+                data, target = batch
+                data, target = data.to(model_wrapper.device), target.to(model_wrapper.device)
+                output = model_wrapper.model(data)
+                _, predicted = torch.max(output.data, 1)
+                total += target.size(0)
+                correct += (predicted == target).sum().item()
+
+    return 100 * correct / total
+
 def _get_fitness_score(model_wrapper):
-    """Calculates and returns the fitness score for a model.
+    """Calculates and returns the fitness score for a model on the test set.
 
     This is a lightweight, side-effect-free version of the `evaluate`
-    function. It calculates the accuracy on the test set but does *not*
+    function. It calculates the accuracy on the full test set but does *not*
     update the `fitness` attribute of the model wrapper or print any
-    output. This makes it suitable for repeated internal use, such as
-    during the sequential constructive crossover process.
+    output. This makes it suitable for repeated internal use.
 
     Args:
         model_wrapper (ModelWrapper): The model wrapper to evaluate.
@@ -121,7 +159,7 @@ def _get_fitness_score(model_wrapper):
         float: The calculated accuracy (fitness) of the model as a percentage.
     """
     # We always evaluate on the full test set to measure general performance
-    _, test_loader = get_dataloaders(dataset_name=model_wrapper.model_name, subset_percentage=0.1)
+    _, _, test_loader = get_dataloaders(dataset_name=model_wrapper.model_name, subset_percentage=0.1, validation_split=0) # No validation split needed here
     model_wrapper.model.eval()
     correct = 0
     total = 0
@@ -278,7 +316,7 @@ def select_mates(population):
         print("  - Could not select a pair of parents.")
         return None, None
 
-def merge(parent1, parent2, strategy='average'):
+def merge(parent1, parent2, strategy='average', validation_loader=None):
     """Merges two parent models into a new child model (crossover).
 
     This function combines the weights of two parents to produce a new child
@@ -297,13 +335,17 @@ def merge(parent1, parent2, strategy='average'):
             - 'sequential_constructive': Intelligently builds a child by
               starting with the fitter parent and sequentially swapping in
               layers from the weaker parent if they improve performance.
+              Requires the `validation_loader`.
             Defaults to 'average'.
+        validation_loader (DataLoader, optional): A DataLoader for a
+            validation set, required by certain strategies. Defaults to None.
 
     Returns:
         ModelWrapper: A new model wrapper containing the merged child model.
 
     Raises:
-        ValueError: If an unknown merge strategy is specified.
+        ValueError: If an unknown merge strategy is specified or if a
+            required argument (like `validation_loader`) is missing.
     """
     print(f"Merging parent models to create child using '{strategy}' strategy...")
     child_wrapper = ModelWrapper(model_name=parent1.model_name, niche_classes=list(range(10)), device=parent1.device)
@@ -334,53 +376,47 @@ def merge(parent1, parent2, strategy='average'):
             child_model_state_dict[key] = parent1_state_dict[key] if parent_choices[prefix] == 1 else parent2_state_dict[key]
 
     elif strategy == 'sequential_constructive':
+        if validation_loader is None:
+            raise ValueError("The 'sequential_constructive' strategy requires a 'validation_loader'.")
+
         fitter_parent = parent1 if parent1.fitness >= parent2.fitness else parent2
         weaker_parent = parent2 if parent1.fitness >= parent2.fitness else parent1
         print(f"  - Using fitter parent (Fitness: {fitter_parent.fitness:.2f}) as base.")
 
-        # Start with the fitter parent's state dict as the best-known state
         best_child_state_dict = copy.deepcopy(fitter_parent.model.state_dict())
 
-        # Evaluate this initial state
         temp_model_wrapper = ModelWrapper(model_name=fitter_parent.model_name, niche_classes=list(range(10)), device=fitter_parent.device)
         temp_model_wrapper.model.load_state_dict(best_child_state_dict)
-        best_fitness = _get_fitness_score(temp_model_wrapper)
-        print(f"  - Initial child fitness: {best_fitness:.2f}%")
+        best_fitness = _get_validation_fitness(temp_model_wrapper, validation_loader)
+        print(f"  - Initial child validation fitness: {best_fitness:.2f}%")
 
         if fitter_parent.model_name == 'LLM':
-            # For LLMs, define layers based on the transformer architecture
             layer_prefixes = ['bert.distilbert.embeddings']
             num_transformer_layers = fitter_parent.model.bert.config.num_hidden_layers
             for i in range(num_transformer_layers):
                 layer_prefixes.append(f'bert.distilbert.transformer.layer.{i}')
             layer_prefixes.extend(['bert.pre_classifier', 'bert.classifier'])
         elif fitter_parent.model_name == 'RESNET':
-            # For ResNet, the layers are named blocks like 'conv1', 'layer1', etc.
             layer_prefixes = [name for name, _ in fitter_parent.model.resnet.named_children()]
         else:
-            # For simple CNNs, layer prefixes are based on the module names
             layer_prefixes = sorted(list(set([k.split('.')[0] for k in fitter_parent.model.state_dict().keys()])))
 
         for prefix in layer_prefixes:
-            # Create a temporary state by swapping in a layer from the weaker parent
             temp_state_dict = copy.deepcopy(best_child_state_dict)
             for key in temp_state_dict:
                 if key.startswith(prefix):
                     temp_state_dict[key] = weaker_parent.model.state_dict()[key]
 
-            # Evaluate the temporary state
             temp_model_wrapper.model.load_state_dict(temp_state_dict)
-            current_fitness = _get_fitness_score(temp_model_wrapper)
+            current_fitness = _get_validation_fitness(temp_model_wrapper, validation_loader)
 
-            # If the swap was beneficial, keep it as the new best state
             if current_fitness > best_fitness:
-                print(f"  - Swapping layer '{prefix}' improved fitness to {current_fitness:.2f}%. Keeping it.")
+                print(f"  - Swapping layer '{prefix}' improved validation fitness to {current_fitness:.2f}%. Keeping it.")
                 best_fitness = current_fitness
                 best_child_state_dict = temp_state_dict
             else:
-                print(f"  - Swapping layer '{prefix}' did not improve fitness ({current_fitness:.2f}%). Discarding.")
+                print(f"  - Swapping layer '{prefix}' did not improve validation fitness ({current_fitness:.2f}%). Discarding.")
 
-        # The final child state dict is the one we intelligently constructed
         child_model_state_dict = best_child_state_dict
 
     else:

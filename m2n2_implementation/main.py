@@ -21,29 +21,6 @@ def main():
     This function serves as the primary driver for the experiment,
     orchestrating a multi-generational simulation of model evolution. The
     entire process is logged to the console.
-
-    The workflow is as follows:
-    1.  **Configuration**: Key parameters like device (CPU/GPU), population
-        size, niche setup, and number of generations are defined.
-    2.  **Initialization/Loading**: The script checks for a pre-existing
-        population of models in the `pretrained_models/` directory. If
-        models are found, they are loaded. Otherwise, a new population of
-        specialist models is initialized from scratch and specialized on
-        their respective niches.
-    3.  **Evolutionary Loop**: The simulation proceeds for a configured
-        number of generations. In each generation, the following steps
-        are performed:
-        a. Specialization of specialist models (if applicable).
-        b. Evaluation of the entire population to determine fitness.
-        c. Mate selection to choose two parents for breeding.
-        d. Crossover (merging) and mutation to create a new child model.
-        e. Fine-tuning of the new child.
-        f. Selection (elitism) to form the next generation's population.
-    4.  **Summary**: After the loop, a summary of the fitness history
-        (best and average fitness per generation) is printed.
-    5.  **Save Population**: The final, evolved population of models is
-        saved to the `pretrained_models/` directory, overwriting any
-        previous run.
     """
     # --- 1. Configuration ---
     MODEL_CONFIG = 'RESNET' # Options: 'CIFAR10', 'MNIST', 'LLM', 'RESNET'
@@ -54,11 +31,10 @@ def main():
 
     # --- Experiment-specific Configuration ---
     if MODEL_CONFIG == 'LLM':
-        # banking77 has 77 classes. We'll create specialists for a subset for speed.
-        POPULATION_SIZE = 10 # Using a subset of classes for the specialist population
+        POPULATION_SIZE = 10
         NICHES = [[i] for i in range(POPULATION_SIZE)]
-        SPECIALIZE_EPOCHS = 1 # LLM specialization is slower
-        FINETUNE_EPOCHS = 1   # LLM fine-tuning is slower
+        SPECIALIZE_EPOCHS = 1
+        FINETUNE_EPOCHS = 1
     else: # Default to CIFAR10/MNIST/ResNet settings
         POPULATION_SIZE = 10
         NICHES = [[i] for i in range(POPULATION_SIZE)]
@@ -67,67 +43,56 @@ def main():
 
     NUM_GENERATIONS = 2 # Keep low for testing
 
-    # --- 2. Initialize or Load Population ---
+    # --- 2. Create DataLoaders ---
+    # Create a validation set for the crossover process to use for fast evaluation
+    _, validation_loader, _ = get_dataloaders(
+        dataset_name=MODEL_CONFIG,
+        batch_size=64, # A standard batch size is fine
+        subset_percentage=0.1 # Use a small subset for speed
+    )
+
+    # --- 3. Initialize or Load Population ---
     print("--- STEP 1: Initializing or Loading Population ---")
     model_dir = "m2n2_implementation/pretrained_models"
     population = []
 
-    # Check if there are models to load
     model_files = glob.glob(os.path.join(model_dir, "*.pth"))
 
     if model_files:
         print(f"Found {len(model_files)} models in {model_dir}. Loading them.")
         for f in model_files:
-            # Extract niche and fitness from filename, e.g., "model_niche_0_fitness_10.00.pth"
             match = re.search(r'model_niche_([\d_]+)_fitness_([\d\.]+)\.pth', os.path.basename(f))
             if match:
-                niche_str = match.group(1)
-                fitness_str = match.group(2)
-                niche_classes = [int(n) for n in niche_str.split('_')]
-                fitness = float(fitness_str)
-
-                # Create a wrapper, load the state dict, and set the fitness
+                niche_classes = [int(n) for n in match.group(1).split('_')]
+                fitness = float(match.group(2))
                 wrapper = ModelWrapper(model_name=MODEL_CONFIG, niche_classes=niche_classes, device=DEVICE)
                 wrapper.model.load_state_dict(torch.load(f, map_location=DEVICE))
                 wrapper.fitness = fitness
                 population.append(wrapper)
-                print(f"  - Loaded model for niche {niche_classes} (Fitness: {fitness:.2f}) from {os.path.basename(f)}")
-            else:
-                print(f"  - WARNING: Could not parse niche from filename: {os.path.basename(f)}")
-
-        # If we loaded models, we might need to top-up the population if there aren't enough
-        # For simplicity, this implementation assumes a full set of models exists if any exist.
-
     else:
         print("No pretrained models found. Initializing a new population from scratch.")
         for i in range(POPULATION_SIZE):
-            niche = NICHES[i]
-            population.append(ModelWrapper(model_name=MODEL_CONFIG, niche_classes=niche, device=DEVICE))
-        print(f"Initialized population of {len(population)} models, one for each class.\n")
+            population.append(ModelWrapper(model_name=MODEL_CONFIG, niche_classes=NICHES[i], device=DEVICE))
 
-        # The initial population needs to be specialized
         print("--- Specializing Initial Models ---")
         for model_wrapper in population:
-            specialize(model_wrapper, epochs=SPECIALIZE_EPOCHS) # Initial specialization
+            specialize(model_wrapper, epochs=SPECIALIZE_EPOCHS)
         print("")
 
     fitness_history = []
 
-    # --- Main Evolutionary Loop ---
+    # --- 4. Main Evolutionary Loop ---
     for generation in range(NUM_GENERATIONS):
         print(f"\n--- GENERATION {generation + 1}/{NUM_GENERATIONS} ---")
 
-        # --- 3. Specialization Phase (if needed) ---
         if generation > 0:
             print("--- Specializing Models ---")
             for model_wrapper in population:
-                # Only specialize the specialists, not the generalist children
                 if model_wrapper.niche_classes != list(range(10)):
                     specialize(model_wrapper, epochs=SPECIALIZE_EPOCHS)
             print("")
 
-        # --- 4. Evaluation Phase ---
-        print("--- Evaluating Population ---")
+        print("--- Evaluating Population on Test Set ---")
         for model_wrapper in population:
             evaluate(model_wrapper)
 
@@ -136,19 +101,15 @@ def main():
         fitness_history.append((best_fitness, avg_fitness))
         print(f"\nGeneration {generation + 1} Stats: Best Fitness = {best_fitness:.2f}%, Avg Fitness = {avg_fitness:.2f}%\n")
 
-        # --- 5. Mating and Evolution ---
         print("--- Mating and Evolution ---")
         parent1, parent2 = select_mates(population)
 
         if parent1 and parent2:
-            child = merge(parent1, parent2, strategy='sequential_constructive')
+            child = merge(parent1, parent2, strategy='sequential_constructive', validation_loader=validation_loader)
             child = mutate(child, generation=generation, mutation_rate=0.05)
             finetune(child, epochs=FINETUNE_EPOCHS)
-
-            # --- 6. Create Next Generation ---
             population = create_next_generation(population, child, POPULATION_SIZE)
         else:
-            # If no suitable parents were found, the population carries over without a new child
             print("Population will carry over to the next generation without changes.")
 
     print("\n\n--- EXPERIMENT SUMMARY ---")
