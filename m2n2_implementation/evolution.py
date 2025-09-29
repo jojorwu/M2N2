@@ -355,24 +355,26 @@ def create_next_generation(current_population, new_child, population_size):
 
     return next_generation
 
-def finetune(model_wrapper, epochs=1):
-    """Fine-tunes a model in-place on the full dataset.
+def finetune(model_wrapper, epochs=3):
+    """Fine-tunes a model in-place on the full dataset with a scheduler.
 
     This step is crucial for a newly merged child model, as it helps the
     model learn to integrate the knowledge from its two parents into a
-    cohesive whole. The model's weights are updated directly. This function
-    will print its progress to the console.
+    cohesive whole. It uses an Adam optimizer and a learning rate scheduler
+    (`StepLR`) that reduces the learning rate over epochs. The model's
+    weights are updated directly. This function will print its progress.
 
     Args:
         model_wrapper (ModelWrapper): The model wrapper to fine-tune. Its
             model will be trained in-place.
         epochs (int, optional): The number of fine-tuning epochs.
-            Defaults to 1.
+            Defaults to 3 to allow the scheduler to take effect.
     """
-    print(f"Fine-tuning model on the full dataset for {epochs} epoch(s)...")
+    print(f"Fine-tuning model for {epochs} epoch(s) with LR scheduler...")
     # Get the dataloader for the full dataset, using a subset for speed
     train_loader, _ = get_cifar10_dataloaders(subset_percentage=0.1)
     optimizer = optim.Adam(model_wrapper.model.parameters(), lr=0.001)
+    scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=1, gamma=0.7)
 
     model_wrapper.model.train()
     for epoch in range(epochs):
@@ -383,4 +385,9 @@ def finetune(model_wrapper, epochs=1):
             loss = F.cross_entropy(output, target)
             loss.backward()
             optimizer.step()
+
+        # Step the scheduler after each epoch
+        scheduler.step()
+        print(f"  - Epoch {epoch + 1}/{epochs} complete. New LR: {scheduler.get_last_lr()[0]:.6f}")
+
     print("Fine-tuning complete.")
