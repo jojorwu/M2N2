@@ -9,7 +9,7 @@ associated metadata, conforming to Google's Python docstring style.
 import torch
 import torch.optim as optim
 import torch.nn.functional as F
-from model import CifarCNN, MnistCNN
+from model import CifarCNN, MnistCNN, LLMClassifier
 from data import get_dataloaders
 import copy
 import random
@@ -21,7 +21,7 @@ class ModelWrapper:
     specialized niche, its fitness score, and the model architecture.
 
     Attributes:
-        model_name (str): The name of the model architecture ('CIFAR10' or 'MNIST').
+        model_name (str): The name of the model architecture ('CIFAR10', 'MNIST', or 'LLM').
         niche_classes (list[int]): A list of class indices the model is
             specialized in. An empty or full list implies a generalist.
         device (str): The device ('cpu' or 'cuda') on which the model's
@@ -35,7 +35,7 @@ class ModelWrapper:
 
         Args:
             model_name (str): The name of the model to instantiate.
-                Supported options: 'CIFAR10', 'MNIST'.
+                Supported options: 'CIFAR10', 'MNIST', 'LLM'.
             niche_classes (list[int]): The list of class indices for the
                 model's specialized niche.
             device (str, optional): The device to run the model on.
@@ -49,6 +49,8 @@ class ModelWrapper:
             self.model = CifarCNN().to(device)
         elif self.model_name == 'MNIST':
             self.model = MnistCNN().to(device)
+        elif self.model_name == 'LLM':
+            self.model = LLMClassifier().to(device)
         else:
             raise ValueError(f"Unsupported model name: {self.model_name}")
 
@@ -80,13 +82,22 @@ def specialize(model_wrapper, epochs=1):
     model_wrapper.model.train()
     for epoch in range(epochs):
         print(f"  - Epoch {epoch + 1}/{epochs}")
-        # Wrap the train_loader with tqdm for a progress bar
         pbar = tqdm(train_loader, desc=f"Specializing Niche {model_wrapper.niche_classes}")
-        for batch_idx, (data, target) in enumerate(pbar):
-            data, target = data.to(model_wrapper.device), target.to(model_wrapper.device)
+        for batch in pbar:
             optimizer.zero_grad()
-            output = model_wrapper.model(data)
-            loss = F.cross_entropy(output, target)
+
+            if model_wrapper.model_name == 'LLM':
+                input_ids = batch['input_ids'].to(model_wrapper.device)
+                attention_mask = batch['attention_mask'].to(model_wrapper.device)
+                labels = batch['labels'].to(model_wrapper.device)
+                outputs = model_wrapper.model(input_ids=input_ids, attention_mask=attention_mask)
+                loss = F.cross_entropy(outputs, labels)
+            else:
+                data, target = batch
+                data, target = data.to(model_wrapper.device), target.to(model_wrapper.device)
+                output = model_wrapper.model(data)
+                loss = F.cross_entropy(output, target)
+
             loss.backward()
             optimizer.step()
             pbar.set_postfix({'loss': loss.item()})
@@ -114,12 +125,22 @@ def _get_fitness_score(model_wrapper):
     total = 0
 
     with torch.no_grad():
-        for data, target in test_loader:
-            data, target = data.to(model_wrapper.device), target.to(model_wrapper.device)
-            output = model_wrapper.model(data)
-            _, predicted = torch.max(output.data, 1)
-            total += target.size(0)
-            correct += (predicted == target).sum().item()
+        for batch in test_loader:
+            if model_wrapper.model_name == 'LLM':
+                input_ids = batch['input_ids'].to(model_wrapper.device)
+                attention_mask = batch['attention_mask'].to(model_wrapper.device)
+                labels = batch['labels'].to(model_wrapper.device)
+                outputs = model_wrapper.model(input_ids=input_ids, attention_mask=attention_mask)
+                _, predicted = torch.max(outputs, 1)
+                total += labels.size(0)
+                correct += (predicted == labels).sum().item()
+            else:
+                data, target = batch
+                data, target = data.to(model_wrapper.device), target.to(model_wrapper.device)
+                output = model_wrapper.model(data)
+                _, predicted = torch.max(output.data, 1)
+                total += target.size(0)
+                correct += (predicted == target).sum().item()
 
     accuracy = 100 * correct / total
     return accuracy
@@ -153,19 +174,28 @@ def evaluate_by_class(model_wrapper):
         model_wrapper (ModelWrapper): The model wrapper to evaluate.
 
     Returns:
-        list[float]: A list of 10 accuracy percentages, where the index of
-            the list corresponds to a class index from CIFAR-10.
+        list[float]: A list of accuracy percentages, where the index of the
+            list corresponds to the class index.
     """
     _, test_loader = get_dataloaders(dataset_name=model_wrapper.model_name, subset_percentage=0.1)
     model_wrapper.model.eval()
 
-    class_correct = list(0. for i in range(10))
-    class_total = list(0. for i in range(10))
+    num_classes = model_wrapper.model.num_classes
+    class_correct = list(0. for i in range(num_classes))
+    class_total = list(0. for i in range(num_classes))
 
     with torch.no_grad():
-        for data, target in test_loader:
-            data, target = data.to(model_wrapper.device), target.to(model_wrapper.device)
-            output = model_wrapper.model(data)
+        for batch in test_loader:
+            if model_wrapper.model_name == 'LLM':
+                input_ids = batch['input_ids'].to(model_wrapper.device)
+                attention_mask = batch['attention_mask'].to(model_wrapper.device)
+                target = batch['labels'].to(model_wrapper.device)
+                output = model_wrapper.model(input_ids=input_ids, attention_mask=attention_mask)
+            else:
+                data, target = batch
+                data, target = data.to(model_wrapper.device), target.to(model_wrapper.device)
+                output = model_wrapper.model(data)
+
             _, predicted = torch.max(output, 1)
             c = (predicted == target).squeeze()
 
@@ -175,7 +205,7 @@ def evaluate_by_class(model_wrapper):
                 class_total[label] += 1
 
     class_accuracies = []
-    for i in range(10):
+    for i in range(num_classes):
         if class_total[i] > 0:
             accuracy = 100 * class_correct[i] / class_total[i]
             class_accuracies.append(accuracy)
@@ -315,7 +345,17 @@ def merge(parent1, parent2, strategy='average'):
         best_fitness = _get_fitness_score(temp_model_wrapper)
         print(f"  - Initial child fitness: {best_fitness:.2f}%")
 
-        layer_prefixes = sorted(list(set([k.split('.')[0] for k in fitter_parent.model.state_dict().keys()])))
+        if fitter_parent.model_name == 'LLM':
+            # For LLMs, define layers based on the transformer architecture
+            layer_prefixes = ['bert.distilbert.embeddings']
+            # The number of transformer layers is stored in the model's config
+            num_transformer_layers = fitter_parent.model.bert.config.num_hidden_layers
+            for i in range(num_transformer_layers):
+                layer_prefixes.append(f'bert.distilbert.transformer.layer.{i}')
+            layer_prefixes.extend(['bert.pre_classifier', 'bert.classifier'])
+        else:
+            # For CNNs, layer prefixes are based on the module names (e.g., 'conv1')
+            layer_prefixes = sorted(list(set([k.split('.')[0] for k in fitter_parent.model.state_dict().keys()])))
 
         for prefix in layer_prefixes:
             # Create a temporary state by swapping in a layer from the weaker parent
@@ -448,11 +488,21 @@ def finetune(model_wrapper, epochs=3):
     for epoch in range(epochs):
         print(f"  - Epoch {epoch + 1}/{epochs}")
         pbar = tqdm(train_loader, desc=f"Fine-tuning Child")
-        for batch_idx, (data, target) in enumerate(pbar):
-            data, target = data.to(model_wrapper.device), target.to(model_wrapper.device)
+        for batch in pbar:
             optimizer.zero_grad()
-            output = model_wrapper.model(data)
-            loss = F.cross_entropy(output, target)
+
+            if model_wrapper.model_name == 'LLM':
+                input_ids = batch['input_ids'].to(model_wrapper.device)
+                attention_mask = batch['attention_mask'].to(model_wrapper.device)
+                labels = batch['labels'].to(model_wrapper.device)
+                outputs = model_wrapper.model(input_ids=input_ids, attention_mask=attention_mask)
+                loss = F.cross_entropy(outputs, labels)
+            else:
+                data, target = batch
+                data, target = data.to(model_wrapper.device), target.to(model_wrapper.device)
+                output = model_wrapper.model(data)
+                loss = F.cross_entropy(output, target)
+
             loss.backward()
             optimizer.step()
             pbar.set_postfix({'loss': loss.item(), 'lr': scheduler.get_last_lr()[0]})

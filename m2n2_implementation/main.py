@@ -45,16 +45,26 @@ def main():
         previous run.
     """
     # --- 1. Configuration ---
-    MODEL_CONFIG = 'CIFAR10' # Options: 'CIFAR10', 'MNIST'
+    MODEL_CONFIG = 'LLM' # Options: 'CIFAR10', 'MNIST', 'LLM'
     DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"--- M2N2 Simplified Implementation ---")
+    print(f"Using model config: {MODEL_CONFIG}")
     print(f"Using device: {DEVICE}\n")
 
-    POPULATION_SIZE = 10 # One specialist for each of the 10 classes
-    NICHES = [[i] for i in range(10)] # e.g., [[0], [1], [2], ...]
+    # --- Experiment-specific Configuration ---
+    if MODEL_CONFIG == 'LLM':
+        # banking77 has 77 classes. We'll create specialists for a subset for speed.
+        POPULATION_SIZE = 10 # Using a subset of classes for the specialist population
+        NICHES = [[i] for i in range(POPULATION_SIZE)]
+        SPECIALIZE_EPOCHS = 1 # LLM specialization is slower
+        FINETUNE_EPOCHS = 1   # LLM fine-tuning is slower
+    else: # Default to CIFAR10/MNIST settings
+        POPULATION_SIZE = 10
+        NICHES = [[i] for i in range(POPULATION_SIZE)]
+        SPECIALIZE_EPOCHS = 2
+        FINETUNE_EPOCHS = 3
+
     NUM_GENERATIONS = 2 # Keep low for testing
-    SPECIALIZE_EPOCHS = 2 # Epochs for initial specialist training
-    FINETUNE_EPOCHS = 3   # Epochs for fine-tuning a child model
 
     # --- 2. Initialize or Load Population ---
     print("--- STEP 1: Initializing or Loading Population ---")
