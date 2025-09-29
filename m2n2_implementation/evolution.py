@@ -12,7 +12,7 @@ import torch.nn.functional as F
 from model import CifarCNN
 from data import get_cifar10_dataloaders
 import copy
-
+import random
 class ModelWrapper:
     """A wrapper to hold a model and its evolutionary metadata.
 
@@ -223,6 +223,8 @@ def merge(parent1, parent2, strategy='average'):
             - 'average': A simple arithmetic mean of the parent weights.
             - 'fitness_weighted': A weighted average where each parent's
               contribution is proportional to its fitness score.
+            - 'layer-wise': Randomly selects each entire layer from one
+              of the two parents.
             Defaults to 'average'.
 
     Returns:
@@ -258,6 +260,23 @@ def merge(parent1, parent2, strategy='average'):
         # Apply simple average
         for key in child_model_state_dict:
             child_model_state_dict[key] = (parent1_state_dict[key] + parent2_state_dict[key]) / 2.0
+
+    elif strategy == 'layer-wise':
+        print("  - Performing layer-wise crossover.")
+        # Get unique layer prefixes (e.g., 'conv1', 'fc1')
+        layer_prefixes = sorted(list(set([key.split('.')[0] for key in parent1_state_dict.keys()])))
+
+        # For each layer prefix, decide which parent to take it from
+        parent_choices = {prefix: random.choice([1, 2]) for prefix in layer_prefixes}
+        print(f"  - Parent choices for layers: {parent_choices}")
+
+        for key in child_model_state_dict:
+            prefix = key.split('.')[0]
+            chosen_parent_num = parent_choices[prefix]
+            if chosen_parent_num == 1:
+                child_model_state_dict[key] = parent1_state_dict[key]
+            else: # parent 2
+                child_model_state_dict[key] = parent2_state_dict[key]
 
     else:
         raise ValueError(f"Unknown merge strategy: {strategy}")
