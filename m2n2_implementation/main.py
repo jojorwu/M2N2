@@ -13,6 +13,7 @@ import glob
 import re
 from evolution import ModelWrapper, specialize, evaluate, select_mates, merge, mutate, finetune, create_next_generation
 from data import get_dataloaders
+from visualization import plot_fitness_history
 
 def main():
     """Runs the main M2N2-inspired evolutionary simulation.
@@ -158,7 +159,9 @@ def main():
     final_best_model = max(population, key=lambda m: m.fitness)
     print(f"\nFinal best model achieved an accuracy of {final_best_model.fitness:.2f}%")
 
-    # --- 7. Save Final Population ---
+    # --- 7. Visualize and Save ---
+    plot_fitness_history(fitness_history, 'fitness_history.png')
+
     print("\n--- Saving final population to pretrained_models/ ---")
     model_dir = "m2n2_implementation/pretrained_models"
     if not os.path.exists(model_dir):
