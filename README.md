@@ -53,9 +53,9 @@ The simulation follows a generational loop, where each step is designed to mimic
     ```
 
 4.  **Run the experiment:**
-    Execute the main script from the project's root directory.
+    Execute the main script as a module from the project's **root directory**.
     ```bash
-    python3 m2n2_implementation/main.py
+    python3 -m m2n2_implementation.main
     ```
     The script will log its progress for each generation to the console, showing the results of specialization, evaluation, mating, and evolution.
 

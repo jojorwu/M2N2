@@ -1,17 +1,74 @@
-# Ignore Python artifacts
+# Byte-compiled / optimized / DLL files
 __pycache__/
-*.pyc
-*.pyo
-*.pyd
+*.py[cod]
+*$py.class
 
-# Ignore virtual environments
-venv/
-env/
+# C extensions
+*.so
 
-# Ignore build artifacts
+# Distribution / packaging
+.Python
 build/
+develop-eggs/
 dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
 *.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
 
-# Ignore data files
-data/
+# PyInstaller
+#  Usually these files are written by a python script from a template
+#  before PyInstaller builds the exe, so as to inject date/other infos into it.
+*.manifest
+*.spec
+
+# Installer logs
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+.pytest_cache/
+.hypothesis/
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+
+# Environments
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Project-specific ignores
+# Ignore the data directory where datasets are downloaded
+/data/
+
+# Ignore the directory for saved models
+/m2n2_implementation/pretrained_models/
+
+# Ignore the cache directory for processed datasets
+/m2n2_implementation/cache/
+
+# Ignore test artifacts
+/sample_fitness_plot.png
+/fitness_history.png

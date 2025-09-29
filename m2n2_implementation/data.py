@@ -10,6 +10,7 @@ from torchvision import datasets, transforms
 from torch.utils.data import DataLoader, Subset, Dataset
 from datasets import load_dataset
 from transformers import AutoTokenizer
+import os
 
 class TextDataset(Dataset):
     """A custom PyTorch Dataset for handling tokenized text data."""
@@ -66,20 +67,36 @@ def get_dataloaders(dataset_name='CIFAR10', batch_size=64, niche_classes=None, s
         full_train_dataset = datasets.MNIST(root='./data', train=True, download=True, transform=transform)
         full_test_dataset = datasets.MNIST(root='./data', train=False, download=True, transform=transform)
     elif dataset_name == 'LLM':
-        tokenizer = AutoTokenizer.from_pretrained('distilbert-base-uncased')
-        raw_dataset = load_dataset('banking77')
+        cache_dir = 'm2n2_implementation/cache'
+        train_cache_path = os.path.join(cache_dir, 'cached_banking77_train.pt')
+        test_cache_path = os.path.join(cache_dir, 'cached_banking77_test.pt')
 
-        # Explicitly convert to list to ensure compatibility with the tokenizer
-        train_texts = list(raw_dataset['train']['text'])
-        train_labels = list(raw_dataset['train']['label'])
-        test_texts = list(raw_dataset['test']['text'])
-        test_labels = list(raw_dataset['test']['label'])
+        if os.path.exists(train_cache_path) and os.path.exists(test_cache_path):
+            print("Loading tokenized dataset from cache...")
+            full_train_dataset = torch.load(train_cache_path)
+            full_test_dataset = torch.load(test_cache_path)
+        else:
+            print("Tokenizing and caching dataset for the first time...")
+            tokenizer = AutoTokenizer.from_pretrained('distilbert-base-uncased')
+            raw_dataset = load_dataset('banking77')
 
-        train_encodings = tokenizer(train_texts, truncation=True, padding=True, max_length=64)
-        test_encodings = tokenizer(test_texts, truncation=True, padding=True, max_length=64)
+            # Explicitly convert to list to ensure compatibility with the tokenizer
+            train_texts = list(raw_dataset['train']['text'])
+            train_labels = list(raw_dataset['train']['label'])
+            test_texts = list(raw_dataset['test']['text'])
+            test_labels = list(raw_dataset['test']['label'])
 
-        full_train_dataset = TextDataset(train_encodings, train_labels)
-        full_test_dataset = TextDataset(test_encodings, test_labels)
+            train_encodings = tokenizer(train_texts, truncation=True, padding=True, max_length=64)
+            test_encodings = tokenizer(test_texts, truncation=True, padding=True, max_length=64)
+
+            full_train_dataset = TextDataset(train_encodings, train_labels)
+            full_test_dataset = TextDataset(test_encodings, test_labels)
+
+            # Save the processed datasets to the cache
+            os.makedirs(cache_dir, exist_ok=True)
+            torch.save(full_train_dataset, train_cache_path)
+            torch.save(full_test_dataset, test_cache_path)
+            print("Dataset cached successfully.")
     else:
         raise ValueError(f"Unsupported dataset: {dataset_name}. Please use 'CIFAR10', 'MNIST', or 'LLM'.")
 
