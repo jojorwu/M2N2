@@ -327,35 +327,42 @@ def merge(parent1, parent2, strategy='average'):
     print("Merging complete.")
     return child_wrapper
 
-def mutate(model_wrapper, mutation_rate=0.01, mutation_strength=0.1):
-    """Applies random Gaussian mutations to a model's weights in-place.
+def mutate(model_wrapper, generation, mutation_rate=0.01, initial_mutation_strength=0.1, decay_factor=0.9):
+    """Applies random, adaptively scaled Gaussian mutations to a model's weights.
 
-    This function introduces genetic diversity by randomly altering a
-    fraction of the model's weights in its convolutional and linear layers.
-    The mutation is applied directly to the model's parameters. This
-    function prints its progress to the console.
+    This function introduces genetic diversity by altering a fraction of the
+    model's weights. The mutation strength is adaptive, decaying
+    exponentially with each generation. This allows for larger exploratory
+    changes in early generations and smaller, more precise changes later on.
+    The mutation is applied in-place.
 
     Args:
-        model_wrapper (ModelWrapper): The model wrapper to mutate. The
-            mutation is applied in-place to its model.
-        mutation_rate (float, optional): The probability (0.0 to 1.0) that
-            any given weight will be chosen for mutation. Defaults to 0.01.
-        mutation_strength (float, optional): The standard deviation of the
-            normal distribution from which mutation values are drawn. This
-            controls the magnitude of changes. Defaults to 0.1.
+        model_wrapper (ModelWrapper): The model wrapper to mutate.
+        generation (int): The current generation number, used to calculate
+            the decaying mutation strength.
+        mutation_rate (float, optional): The probability that any given
+            weight will be chosen for mutation. Defaults to 0.01.
+        initial_mutation_strength (float, optional): The initial standard
+            deviation for the mutation noise. Defaults to 0.1.
+        decay_factor (float, optional): The factor by which the mutation
+            strength decays each generation (e.g., 0.9 means 10% decay).
+            Defaults to 0.9.
 
     Returns:
         ModelWrapper: The same model wrapper that was passed in, allowing
             for method chaining.
     """
-    print("Mutating child model...")
+    # Calculate the decayed mutation strength for the current generation
+    decayed_strength = initial_mutation_strength * (decay_factor ** generation)
+    print(f"Mutating child model (Gen: {generation}, Strength: {decayed_strength:.4f})...")
+
     with torch.no_grad():
         for param in model_wrapper.model.parameters():
             if len(param.shape) > 1: # Mutate only multi-dimensional layers (conv, linear)
                 # Create a random mask to decide which weights to mutate
                 mutation_mask = (torch.rand(param.shape) < mutation_rate).to(model_wrapper.device)
-                # Generate random noise to add to the weights
-                mutation = torch.randn(param.shape).to(model_wrapper.device) * mutation_strength
+                # Generate random noise scaled by the decayed strength
+                mutation = torch.randn(param.shape).to(model_wrapper.device) * decayed_strength
                 # Apply the mutation where the mask is True
                 param.data += mutation * mutation_mask
     print("Mutation complete.")

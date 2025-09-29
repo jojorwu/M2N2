@@ -127,8 +127,8 @@ def main():
 
         if parent1 and parent2:
             child = merge(parent1, parent2, strategy='sequential_constructive')
-            child = mutate(child, mutation_rate=0.05, mutation_strength=0.1)
-            finetune(child, epochs=1)
+            child = mutate(child, generation=generation, mutation_rate=0.05)
+            finetune(child)
 
             # --- 6. Create Next Generation ---
             population = create_next_generation(population, child, POPULATION_SIZE)
