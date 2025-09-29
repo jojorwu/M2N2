@@ -51,6 +51,8 @@ def main():
     POPULATION_SIZE = 10 # One specialist for each of the 10 classes
     NICHES = [[i] for i in range(10)] # e.g., [[0], [1], [2], ...]
     NUM_GENERATIONS = 2 # Keep low for testing
+    SPECIALIZE_EPOCHS = 2 # Epochs for initial specialist training
+    FINETUNE_EPOCHS = 3   # Epochs for fine-tuning a child model
 
     # --- 2. Initialize or Load Population ---
     print("--- STEP 1: Initializing or Loading Population ---")
@@ -93,7 +95,7 @@ def main():
         # The initial population needs to be specialized
         print("--- Specializing Initial Models ---")
         for model_wrapper in population:
-            specialize(model_wrapper, epochs=1) # Initial specialization
+            specialize(model_wrapper, epochs=SPECIALIZE_EPOCHS) # Initial specialization
         print("")
 
     fitness_history = []
@@ -108,7 +110,7 @@ def main():
             for model_wrapper in population:
                 # Only specialize the specialists, not the generalist children
                 if model_wrapper.niche_classes != list(range(10)):
-                    specialize(model_wrapper, epochs=1)
+                    specialize(model_wrapper, epochs=SPECIALIZE_EPOCHS)
             print("")
 
         # --- 4. Evaluation Phase ---
@@ -128,7 +130,7 @@ def main():
         if parent1 and parent2:
             child = merge(parent1, parent2, strategy='sequential_constructive')
             child = mutate(child, generation=generation, mutation_rate=0.05)
-            finetune(child)
+            finetune(child, epochs=FINETUNE_EPOCHS)
 
             # --- 6. Create Next Generation ---
             population = create_next_generation(population, child, POPULATION_SIZE)

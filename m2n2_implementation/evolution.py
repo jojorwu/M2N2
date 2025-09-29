@@ -13,6 +13,7 @@ from model import CifarCNN
 from data import get_cifar10_dataloaders
 import copy
 import random
+from tqdm import tqdm
 class ModelWrapper:
     """A wrapper to hold a model and its evolutionary metadata.
 
@@ -64,13 +65,17 @@ def specialize(model_wrapper, epochs=1):
 
     model_wrapper.model.train()
     for epoch in range(epochs):
-        for batch_idx, (data, target) in enumerate(train_loader):
+        print(f"  - Epoch {epoch + 1}/{epochs}")
+        # Wrap the train_loader with tqdm for a progress bar
+        pbar = tqdm(train_loader, desc=f"Specializing Niche {model_wrapper.niche_classes}")
+        for batch_idx, (data, target) in enumerate(pbar):
             data, target = data.to(model_wrapper.device), target.to(model_wrapper.device)
             optimizer.zero_grad()
             output = model_wrapper.model(data)
             loss = F.cross_entropy(output, target)
             loss.backward()
             optimizer.step()
+            pbar.set_postfix({'loss': loss.item()})
     print("Specialization complete.")
 
 def _get_fitness_score(model_wrapper):
@@ -427,16 +432,18 @@ def finetune(model_wrapper, epochs=3):
 
     model_wrapper.model.train()
     for epoch in range(epochs):
-        for batch_idx, (data, target) in enumerate(train_loader):
+        print(f"  - Epoch {epoch + 1}/{epochs}")
+        pbar = tqdm(train_loader, desc=f"Fine-tuning Child")
+        for batch_idx, (data, target) in enumerate(pbar):
             data, target = data.to(model_wrapper.device), target.to(model_wrapper.device)
             optimizer.zero_grad()
             output = model_wrapper.model(data)
             loss = F.cross_entropy(output, target)
             loss.backward()
             optimizer.step()
+            pbar.set_postfix({'loss': loss.item(), 'lr': scheduler.get_last_lr()[0]})
 
         # Step the scheduler after each epoch
         scheduler.step()
-        print(f"  - Epoch {epoch + 1}/{epochs} complete. New LR: {scheduler.get_last_lr()[0]:.6f}")
 
     print("Fine-tuning complete.")
