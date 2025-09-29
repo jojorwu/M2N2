@@ -8,6 +8,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from transformers import DistilBertForSequenceClassification
+from torchvision import models
 
 class CifarCNN(nn.Module):
     """A Convolutional Neural Network designed for CIFAR-10 images.
@@ -154,6 +155,49 @@ class LLMClassifier(nn.Module):
         outputs = self.bert(input_ids=input_ids, attention_mask=attention_mask)
         return outputs.logits
 
+class ResNetClassifier(nn.Module):
+    """A classifier based on a pre-trained ResNet-18 model.
+
+    This model uses a pre-trained ResNet-18 from Torchvision and replaces
+    the final fully connected layer to adapt it for a specific number of
+    classes (e.g., 10 for CIFAR-10).
+
+    Attributes:
+        num_classes (int): The number of output classes.
+        resnet (torch.nn.Module): The underlying ResNet-18 model.
+    """
+    def __init__(self, num_classes=10):
+        """Initializes the ResNetClassifier model.
+
+        Args:
+            num_classes (int, optional): The number of output classes.
+                Defaults to 10.
+        """
+        super(ResNetClassifier, self).__init__()
+        self.num_classes = num_classes
+
+        # Load a pre-trained ResNet-18 model
+        self.resnet = models.resnet18(weights=models.ResNet18_Weights.DEFAULT)
+
+        # Get the number of input features for the final layer
+        num_ftrs = self.resnet.fc.in_features
+
+        # Replace the final layer with a new one for our number of classes
+        self.resnet.fc = nn.Linear(num_ftrs, self.num_classes)
+
+    def forward(self, x):
+        """Defines the forward pass of the ResNetClassifier.
+
+        Args:
+            x (torch.Tensor): The input tensor of shape (N, 3, H, W).
+              For optimal performance, H and W should be >= 224.
+
+        Returns:
+            torch.Tensor: The output tensor of raw logits, with shape
+                (N, num_classes).
+        """
+        return self.resnet(x)
+
 if __name__ == '__main__':
     # Test the CNN models
     print("--- CifarCNN Model Test ---")
@@ -175,4 +219,15 @@ if __name__ == '__main__':
     print(f"LLM Dummy input shape: {llm_dummy_input_ids.shape}")
     print(f"LLM Output shape: {llm_output.shape}")
     assert llm_output.shape == (4, 77), "LLMClassifier output shape is incorrect!"
-    print("LLMClassifier forward pass test successful!")
+    print("LLMClassifier forward pass test successful!\n")
+
+    # Test the ResNet model
+    print("--- ResNetClassifier Model Test ---")
+    resnet_model = ResNetClassifier(num_classes=10)
+    # Use a CIFAR-10-like input size for the test
+    resnet_dummy_input = torch.randn(4, 3, 32, 32)
+    resnet_output = resnet_model(resnet_dummy_input)
+    print(f"ResNet Dummy input shape: {resnet_dummy_input.shape}")
+    print(f"ResNet Output shape: {resnet_output.shape}")
+    assert resnet_output.shape == (4, 10), "ResNetClassifier output shape is incorrect!"
+    print("ResNetClassifier forward pass test successful!")

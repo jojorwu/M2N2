@@ -46,7 +46,7 @@ def main():
         previous run.
     """
     # --- 1. Configuration ---
-    MODEL_CONFIG = 'LLM' # Options: 'CIFAR10', 'MNIST', 'LLM'
+    MODEL_CONFIG = 'RESNET' # Options: 'CIFAR10', 'MNIST', 'LLM', 'RESNET'
     DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"--- M2N2 Simplified Implementation ---")
     print(f"Using model config: {MODEL_CONFIG}")
@@ -59,7 +59,7 @@ def main():
         NICHES = [[i] for i in range(POPULATION_SIZE)]
         SPECIALIZE_EPOCHS = 1 # LLM specialization is slower
         FINETUNE_EPOCHS = 1   # LLM fine-tuning is slower
-    else: # Default to CIFAR10/MNIST settings
+    else: # Default to CIFAR10/MNIST/ResNet settings
         POPULATION_SIZE = 10
         NICHES = [[i] for i in range(POPULATION_SIZE)]
         SPECIALIZE_EPOCHS = 2

@@ -9,7 +9,7 @@ associated metadata, conforming to Google's Python docstring style.
 import torch
 import torch.optim as optim
 import torch.nn.functional as F
-from .model import CifarCNN, MnistCNN, LLMClassifier
+from .model import CifarCNN, MnistCNN, LLMClassifier, ResNetClassifier
 from .data import get_dataloaders
 import copy
 import random
@@ -21,7 +21,7 @@ class ModelWrapper:
     specialized niche, its fitness score, and the model architecture.
 
     Attributes:
-        model_name (str): The name of the model architecture ('CIFAR10', 'MNIST', or 'LLM').
+        model_name (str): The name of the model architecture ('CIFAR10', 'MNIST', 'LLM', or 'RESNET').
         niche_classes (list[int]): A list of class indices the model is
             specialized in. An empty or full list implies a generalist.
         device (str): The device ('cpu' or 'cuda') on which the model's
@@ -35,7 +35,7 @@ class ModelWrapper:
 
         Args:
             model_name (str): The name of the model to instantiate.
-                Supported options: 'CIFAR10', 'MNIST', 'LLM'.
+                Supported options: 'CIFAR10', 'MNIST', 'LLM', 'RESNET'.
             niche_classes (list[int]): The list of class indices for the
                 model's specialized niche.
             device (str, optional): The device to run the model on.
@@ -51,6 +51,8 @@ class ModelWrapper:
             self.model = MnistCNN().to(device)
         elif self.model_name == 'LLM':
             self.model = LLMClassifier().to(device)
+        elif self.model_name == 'RESNET':
+            self.model = ResNetClassifier().to(device)
         else:
             raise ValueError(f"Unsupported model name: {self.model_name}")
 
@@ -348,13 +350,15 @@ def merge(parent1, parent2, strategy='average'):
         if fitter_parent.model_name == 'LLM':
             # For LLMs, define layers based on the transformer architecture
             layer_prefixes = ['bert.distilbert.embeddings']
-            # The number of transformer layers is stored in the model's config
             num_transformer_layers = fitter_parent.model.bert.config.num_hidden_layers
             for i in range(num_transformer_layers):
                 layer_prefixes.append(f'bert.distilbert.transformer.layer.{i}')
             layer_prefixes.extend(['bert.pre_classifier', 'bert.classifier'])
+        elif fitter_parent.model_name == 'RESNET':
+            # For ResNet, the layers are named blocks like 'conv1', 'layer1', etc.
+            layer_prefixes = [name for name, _ in fitter_parent.model.resnet.named_children()]
         else:
-            # For CNNs, layer prefixes are based on the module names (e.g., 'conv1')
+            # For simple CNNs, layer prefixes are based on the module names
             layer_prefixes = sorted(list(set([k.split('.')[0] for k in fitter_parent.model.state_dict().keys()])))
 
         for prefix in layer_prefixes:
