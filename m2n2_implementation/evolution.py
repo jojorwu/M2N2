@@ -73,16 +73,17 @@ def specialize(model_wrapper, epochs=1):
             optimizer.step()
     print("Specialization complete.")
 
-def evaluate(model_wrapper):
-    """Evaluates fitness on the full test set and updates the wrapper.
+def _get_fitness_score(model_wrapper):
+    """Calculates and returns the fitness score for a model.
 
-    Fitness is defined as the model's accuracy on the complete test set.
-    As a side effect, this function updates the `fitness` attribute of the
-    provided `model_wrapper` object with the calculated score.
+    This is a lightweight, side-effect-free version of the `evaluate`
+    function. It calculates the accuracy on the test set but does *not*
+    update the `fitness` attribute of the model wrapper or print any
+    output. This makes it suitable for repeated internal use, such as
+    during the sequential constructive crossover process.
 
     Args:
-        model_wrapper (ModelWrapper): The model wrapper to evaluate. Its
-            `fitness` attribute will be updated.
+        model_wrapper (ModelWrapper): The model wrapper to evaluate.
 
     Returns:
         float: The calculated accuracy (fitness) of the model as a percentage.
@@ -102,6 +103,23 @@ def evaluate(model_wrapper):
             correct += (predicted == target).sum().item()
 
     accuracy = 100 * correct / total
+    return accuracy
+
+def evaluate(model_wrapper):
+    """Evaluates fitness on the full test set and updates the wrapper.
+
+    Fitness is defined as the model's accuracy on the complete test set.
+    As a side effect, this function updates the `fitness` attribute of the
+    provided `model_wrapper` object with the calculated score.
+
+    Args:
+        model_wrapper (ModelWrapper): The model wrapper to evaluate. Its
+            `fitness` attribute will be updated.
+
+    Returns:
+        float: The calculated accuracy (fitness) of the model as a percentage.
+    """
+    accuracy = _get_fitness_score(model_wrapper)
     model_wrapper.fitness = accuracy
     return accuracy
 
@@ -225,6 +243,9 @@ def merge(parent1, parent2, strategy='average'):
               contribution is proportional to its fitness score.
             - 'layer-wise': Randomly selects each entire layer from one
               of the two parents.
+            - 'sequential_constructive': Intelligently builds a child by
+              starting with the fitter parent and sequentially swapping in
+              layers from the weaker parent if they improve performance.
             Defaults to 'average'.
 
     Returns:
@@ -242,41 +263,62 @@ def merge(parent1, parent2, strategy='average'):
 
     if strategy == 'fitness_weighted':
         total_fitness = parent1.fitness + parent2.fitness
-        # Avoid division by zero if both parents have zero fitness
         if total_fitness == 0:
             weight1, weight2 = 0.5, 0.5
-            print("  - Both parents have 0 fitness, falling back to simple average.")
         else:
             weight1 = parent1.fitness / total_fitness
             weight2 = parent2.fitness / total_fitness
-            print(f"  - Parent 1 Fitness: {parent1.fitness:.2f}% (Weight: {weight1:.2f})")
-            print(f"  - Parent 2 Fitness: {parent2.fitness:.2f}% (Weight: {weight2:.2f})")
-
-        # Apply weighted average
         for key in child_model_state_dict:
             child_model_state_dict[key] = (parent1_state_dict[key] * weight1) + (parent2_state_dict[key] * weight2)
 
     elif strategy == 'average':
-        # Apply simple average
         for key in child_model_state_dict:
             child_model_state_dict[key] = (parent1_state_dict[key] + parent2_state_dict[key]) / 2.0
 
     elif strategy == 'layer-wise':
-        print("  - Performing layer-wise crossover.")
-        # Get unique layer prefixes (e.g., 'conv1', 'fc1')
-        layer_prefixes = sorted(list(set([key.split('.')[0] for key in parent1_state_dict.keys()])))
-
-        # For each layer prefix, decide which parent to take it from
-        parent_choices = {prefix: random.choice([1, 2]) for prefix in layer_prefixes}
-        print(f"  - Parent choices for layers: {parent_choices}")
-
+        layer_prefixes = sorted(list(set([k.split('.')[0] for k in parent1_state_dict.keys()])))
+        parent_choices = {p: random.choice([1, 2]) for p in layer_prefixes}
         for key in child_model_state_dict:
             prefix = key.split('.')[0]
-            chosen_parent_num = parent_choices[prefix]
-            if chosen_parent_num == 1:
-                child_model_state_dict[key] = parent1_state_dict[key]
-            else: # parent 2
-                child_model_state_dict[key] = parent2_state_dict[key]
+            child_model_state_dict[key] = parent1_state_dict[key] if parent_choices[prefix] == 1 else parent2_state_dict[key]
+
+    elif strategy == 'sequential_constructive':
+        fitter_parent = parent1 if parent1.fitness >= parent2.fitness else parent2
+        weaker_parent = parent2 if parent1.fitness >= parent2.fitness else parent1
+        print(f"  - Using fitter parent (Fitness: {fitter_parent.fitness:.2f}) as base.")
+
+        # Start with the fitter parent's state dict as the best-known state
+        best_child_state_dict = copy.deepcopy(fitter_parent.model.state_dict())
+
+        # Evaluate this initial state
+        temp_model_wrapper = ModelWrapper(niche_classes=list(range(10)), device=fitter_parent.device)
+        temp_model_wrapper.model.load_state_dict(best_child_state_dict)
+        best_fitness = _get_fitness_score(temp_model_wrapper)
+        print(f"  - Initial child fitness: {best_fitness:.2f}%")
+
+        layer_prefixes = sorted(list(set([k.split('.')[0] for k in fitter_parent.model.state_dict().keys()])))
+
+        for prefix in layer_prefixes:
+            # Create a temporary state by swapping in a layer from the weaker parent
+            temp_state_dict = copy.deepcopy(best_child_state_dict)
+            for key in temp_state_dict:
+                if key.startswith(prefix):
+                    temp_state_dict[key] = weaker_parent.model.state_dict()[key]
+
+            # Evaluate the temporary state
+            temp_model_wrapper.model.load_state_dict(temp_state_dict)
+            current_fitness = _get_fitness_score(temp_model_wrapper)
+
+            # If the swap was beneficial, keep it as the new best state
+            if current_fitness > best_fitness:
+                print(f"  - Swapping layer '{prefix}' improved fitness to {current_fitness:.2f}%. Keeping it.")
+                best_fitness = current_fitness
+                best_child_state_dict = temp_state_dict
+            else:
+                print(f"  - Swapping layer '{prefix}' did not improve fitness ({current_fitness:.2f}%). Discarding.")
+
+        # The final child state dict is the one we intelligently constructed
+        child_model_state_dict = best_child_state_dict
 
     else:
         raise ValueError(f"Unknown merge strategy: {strategy}")

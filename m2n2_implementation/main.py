@@ -126,7 +126,7 @@ def main():
         parent1, parent2 = select_mates(population)
 
         if parent1 and parent2:
-            child = merge(parent1, parent2, strategy='layer-wise')
+            child = merge(parent1, parent2, strategy='sequential_constructive')
             child = mutate(child, mutation_rate=0.05, mutation_strength=0.1)
             finetune(child, epochs=1)
 
