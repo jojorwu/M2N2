@@ -24,6 +24,7 @@ def main():
     """
     # --- 1. Configuration ---
     MODEL_CONFIG = 'RESNET' # Options: 'CIFAR10', 'MNIST', 'LLM', 'RESNET'
+    PRECISION_CONFIG = '32' # Options: '16' (mixed), '32' (standard), '64' (double)
     DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"--- M2N2 Simplified Implementation ---")
     print(f"Using model config: {MODEL_CONFIG}")
@@ -76,7 +77,7 @@ def main():
 
         print("--- Specializing Initial Models ---")
         for model_wrapper in population:
-            specialize(model_wrapper, epochs=SPECIALIZE_EPOCHS)
+            specialize(model_wrapper, epochs=SPECIALIZE_EPOCHS, precision=PRECISION_CONFIG)
         print("")
 
     fitness_history = []
@@ -89,7 +90,7 @@ def main():
             print("--- Specializing Models ---")
             for model_wrapper in population:
                 if model_wrapper.niche_classes != list(range(10)):
-                    specialize(model_wrapper, epochs=SPECIALIZE_EPOCHS)
+                    specialize(model_wrapper, epochs=SPECIALIZE_EPOCHS, precision=PRECISION_CONFIG)
             print("")
 
         print("--- Evaluating Population on Test Set ---")
@@ -107,7 +108,7 @@ def main():
         if parent1 and parent2:
             child = merge(parent1, parent2, strategy='sequential_constructive', validation_loader=validation_loader)
             child = mutate(child, generation=generation, mutation_rate=0.05)
-            finetune(child, epochs=FINETUNE_EPOCHS)
+            finetune(child, epochs=FINETUNE_EPOCHS, precision=PRECISION_CONFIG)
             population = create_next_generation(population, child, POPULATION_SIZE)
         else:
             print("Population will carry over to the next generation without changes.")

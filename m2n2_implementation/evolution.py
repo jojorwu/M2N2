@@ -59,50 +59,62 @@ class ModelWrapper:
         # Fitness is measured as accuracy on the full test set.
         self.fitness = 0.0
 
-def specialize(model_wrapper, epochs=1):
+def specialize(model_wrapper, epochs=1, precision='32'):
     """Trains a model in-place on its specialized data niche.
 
     This simulates the "resource competition" phase where a model becomes an
-    expert in a specific area by training only on data from its assigned
-    niche. The model's weights are updated directly. This function will
-    print its progress to the console.
+    expert in a specific area. It supports different training precisions.
 
     Args:
-        model_wrapper (ModelWrapper): The model wrapper containing the model
-            and its niche definition. Its model will be trained in-place.
+        model_wrapper (ModelWrapper): The model to be trained in-place.
         epochs (int, optional): The number of training epochs. Defaults to 1.
+        precision (str, optional): The training precision ('16', '32', '64').
+            Defaults to '32'.
     """
-    print(f"Specializing model on niche: {model_wrapper.niche_classes} for {epochs} epoch(s)...")
-    # Get the dataloader for the model's specific niche, using a subset for speed
-    train_loader, _ = get_dataloaders(
+    print(f"Specializing model on niche {model_wrapper.niche_classes} for {epochs} epoch(s) with {precision}-bit precision...")
+
+    train_loader, _, _ = get_dataloaders(
         dataset_name=model_wrapper.model_name,
         niche_classes=model_wrapper.niche_classes,
         subset_percentage=0.1
     )
     optimizer = optim.Adam(model_wrapper.model.parameters(), lr=0.001)
 
-    model_wrapper.model.train()
+    # Handle precision
+    if precision == '64':
+        model_wrapper.model.double()
+
+    scaler = torch.cuda.amp.GradScaler(enabled=(precision == '16'))
+
     for epoch in range(epochs):
+        model_wrapper.model.train()
         print(f"  - Epoch {epoch + 1}/{epochs}")
         pbar = tqdm(train_loader, desc=f"Specializing Niche {model_wrapper.niche_classes}")
         for batch in pbar:
             optimizer.zero_grad()
 
-            if model_wrapper.model_name == 'LLM':
-                input_ids = batch['input_ids'].to(model_wrapper.device)
-                attention_mask = batch['attention_mask'].to(model_wrapper.device)
-                labels = batch['labels'].to(model_wrapper.device)
-                outputs = model_wrapper.model(input_ids=input_ids, attention_mask=attention_mask)
-                loss = F.cross_entropy(outputs, labels)
-            else:
-                data, target = batch
-                data, target = data.to(model_wrapper.device), target.to(model_wrapper.device)
-                output = model_wrapper.model(data)
-                loss = F.cross_entropy(output, target)
+            with torch.cuda.amp.autocast(enabled=(precision == '16')):
+                if model_wrapper.model_name == 'LLM':
+                    input_ids = batch['input_ids'].to(model_wrapper.device)
+                    attention_mask = batch['attention_mask'].to(model_wrapper.device)
+                    labels = batch['labels'].to(model_wrapper.device)
+                    outputs = model_wrapper.model(input_ids=input_ids, attention_mask=attention_mask)
+                    loss = F.cross_entropy(outputs, labels)
+                else:
+                    data, target = batch
+                    data = data.to(model_wrapper.device)
+                    target = target.to(model_wrapper.device)
+                    if precision == '64':
+                        data = data.double()
+                    output = model_wrapper.model(data)
+                    loss = F.cross_entropy(output, target)
 
-            loss.backward()
-            optimizer.step()
+            scaler.scale(loss).backward()
+            scaler.step(optimizer)
+            scaler.update()
             pbar.set_postfix({'loss': loss.item()})
+
+    # The model remains in its trained precision for subsequent evaluation
     print("Specialization complete.")
 
 def _get_validation_fitness(model_wrapper, validation_loader):
@@ -136,7 +148,11 @@ def _get_validation_fitness(model_wrapper, validation_loader):
                 correct += (predicted == labels).sum().item()
             else:
                 data, target = batch
-                data, target = data.to(model_wrapper.device), target.to(model_wrapper.device)
+                data = data.to(model_wrapper.device)
+                target = target.to(model_wrapper.device)
+                # Ensure data type matches model's precision
+                if next(model_wrapper.model.parameters()).dtype == torch.float64:
+                    data = data.double()
                 output = model_wrapper.model(data)
                 _, predicted = torch.max(output.data, 1)
                 total += target.size(0)
@@ -176,7 +192,11 @@ def _get_fitness_score(model_wrapper):
                 correct += (predicted == labels).sum().item()
             else:
                 data, target = batch
-                data, target = data.to(model_wrapper.device), target.to(model_wrapper.device)
+                data = data.to(model_wrapper.device)
+                target = target.to(model_wrapper.device)
+                # Ensure data type matches model's precision
+                if next(model_wrapper.model.parameters()).dtype == torch.float64:
+                    data = data.double()
                 output = model_wrapper.model(data)
                 _, predicted = torch.max(output.data, 1)
                 total += target.size(0)
@@ -503,51 +523,60 @@ def create_next_generation(current_population, new_child, population_size):
 
     return next_generation
 
-def finetune(model_wrapper, epochs=3):
+def finetune(model_wrapper, epochs=3, precision='32'):
     """Fine-tunes a model in-place on the full dataset with a scheduler.
 
-    This step is crucial for a newly merged child model, as it helps the
-    model learn to integrate the knowledge from its two parents into a
-    cohesive whole. It uses an Adam optimizer and a learning rate scheduler
-    (`StepLR`) that reduces the learning rate over epochs. The model's
-    weights are updated directly. This function will print its progress.
+    This step is crucial for a newly merged child model. It uses an Adam
+    optimizer and a learning rate scheduler, and supports different training
+    precisions.
 
     Args:
-        model_wrapper (ModelWrapper): The model wrapper to fine-tune. Its
-            model will be trained in-place.
+        model_wrapper (ModelWrapper): The model to be fine-tuned in-place.
         epochs (int, optional): The number of fine-tuning epochs.
-            Defaults to 3 to allow the scheduler to take effect.
+            Defaults to 3.
+        precision (str, optional): The training precision ('16', '32', '64').
+            Defaults to '32'.
     """
-    print(f"Fine-tuning model for {epochs} epoch(s) with LR scheduler...")
-    # Get the dataloader for the full dataset, using a subset for speed
-    train_loader, _ = get_dataloaders(dataset_name=model_wrapper.model_name, subset_percentage=0.1)
+    print(f"Fine-tuning model for {epochs} epoch(s) with {precision}-bit precision and LR scheduler...")
+
+    train_loader, _, _ = get_dataloaders(dataset_name=model_wrapper.model_name, subset_percentage=0.1)
     optimizer = optim.Adam(model_wrapper.model.parameters(), lr=0.001)
     scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=1, gamma=0.7)
 
-    model_wrapper.model.train()
+    if precision == '64':
+        model_wrapper.model.double()
+
+    scaler = torch.cuda.amp.GradScaler(enabled=(precision == '16'))
+
     for epoch in range(epochs):
+        model_wrapper.model.train()
         print(f"  - Epoch {epoch + 1}/{epochs}")
         pbar = tqdm(train_loader, desc=f"Fine-tuning Child")
         for batch in pbar:
             optimizer.zero_grad()
 
-            if model_wrapper.model_name == 'LLM':
-                input_ids = batch['input_ids'].to(model_wrapper.device)
-                attention_mask = batch['attention_mask'].to(model_wrapper.device)
-                labels = batch['labels'].to(model_wrapper.device)
-                outputs = model_wrapper.model(input_ids=input_ids, attention_mask=attention_mask)
-                loss = F.cross_entropy(outputs, labels)
-            else:
-                data, target = batch
-                data, target = data.to(model_wrapper.device), target.to(model_wrapper.device)
-                output = model_wrapper.model(data)
-                loss = F.cross_entropy(output, target)
+            with torch.cuda.amp.autocast(enabled=(precision == '16')):
+                if model_wrapper.model_name == 'LLM':
+                    input_ids = batch['input_ids'].to(model_wrapper.device)
+                    attention_mask = batch['attention_mask'].to(model_wrapper.device)
+                    labels = batch['labels'].to(model_wrapper.device)
+                    outputs = model_wrapper.model(input_ids=input_ids, attention_mask=attention_mask)
+                    loss = F.cross_entropy(outputs, labels)
+                else:
+                    data, target = batch
+                    data = data.to(model_wrapper.device)
+                    target = target.to(model_wrapper.device)
+                    if precision == '64':
+                        data = data.double()
+                    output = model_wrapper.model(data)
+                    loss = F.cross_entropy(output, target)
 
-            loss.backward()
-            optimizer.step()
+            scaler.scale(loss).backward()
+            scaler.step(optimizer)
+            scaler.update()
             pbar.set_postfix({'loss': loss.item(), 'lr': scheduler.get_last_lr()[0]})
 
-        # Step the scheduler after each epoch
         scheduler.step()
 
+    # The model remains in its trained precision for subsequent evaluation
     print("Fine-tuning complete.")
