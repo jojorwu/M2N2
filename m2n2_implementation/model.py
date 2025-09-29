@@ -12,29 +12,30 @@ import torch.nn.functional as F
 class CifarCNN(nn.Module):
     """A Convolutional Neural Network designed for CIFAR-10 images.
 
-    This model architecture is tailored for 32x32x3 images. It consists of
-    two convolutional layers followed by max pooling, and three fully
-    connected layers for classification.
+    This architecture is tailored for 3x32x32 images. It consists of two
+    convolutional layers, each followed by ReLU activation and max pooling,
+    and then three fully connected layers for classification.
 
     Attributes:
-        conv1 (nn.Conv2d): First convolutional layer (3 -> 32 channels).
-        conv2 (nn.Conv2d): Second convolutional layer (32 -> 64 channels).
-        pool (nn.MaxPool2d): Max pooling layer with a 2x2 kernel.
-        fc1 (nn.Linear): First fully connected layer (4096 -> 512).
-        fc2 (nn.Linear): Second fully connected layer (512 -> 128).
-        fc3 (nn.Linear): Output layer (128 -> 10 classes).
+        conv1 (nn.Conv2d): First convolutional layer (3 input channels, 32
+            output channels).
+        conv2 (nn.Conv2d): Second convolutional layer (32 input channels, 64
+            output channels).
+        pool (nn.MaxPool2d): Max pooling layer with a 2x2 kernel and stride.
+        fc1 (nn.Linear): First fully connected layer.
+        fc2 (nn.Linear): Second fully connected layer.
+        fc3 (nn.Linear): The final output layer (10 classes for CIFAR-10).
     """
     def __init__(self):
-        """Initializes the CifarCNN model layers."""
+        """Initializes the layers of the CifarCNN model."""
         super(CifarCNN, self).__init__()
-        # Input channels = 3 (for color images), output channels = 32
-        self.conv1 = nn.Conv2d(3, 32, kernel_size=3, padding=1)
-        self.conv2 = nn.Conv2d(32, 64, kernel_size=3, padding=1)
-        self.pool = nn.MaxPool2d(kernel_size=2, stride=2)
+        # Input: 3x32x32
+        self.conv1 = nn.Conv2d(3, 32, kernel_size=3, padding=1) # -> 32x32x32
+        self.pool = nn.MaxPool2d(kernel_size=2, stride=2)      # -> 32x16x16
+        self.conv2 = nn.Conv2d(32, 64, kernel_size=3, padding=1)# -> 64x16x16
+        # The second pool operation reduces it to 64x8x8
 
-        # The input image size is 32x32. After two max pooling layers (32->16->8),
-        # the image size is 8x8. The number of channels is 64 from conv2.
-        # So, the flattened size is 64 * 8 * 8 = 4096.
+        # Flattened size is 64 channels * 8 * 8 = 4096
         self.fc1 = nn.Linear(64 * 8 * 8, 512)
         self.fc2 = nn.Linear(512, 128)
         self.fc3 = nn.Linear(128, 10) # 10 output classes for CIFAR-10
@@ -42,17 +43,22 @@ class CifarCNN(nn.Module):
     def forward(self, x):
         """Defines the forward pass of the CifarCNN.
 
+        The input tensor is passed through two convolutional blocks
+        (conv -> relu -> pool) and then flattened before passing through
+        three fully connected layers.
+
         Args:
-            x (torch.Tensor): The input tensor of shape (N, 3, 32, 32),
-              where N is the batch size.
+            x (torch.Tensor): The input tensor, representing a batch of
+                images with shape (N, 3, 32, 32), where N is the
+                batch size.
 
         Returns:
-            torch.Tensor: The output tensor of shape (N, 10), containing
-              the raw logits for each of the 10 classes.
+            torch.Tensor: The output tensor of raw logits, with shape
+                (N, 10).
         """
         x = self.pool(F.relu(self.conv1(x)))
         x = self.pool(F.relu(self.conv2(x)))
-        x = x.view(-1, 64 * 8 * 8) # Flatten the tensor
+        x = x.view(-1, 64 * 8 * 8) # Flatten the tensor for the FC layers
         x = F.relu(self.fc1(x))
         x = F.relu(self.fc2(x))
         x = self.fc3(x)
@@ -62,22 +68,24 @@ class CifarCNN(nn.Module):
 class MnistCNN(nn.Module):
     """A simple Convolutional Neural Network for MNIST classification.
 
-    This model is designed for 28x28x1 grayscale images from the MNIST
-    dataset. It is kept for reference purposes.
+    This model is designed for 1x28x28 grayscale images from the MNIST
+    dataset. It is included for reference and is not used in the main
+    CIFAR-10 experiment.
 
     Attributes:
         conv1 (nn.Conv2d): First convolutional layer (1 -> 32 channels).
         conv2 (nn.Conv2d): Second convolutional layer (32 -> 64 channels).
         pool (nn.MaxPool2d): Max pooling layer with a 2x2 kernel.
-        fc1 (nn.Linear): First fully connected layer (3136 -> 128).
-        fc2 (nn.Linear): Output layer (128 -> 10 classes).
+        fc1 (nn.Linear): First fully connected layer.
+        fc2 (nn.Linear): Output layer (10 classes).
     """
     def __init__(self):
-        """Initializes the MnistCNN model layers."""
+        """Initializes the layers of the MnistCNN model."""
         super(MnistCNN, self).__init__()
         self.conv1 = nn.Conv2d(1, 32, kernel_size=3, stride=1, padding=1)
         self.conv2 = nn.Conv2d(32, 64, kernel_size=3, stride=1, padding=1)
         self.pool = nn.MaxPool2d(kernel_size=2, stride=2)
+        # Flattened size is 64 channels * 7 * 7 = 3136
         self.fc1 = nn.Linear(64 * 7 * 7, 128)
         self.fc2 = nn.Linear(128, 10)
 
@@ -89,12 +97,12 @@ class MnistCNN(nn.Module):
               where N is the batch size.
 
         Returns:
-            torch.Tensor: The output tensor of shape (N, 10), containing
-              the raw logits for each of the 10 classes.
+            torch.Tensor: The output tensor of raw logits, with shape
+                (N, 10).
         """
         x = self.pool(F.relu(self.conv1(x)))
         x = self.pool(F.relu(self.conv2(x)))
-        x = x.view(-1, 64 * 7 * 7)
+        x = x.view(-1, 64 * 7 * 7) # Flatten the tensor
         x = F.relu(self.fc1(x))
         x = self.fc2(x)
         return x

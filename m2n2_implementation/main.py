@@ -1,10 +1,11 @@
 """The main entry point for running the M2N2 evolutionary simulation.
 
-This script orchestrates the entire evolutionary experiment, from initializing
-a population of models to running the generational loop of evaluation,
-selection, merging, and mutation, conforming to Google's Python docstring style.
-It also handles the loading and saving of model populations to allow for
-iterative experiments.
+This script orchestrates the entire evolutionary experiment. It sets up the
+configuration, initializes or loads a population of models, and then runs the
+main evolutionary loop for a specified number of generations. Finally, it
+summarizes the results and saves the evolved population.
+
+This script is designed to be run directly from the command line.
 """
 import torch
 import os
@@ -13,26 +14,34 @@ import re
 from evolution import ModelWrapper, specialize, evaluate, select_mates, merge, mutate, finetune, create_next_generation
 
 def main():
-    """Runs the main M2N2-inspired evolutionary experiment.
+    """Runs the main M2N2-inspired evolutionary simulation.
 
-    This function orchestrates a multi-generational simulation of model
-    evolution. The process is as follows:
+    This function serves as the primary driver for the experiment,
+    orchestrating a multi-generational simulation of model evolution. The
+    entire process is logged to the console.
 
-    1.  **Configuration**: Sets up the device (CPU/GPU), population size,
-        niche configuration, and number of generations.
-    2.  **Initialization/Loading**: Checks for a pre-existing population of
-        models in `pretrained_models/`. If found, it loads them. Otherwise,
-        it initializes a new population of specialist models from scratch
-        and trains them on their respective niches.
-    3.  **Evolutionary Loop**: For each generation, it performs:
-        a. **Specialization**: Specialist models are trained on niche data.
-        b. **Evaluation**: All models are evaluated on the full test set.
-        c. **Mating**: Parents are selected using the `select_mates` strategy.
-        d. **Crossover & Mutation**: Parents are merged, mutated, and fine-tuned.
-        e. **Selection**: The fittest individuals survive to the next generation.
-    4.  **Summary**: Prints a summary of the fitness history.
-    5.  **Save Population**: Saves the final population to the
-        `pretrained_models/` directory.
+    The workflow is as follows:
+    1.  **Configuration**: Key parameters like device (CPU/GPU), population
+        size, niche setup, and number of generations are defined.
+    2.  **Initialization/Loading**: The script checks for a pre-existing
+        population of models in the `pretrained_models/` directory. If
+        models are found, they are loaded. Otherwise, a new population of
+        specialist models is initialized from scratch and specialized on
+        their respective niches.
+    3.  **Evolutionary Loop**: The simulation proceeds for a configured
+        number of generations. In each generation, the following steps
+        are performed:
+        a. Specialization of specialist models (if applicable).
+        b. Evaluation of the entire population to determine fitness.
+        c. Mate selection to choose two parents for breeding.
+        d. Crossover (merging) and mutation to create a new child model.
+        e. Fine-tuning of the new child.
+        f. Selection (elitism) to form the next generation's population.
+    4.  **Summary**: After the loop, a summary of the fitness history
+        (best and average fitness per generation) is printed.
+    5.  **Save Population**: The final, evolved population of models is
+        saved to the `pretrained_models/` directory, overwriting any
+        previous run.
     """
     # --- 1. Configuration ---
     DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")

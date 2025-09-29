@@ -10,28 +10,37 @@ from torchvision import datasets, transforms
 from torch.utils.data import DataLoader, Subset
 
 def get_cifar10_dataloaders(batch_size=64, niche_classes=None, subset_percentage=1.0):
-    """Loads the CIFAR-10 dataset and returns DataLoaders.
+    """Creates and returns PyTorch DataLoaders for the CIFAR-10 dataset.
 
-    This function can be configured to load the full dataset, a specific "niche"
-    of classes, or a random subset of the data for faster execution. The test
-    loader always contains the full, general test set to ensure that models
-    are evaluated on their general performance.
+    This function prepares the CIFAR-10 dataset for training and testing.
+    It can be configured to serve the full dataset, a "niche" subset of
+    specific classes for specialist model training, or a random subset for
+    rapid testing.
+
+    The data is transformed by converting images to PyTorch tensors and
+    normalizing them to a range of [-1, 1].
 
     Args:
-        batch_size (int, optional): The number of samples per batch.
-            Defaults to 64.
+        batch_size (int, optional): The number of samples per batch in the
+            DataLoaders. Defaults to 64.
         niche_classes (list[int], optional): A list of class indices (0-9)
-            to include in the training set. If None, all classes are used.
+            to be exclusively included in the training set. If `None`, all
+            classes will be included. This is used for specializing models.
             Defaults to None.
-        subset_percentage (float, optional): A value between 0.0 and 1.0
-            that specifies the percentage of the dataset to use for rapid
-            testing. Defaults to 1.0 (full dataset).
+        subset_percentage (float, optional): A float between 0.0 and 1.0
+            that specifies the fraction of the dataset to use. This is
+            useful for quick testing and debugging on a smaller amount of
+            data. Defaults to 1.0 (the entire dataset).
 
     Returns:
-        tuple[DataLoader, DataLoader]: A tuple containing the training and
-            test DataLoaders. The `train_loader` will contain either the full
-            dataset or a niche-specific subset, while the `test_loader` always
-            contains the full test set.
+        tuple[DataLoader, DataLoader]: A tuple containing:
+        - train_loader (DataLoader): The DataLoader for the training set.
+          It will be shuffled and may contain a niche-specific or
+          randomly subsetted dataset.
+        - test_loader (DataLoader): The DataLoader for the test set. It
+          always contains the full, unshuffled test set (or a random
+          subset of it if `subset_percentage` is used) to ensure
+          consistent and comparable evaluation.
     """
     transform = transforms.Compose([
         transforms.ToTensor(),
