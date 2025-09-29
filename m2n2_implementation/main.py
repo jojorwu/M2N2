@@ -69,6 +69,7 @@ def main():
                 wrapper = ModelWrapper(model_name=MODEL_CONFIG, niche_classes=niche_classes, device=DEVICE)
                 wrapper.model.load_state_dict(torch.load(f, map_location=DEVICE))
                 wrapper.fitness = fitness
+                wrapper.fitness_is_current = True # Fitness from a saved file is considered current
                 population.append(wrapper)
     else:
         print("No pretrained models found. Initializing a new population from scratch.")

@@ -27,8 +27,9 @@ class ModelWrapper:
         device (str): The device ('cpu' or 'cuda') on which the model's
             tensors are allocated.
         model (torch.nn.Module): The underlying neural network model instance.
-        fitness (float): The fitness score of the model, representing its
-            accuracy on the full test set. Initialized to 0.0.
+        fitness (float): The fitness score of the model. Initialized to 0.0.
+        fitness_is_current (bool): A flag to indicate if the fitness score
+            is up-to-date. Initialized to `False`.
     """
     def __init__(self, model_name, niche_classes, device='cpu'):
         """Initializes the ModelWrapper with a model and its niche.
@@ -56,8 +57,8 @@ class ModelWrapper:
         else:
             raise ValueError(f"Unsupported model name: {self.model_name}")
 
-        # Fitness is measured as accuracy on the full test set.
         self.fitness = 0.0
+        self.fitness_is_current = False
 
 def specialize(model_wrapper, epochs=1, precision='32'):
     """Trains a model in-place on its specialized data niche.
@@ -115,6 +116,7 @@ def specialize(model_wrapper, epochs=1, precision='32'):
             pbar.set_postfix({'loss': loss.item()})
 
     # The model remains in its trained precision for subsequent evaluation
+    model_wrapper.fitness_is_current = False
     print("Specialization complete.")
 
 def _get_validation_fitness(model_wrapper, validation_loader):
@@ -208,19 +210,23 @@ def _get_fitness_score(model_wrapper):
 def evaluate(model_wrapper):
     """Evaluates fitness on the full test set and updates the wrapper.
 
-    Fitness is defined as the model's accuracy on the complete test set.
-    As a side effect, this function updates the `fitness` attribute of the
-    provided `model_wrapper` object with the calculated score.
+    This function skips evaluation if the model's fitness is already
+    marked as current. Otherwise, it calculates the accuracy on the test
+    set and updates the `fitness` and `fitness_is_current` attributes.
 
     Args:
-        model_wrapper (ModelWrapper): The model wrapper to evaluate. Its
-            `fitness` attribute will be updated.
+        model_wrapper (ModelWrapper): The model wrapper to evaluate.
 
     Returns:
         float: The calculated accuracy (fitness) of the model as a percentage.
     """
+    if model_wrapper.fitness_is_current:
+        # print(f"  - Skipping evaluation for model with up-to-date fitness: {model_wrapper.fitness:.2f}%")
+        return model_wrapper.fitness
+
     accuracy = _get_fitness_score(model_wrapper)
     model_wrapper.fitness = accuracy
+    model_wrapper.fitness_is_current = True
     return accuracy
 
 def evaluate_by_class(model_wrapper):
@@ -484,6 +490,7 @@ def mutate(model_wrapper, generation, mutation_rate=0.01, initial_mutation_stren
                 mutation = torch.randn(param.shape).to(model_wrapper.device) * decayed_strength
                 # Apply the mutation where the mask is True
                 param.data += mutation * mutation_mask
+    model_wrapper.fitness_is_current = False
     print("Mutation complete.")
     return model_wrapper
 
@@ -579,4 +586,5 @@ def finetune(model_wrapper, epochs=3, precision='32'):
         scheduler.step()
 
     # The model remains in its trained precision for subsequent evaluation
+    model_wrapper.fitness_is_current = False
     print("Fine-tuning complete.")
