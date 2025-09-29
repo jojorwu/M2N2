@@ -69,10 +69,11 @@ def get_dataloaders(dataset_name='CIFAR10', batch_size=64, niche_classes=None, s
         tokenizer = AutoTokenizer.from_pretrained('distilbert-base-uncased')
         raw_dataset = load_dataset('banking77')
 
-        train_texts = raw_dataset['train']['text']
-        train_labels = raw_dataset['train']['label']
-        test_texts = raw_dataset['test']['text']
-        test_labels = raw_dataset['test']['label']
+        # Explicitly convert to list to ensure compatibility with the tokenizer
+        train_texts = list(raw_dataset['train']['text'])
+        train_labels = list(raw_dataset['train']['label'])
+        test_texts = list(raw_dataset['test']['text'])
+        test_labels = list(raw_dataset['test']['label'])
 
         train_encodings = tokenizer(train_texts, truncation=True, padding=True, max_length=64)
         test_encodings = tokenizer(test_texts, truncation=True, padding=True, max_length=64)

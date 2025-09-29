@@ -9,8 +9,8 @@ associated metadata, conforming to Google's Python docstring style.
 import torch
 import torch.optim as optim
 import torch.nn.functional as F
-from model import CifarCNN, MnistCNN, LLMClassifier
-from data import get_dataloaders
+from .model import CifarCNN, MnistCNN, LLMClassifier
+from .data import get_dataloaders
 import copy
 import random
 from tqdm import tqdm

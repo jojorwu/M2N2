@@ -11,9 +11,9 @@ import torch
 import os
 import glob
 import re
-from evolution import ModelWrapper, specialize, evaluate, select_mates, merge, mutate, finetune, create_next_generation
-from data import get_dataloaders
-from visualization import plot_fitness_history
+from .evolution import ModelWrapper, specialize, evaluate, select_mates, merge, mutate, finetune, create_next_generation
+from .data import get_dataloaders
+from .visualization import plot_fitness_history
 
 def main():
     """Runs the main M2N2-inspired evolutionary simulation.
