@@ -41,7 +41,13 @@ def test_merge_strategies(create_parents, strategy):
     # necessary but doesn't hurt.
 
     # Execute the merge function
-    child_wrapper = merge(parent1, parent2, strategy=strategy)
+    if strategy == 'sequential_constructive':
+        # This strategy requires a validation loader, so we create a dummy one.
+        from m2n2_implementation.data import get_dataloaders
+        _, validation_loader, _ = get_dataloaders(dataset_name='CIFAR10', batch_size=2, subset_percentage=0.01)
+        child_wrapper = merge(parent1, parent2, strategy=strategy, validation_loader=validation_loader)
+    else:
+        child_wrapper = merge(parent1, parent2, strategy=strategy)
 
     # --- Assertions ---
 

@@ -19,13 +19,14 @@ BATCH_SIZE = 2
 ])
 def test_get_image_dataloaders(dataset_name, expected_data_shape, expected_target_shape):
     """Tests that get_dataloaders correctly loads image datasets."""
-    train_loader, test_loader = get_dataloaders(
+    train_loader, val_loader, test_loader = get_dataloaders(
         dataset_name=dataset_name,
         batch_size=BATCH_SIZE,
         subset_percentage=SUBSET_PERCENTAGE
     )
 
     assert isinstance(train_loader, DataLoader)
+    assert isinstance(val_loader, DataLoader)
     assert isinstance(test_loader, DataLoader)
 
     # Check a batch from the train loader
@@ -35,13 +36,14 @@ def test_get_image_dataloaders(dataset_name, expected_data_shape, expected_targe
 
 def test_get_llm_dataloader():
     """Tests that get_dataloaders correctly loads and tokenizes the LLM dataset."""
-    train_loader, test_loader = get_dataloaders(
+    train_loader, val_loader, test_loader = get_dataloaders(
         dataset_name='LLM',
         batch_size=BATCH_SIZE,
         subset_percentage=SUBSET_PERCENTAGE
     )
 
     assert isinstance(train_loader, DataLoader)
+    assert isinstance(val_loader, DataLoader)
     assert isinstance(test_loader, DataLoader)
 
     # Check a batch from the train loader
@@ -58,7 +60,7 @@ def test_get_llm_dataloader():
 def test_get_dataloaders_niche_selection():
     """Tests that the niche_classes argument correctly filters the dataset."""
     niche_classes = [3, 5] # cat and dog in CIFAR-10
-    train_loader, _ = get_dataloaders(
+    train_loader, _, _ = get_dataloaders(
         dataset_name='CIFAR10',
         niche_classes=niche_classes,
         subset_percentage=0.1 # Use a slightly larger subset to ensure we get samples
