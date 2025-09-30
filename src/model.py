@@ -197,37 +197,3 @@ class ResNetClassifier(nn.Module):
                 (N, num_classes).
         """
         return self.resnet(x)
-
-if __name__ == '__main__':
-    # Test the CNN models
-    print("--- CifarCNN Model Test ---")
-    cifar_model = CifarCNN()
-    cifar_dummy_input = torch.randn(4, 3, 32, 32)
-    cifar_output = cifar_model(cifar_dummy_input)
-    print(f"CIFAR Dummy input shape: {cifar_dummy_input.shape}")
-    print(f"CIFAR Output shape: {cifar_output.shape}")
-    assert cifar_output.shape == (4, 10), "CIFAR CNN output shape is incorrect!"
-    print("CifarCNN forward pass test successful!\n")
-
-    # Test the LLM model
-    print("--- LLMClassifier Model Test ---")
-    llm_model = LLMClassifier(num_labels=77)
-    # Batch of 4, sequence length of 16
-    llm_dummy_input_ids = torch.randint(0, 30522, (4, 16))
-    llm_dummy_attention_mask = torch.ones(4, 16)
-    llm_output = llm_model(input_ids=llm_dummy_input_ids, attention_mask=llm_dummy_attention_mask)
-    print(f"LLM Dummy input shape: {llm_dummy_input_ids.shape}")
-    print(f"LLM Output shape: {llm_output.shape}")
-    assert llm_output.shape == (4, 77), "LLMClassifier output shape is incorrect!"
-    print("LLMClassifier forward pass test successful!\n")
-
-    # Test the ResNet model
-    print("--- ResNetClassifier Model Test ---")
-    resnet_model = ResNetClassifier(num_classes=10)
-    # Use a CIFAR-10-like input size for the test
-    resnet_dummy_input = torch.randn(4, 3, 32, 32)
-    resnet_output = resnet_model(resnet_dummy_input)
-    print(f"ResNet Dummy input shape: {resnet_dummy_input.shape}")
-    print(f"ResNet Output shape: {resnet_output.shape}")
-    assert resnet_output.shape == (4, 10), "ResNetClassifier output shape is incorrect!"
-    print("ResNetClassifier forward pass test successful!")
