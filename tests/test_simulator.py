@@ -9,8 +9,8 @@ import sys
 # Add project root to path to allow for package-like imports
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from m2n2_implementation.simulator import EvolutionSimulator
-from m2n2_implementation.model import CifarCNN
+from src.simulator import EvolutionSimulator
+from src.model import CifarCNN
 
 class TestSimulatorInitialization(unittest.TestCase):
     """Unit tests for the EvolutionSimulator's initialization logic."""
@@ -41,7 +41,7 @@ class TestSimulatorInitialization(unittest.TestCase):
         """Clean up the temporary environment after the test."""
         shutil.rmtree(self.test_dir)
 
-    @patch('m2n2_implementation.simulator.glob.glob')
+    @patch('src.simulator.glob.glob')
     def test_loaded_model_fitness_is_marked_as_stale(self, mock_glob):
         """
         Tests that a model loaded from a file has its `fitness_is_current`

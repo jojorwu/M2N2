@@ -3,10 +3,10 @@ import torch
 import sys
 import os
 
-# Add the project root to the Python path to allow for imports from m2n2_implementation
+# Add the project root to the Python path to allow for imports from src
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from m2n2_implementation.model import CifarCNN, MnistCNN, LLMClassifier
+from src.model import CifarCNN, MnistCNN, LLMClassifier
 
 BATCH_SIZE = 4
 

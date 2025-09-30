@@ -9,7 +9,7 @@ from torchvision import transforms
 # Add project root to path to allow for package-like imports
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from m2n2_implementation.simulator import EvolutionSimulator
+from src.simulator import EvolutionSimulator
 
 class TestResnetIntegration(unittest.TestCase):
     """
@@ -45,7 +45,7 @@ class TestResnetIntegration(unittest.TestCase):
         """Clean up the temporary environment after the test."""
         shutil.rmtree(self.test_dir)
 
-    @patch('m2n2_implementation.simulator.glob.glob')
+    @patch('src.simulator.glob.glob')
     def test_resnet_config_initializes_and_applies_resize_transform(self, mock_glob):
         """
         Tests that setting model_config to RESNET correctly initializes the

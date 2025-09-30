@@ -64,10 +64,10 @@ venv.bak/
 /data/
 
 # Ignore the directory for saved models
-/m2n2_implementation/pretrained_models/
+/src/pretrained_models/
 
 # Ignore the cache directory for processed datasets
-/m2n2_implementation/cache/
+/src/cache/
 
 # Ignore test artifacts
 /sample_fitness_plot.png

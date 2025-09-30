@@ -92,7 +92,7 @@ class EvolutionSimulator:
     def _initialize_population(self):
         """Initializes or loads the population of models."""
         logger.info("--- STEP 1: Initializing or Loading Population ---")
-        model_dir = "m2n2_implementation/pretrained_models"
+        model_dir = "src/pretrained_models"
         niches = [[i] for i in range(self.population_size)]
         model_files = glob.glob(os.path.join(model_dir, "*.pth"))
 
@@ -176,7 +176,7 @@ class EvolutionSimulator:
         plot_fitness_history(self.fitness_history, 'fitness_history.png')
 
         logger.info("\n--- Saving final population to pretrained_models/ ---")
-        model_dir = "m2n2_implementation/pretrained_models"
+        model_dir = "src/pretrained_models"
         if not os.path.exists(model_dir):
             os.makedirs(model_dir)
         else:

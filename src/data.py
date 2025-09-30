@@ -83,7 +83,7 @@ def get_dataloaders(dataset_name='CIFAR10', model_name=None, batch_size=64, nich
         full_train_dataset = datasets.MNIST(root='./data', train=True, download=True, transform=transform)
         full_test_dataset = datasets.MNIST(root='./data', train=False, download=True, transform=transform)
     elif dataset_name == 'LLM':
-        cache_dir = 'm2n2_implementation/cache'
+        cache_dir = 'src/cache'
         train_cache_path = os.path.join(cache_dir, 'cached_banking77_train.pt')
         test_cache_path = os.path.join(cache_dir, 'cached_banking77_test.pt')
         if os.path.exists(train_cache_path) and os.path.exists(test_cache_path):

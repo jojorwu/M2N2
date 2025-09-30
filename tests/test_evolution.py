@@ -6,8 +6,8 @@ import os
 # Add the project root to the Python path to allow for package-like imports
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from m2n2_implementation.evolution import ModelWrapper, merge
-from m2n2_implementation.model import CifarCNN
+from src.evolution import ModelWrapper, merge
+from src.model import CifarCNN
 
 class TestEvolution(unittest.TestCase):
     """Unit tests for the evolutionary algorithm components."""

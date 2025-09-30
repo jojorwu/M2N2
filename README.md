@@ -49,36 +49,36 @@ The simulation follows a generational loop, where each step is designed to mimic
 
 3.  **Install dependencies:**
     ```bash
-    pip install -r m2n2_implementation/requirements.txt
+    pip install -r src/requirements.txt
     ```
 
 4.  **Run the experiment:**
     Execute the main script as a module from the project's **root directory**.
     ```bash
-    python3 -m m2n2_implementation.main
+    python3 -m src.main
     ```
     The script will log its progress for each generation to the console, showing the results of specialization, evaluation, mating, and evolution.
 
 ## 4. Configuration
 
-You can modify the core parameters of the simulation by editing the constants at the top of `m2n2_implementation/main.py`:
+You can modify the core parameters of the simulation by editing the constants at the top of `src/main.py`:
 
 - `POPULATION_SIZE`: The number of models to maintain in the population (default: 10).
 - `NICHES`: Defines the specialist niches. By default, it creates one for each of the 10 CIFAR-10 classes.
 - `NUM_GENERATIONS`: The number of evolutionary cycles to run (default: 2).
 
 ### Performance Note
-To ensure the script runs quickly for testing, it operates on a small (10%) random subset of the CIFAR-10 data by default. To run on the full dataset for more robust results, you must change the `subset_percentage` argument in the `get_cifar10_dataloaders` function calls within the `m2n2_implementation/evolution.py` file to `1.0`.
+To ensure the script runs quickly for testing, it operates on a small (10%) random subset of the CIFAR-10 data by default. To run on the full dataset for more robust results, you must change the `subset_percentage` argument in the `get_cifar10_dataloaders` function calls within the `src/evolution.py` file to `1.0`.
 
 ## 5. Iterative Evolution: Saving and Loading
 
 This implementation supports an iterative workflow, allowing you to continue an experiment from where it left off.
 
-- **Saving:** At the end of a run, the final population of models is automatically saved as `.pth` files in the `m2n2_implementation/pretrained_models/` directory. Each filename includes the model's niche and its final fitness score.
+- **Saving:** At the end of a run, the final population of models is automatically saved as `.pth` files in the `src/pretrained_models/` directory. Each filename includes the model's niche and its final fitness score.
 
-- **Loading:** When `main.py` is executed, it first checks the `m2n2_implementation/pretrained_models/` directory. If models are found, it loads them as the initial population. If the directory is empty, it initializes and trains a new population of specialists from scratch.
+- **Loading:** When `main.py` is executed, it first checks the `src/pretrained_models/` directory. If models are found, it loads them as the initial population. If the directory is empty, it initializes and trains a new population of specialists from scratch.
 
-**To start a fresh experiment**, simply delete the contents of the `m2n2_implementation/pretrained_models/` directory before running the script.
+**To start a fresh experiment**, simply delete the contents of the `src/pretrained_models/` directory before running the script.
 
 ## 6. Developer Notes
 
@@ -91,7 +91,7 @@ The `if __name__ == '__main__':` blocks in `data.py` and `model.py` contain exam
 .
 ├── .gitignore
 ├── README.md                 # This file
-└── m2n2_implementation/
+└── src/
     ├── main.py               # Main script to run the evolutionary experiment.
     ├── evolution.py          # Core logic for selection, merging, and mutation.
     ├── model.py              # Defines the CifarCNN architecture.

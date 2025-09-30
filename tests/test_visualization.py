@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
 # Add project root to path to allow for package-like imports
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from m2n2_implementation.visualization import plot_fitness_history
+from src.visualization import plot_fitness_history
 
 class TestVisualization(unittest.TestCase):
     """Tests for the visualization module."""

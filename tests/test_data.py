@@ -6,7 +6,7 @@ import os
 # Add project root to path to allow for package-like imports
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from m2n2_implementation.data import get_dataloaders
+from src.data import get_dataloaders
 
 def get_all_indices_from_loader(dataloader):
     """Helper function to extract the original indices from a DataLoader's Subset."""
