@@ -28,7 +28,7 @@ class TextDataset(Dataset):
     def __len__(self):
         return len(self.labels)
 
-def get_dataloaders(dataset_name='CIFAR10', batch_size=64, niche_classes=None, subset_percentage=1.0, validation_split=0.1, seed=None):
+def get_dataloaders(dataset_name='CIFAR10', model_name=None, batch_size=64, niche_classes=None, subset_percentage=1.0, validation_split=0.1, seed=None):
     """Creates and returns PyTorch DataLoaders for a specified dataset.
 
     This function prepares a dataset for training and testing. It can serve
@@ -40,6 +40,9 @@ def get_dataloaders(dataset_name='CIFAR10', batch_size=64, niche_classes=None, s
         dataset_name (str, optional): The name of the dataset to load.
             Supported options are 'CIFAR10', 'MNIST', and 'LLM'.
             Defaults to 'CIFAR10'.
+        model_name (str, optional): The name of the model architecture.
+            Used to apply model-specific transforms (e.g., resizing for
+            ResNet). Defaults to None.
         batch_size (int, optional): The number of samples per batch.
             Defaults to 64.
         niche_classes (list[int], optional): A list of class indices to
@@ -57,11 +60,26 @@ def get_dataloaders(dataset_name='CIFAR10', batch_size=64, niche_classes=None, s
         ValueError: If an unsupported `dataset_name` is provided.
     """
     if dataset_name == 'CIFAR10':
-        transform = transforms.Compose([transforms.ToTensor(), transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))])
+        # BUG FIX: Conditionally resize images for ResNet, which expects 224x224 inputs.
+        transform_list = []
+        if model_name == 'RESNET':
+            transform_list.append(transforms.Resize((224, 224)))
+        transform_list.extend([
+            transforms.ToTensor(),
+            transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
+        ])
+        transform = transforms.Compose(transform_list)
         full_train_dataset = datasets.CIFAR10(root='./data', train=True, download=True, transform=transform)
         full_test_dataset = datasets.CIFAR10(root='./data', train=False, download=True, transform=transform)
     elif dataset_name == 'MNIST':
-        transform = transforms.Compose([transforms.ToTensor(), transforms.Normalize((0.5,), (0.5,))])
+        transform_list = []
+        if model_name == 'RESNET':
+            transform_list.append(transforms.Resize((224, 224)))
+        transform_list.extend([
+            transforms.ToTensor(),
+            transforms.Normalize((0.5,), (0.5,))
+        ])
+        transform = transforms.Compose(transform_list)
         full_train_dataset = datasets.MNIST(root='./data', train=True, download=True, transform=transform)
         full_test_dataset = datasets.MNIST(root='./data', train=False, download=True, transform=transform)
     elif dataset_name == 'LLM':

@@ -33,6 +33,7 @@ class EvolutionSimulator:
 
         # General settings
         self.model_config = self.config['model_config']
+        self.dataset_name = self.config['dataset_name']
         self.precision_config = str(self.config['precision_config'])
         self.num_generations = self.config['num_generations']
         self.population_size = self.config['population_size']
@@ -72,7 +73,8 @@ class EvolutionSimulator:
         """Creates the necessary DataLoaders for the experiment."""
         logger.info("--- Creating DataLoaders ---")
         _, self.validation_loader, _ = get_dataloaders(
-            dataset_name=self.model_config,
+            dataset_name=self.dataset_name,
+            model_name=self.model_config,
             batch_size=64,
             subset_percentage=self.subset_percentage,
             validation_split=self.validation_split,
@@ -109,7 +111,7 @@ class EvolutionSimulator:
 
             logger.info("--- Specializing Initial Models ---")
             for model_wrapper in self.population:
-                specialize(model_wrapper, epochs=self.specialize_epochs, precision=self.precision_config)
+                specialize(model_wrapper, dataset_name=self.dataset_name, epochs=self.specialize_epochs, precision=self.precision_config)
             logger.info("")
 
     def run(self):
@@ -121,12 +123,12 @@ class EvolutionSimulator:
                 logger.info("--- Specializing Models ---")
                 for model_wrapper in self.population:
                     if model_wrapper.niche_classes != list(range(10)):
-                        specialize(model_wrapper, epochs=self.specialize_epochs, precision=self.precision_config, seed=self.seed)
+                        specialize(model_wrapper, dataset_name=self.dataset_name, epochs=self.specialize_epochs, precision=self.precision_config, seed=self.seed)
                 logger.info("")
 
             logger.info("--- Evaluating Population on Test Set ---")
             for model_wrapper in self.population:
-                evaluate(model_wrapper, seed=self.seed)
+                evaluate(model_wrapper, dataset_name=self.dataset_name, seed=self.seed)
 
             best_fitness = max([m.fitness for m in self.population])
             avg_fitness = sum([m.fitness for m in self.population]) / len(self.population)
@@ -134,7 +136,7 @@ class EvolutionSimulator:
             logger.info(f"\nGeneration {generation + 1} Stats: Best Fitness = {best_fitness:.2f}%, Avg Fitness = {avg_fitness:.2f}%\n")
 
             logger.info("--- Mating and Evolution ---")
-            parent1, parent2 = select_mates(self.population, seed=self.seed)
+            parent1, parent2 = select_mates(self.population, dataset_name=self.dataset_name, seed=self.seed)
 
             if parent1 and parent2:
                 child = merge(parent1, parent2, strategy=self.merge_strategy, validation_loader=self.validation_loader)
@@ -145,7 +147,7 @@ class EvolutionSimulator:
                     initial_mutation_strength=self.initial_mutation_strength,
                     decay_factor=self.mutation_decay_factor
                 )
-                finetune(child, epochs=self.finetune_epochs, precision=self.precision_config, seed=self.seed)
+                finetune(child, dataset_name=self.dataset_name, epochs=self.finetune_epochs, precision=self.precision_config, seed=self.seed)
                 self.population = create_next_generation(self.population, child, self.population_size)
             else:
                 logger.info("Population will carry over to the next generation without changes.")

@@ -33,6 +33,7 @@ class TestSimulatorInitialization(unittest.TestCase):
         # The parameters are minimal to ensure the simulator can initialize.
         self.config = {
             'model_config': 'CIFAR10',
+            'dataset_name': 'CIFAR10',
             'precision_config': '32',
             'num_generations': 1,
             'population_size': 1,

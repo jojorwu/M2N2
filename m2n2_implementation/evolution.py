@@ -61,7 +61,7 @@ class ModelWrapper:
         self.fitness = 0.0
         self.fitness_is_current = False
 
-def specialize(model_wrapper, epochs=1, precision='32', seed=None):
+def specialize(model_wrapper, dataset_name, epochs=1, precision='32', seed=None):
     """Trains a model in-place on its specialized data niche.
 
     This simulates the "resource competition" phase where a model becomes an
@@ -69,6 +69,7 @@ def specialize(model_wrapper, epochs=1, precision='32', seed=None):
 
     Args:
         model_wrapper (ModelWrapper): The model to be trained in-place.
+        dataset_name (str): The name of the dataset to use for training.
         epochs (int, optional): The number of training epochs. Defaults to 1.
         precision (str, optional): The training precision ('16', '32', '64').
             Defaults to '32'.
@@ -78,7 +79,8 @@ def specialize(model_wrapper, epochs=1, precision='32', seed=None):
     logger.info(f"Specializing model on niche {model_wrapper.niche_classes} for {epochs} epoch(s) with {precision}-bit precision...")
 
     train_loader, _, _ = get_dataloaders(
-        dataset_name=model_wrapper.model_name,
+        dataset_name=dataset_name,
+        model_name=model_wrapper.model_name,
         niche_classes=model_wrapper.niche_classes,
         subset_percentage=0.1,
         seed=seed
@@ -166,7 +168,7 @@ def _get_validation_fitness(model_wrapper, validation_loader):
 
     return 100 * correct / total
 
-def _get_fitness_score(model_wrapper, seed=None):
+def _get_fitness_score(model_wrapper, dataset_name, seed=None):
     """Calculates and returns the fitness score for a model on the test set.
 
     This is a lightweight, side-effect-free version of the `evaluate`
@@ -176,6 +178,7 @@ def _get_fitness_score(model_wrapper, seed=None):
 
     Args:
         model_wrapper (ModelWrapper): The model wrapper to evaluate.
+        dataset_name (str): The name of the dataset to use for evaluation.
         seed (int, optional): A seed for the random number generator to
             ensure deterministic data splitting. Defaults to None.
 
@@ -183,7 +186,7 @@ def _get_fitness_score(model_wrapper, seed=None):
         float: The calculated accuracy (fitness) of the model as a percentage.
     """
     # We always evaluate on the full test set to measure general performance
-    _, _, test_loader = get_dataloaders(dataset_name=model_wrapper.model_name, subset_percentage=0.1, validation_split=0, seed=seed) # No validation split needed here
+    _, _, test_loader = get_dataloaders(dataset_name=dataset_name, model_name=model_wrapper.model_name, subset_percentage=0.1, validation_split=0, seed=seed) # No validation split needed here
     model_wrapper.model.eval()
     correct = 0
     total = 0
@@ -213,7 +216,7 @@ def _get_fitness_score(model_wrapper, seed=None):
     accuracy = 100 * correct / total
     return accuracy
 
-def evaluate(model_wrapper, seed=None):
+def evaluate(model_wrapper, dataset_name, seed=None):
     """Evaluates fitness on the full test set and updates the wrapper.
 
     This function skips evaluation if the model's fitness is already
@@ -222,6 +225,7 @@ def evaluate(model_wrapper, seed=None):
 
     Args:
         model_wrapper (ModelWrapper): The model wrapper to evaluate.
+        dataset_name (str): The name of the dataset to use for evaluation.
         seed (int, optional): A seed for the random number generator to
             ensure deterministic data splitting. Defaults to None.
 
@@ -232,12 +236,12 @@ def evaluate(model_wrapper, seed=None):
         logger.debug(f"  - Skipping evaluation for model with up-to-date fitness: {model_wrapper.fitness:.2f}%")
         return model_wrapper.fitness
 
-    accuracy = _get_fitness_score(model_wrapper, seed=seed)
+    accuracy = _get_fitness_score(model_wrapper, dataset_name=dataset_name, seed=seed)
     model_wrapper.fitness = accuracy
     model_wrapper.fitness_is_current = True
     return accuracy
 
-def evaluate_by_class(model_wrapper, seed=None):
+def evaluate_by_class(model_wrapper, dataset_name, seed=None):
     """Evaluates a model's accuracy on each individual class.
 
     This function is used to identify a model's strengths and weaknesses,
@@ -246,6 +250,7 @@ def evaluate_by_class(model_wrapper, seed=None):
 
     Args:
         model_wrapper (ModelWrapper): The model wrapper to evaluate.
+        dataset_name (str): The name of the dataset to use for evaluation.
         seed (int, optional): A seed for the random number generator to
             ensure deterministic data splitting. Defaults to None.
 
@@ -254,7 +259,7 @@ def evaluate_by_class(model_wrapper, seed=None):
             list corresponds to the class index.
     """
     # We always evaluate on the full test set to measure general performance
-    _, _, test_loader = get_dataloaders(dataset_name=model_wrapper.model_name, subset_percentage=0.1, validation_split=0, seed=seed) # No validation split needed here
+    _, _, test_loader = get_dataloaders(dataset_name=dataset_name, model_name=model_wrapper.model_name, subset_percentage=0.1, validation_split=0, seed=seed) # No validation split needed here
     model_wrapper.model.eval()
 
     num_classes = model_wrapper.model.num_classes
@@ -291,7 +296,7 @@ def evaluate_by_class(model_wrapper, seed=None):
 
     return class_accuracies
 
-def select_mates(population, seed=None):
+def select_mates(population, dataset_name, seed=None):
     """Selects a complementary pair of parents using an advanced strategy.
 
     This function promotes "healing" by pairing a strong model with a model
@@ -305,6 +310,7 @@ def select_mates(population, seed=None):
 
     Args:
         population (list[ModelWrapper]): The current population of models.
+        dataset_name (str): The name of the dataset to use for evaluation.
         seed (int, optional): A seed for the random number generator to
             ensure deterministic data splitting. Defaults to None.
 
@@ -323,7 +329,7 @@ def select_mates(population, seed=None):
 
     # 2. Analyze Parent 1 to find its weakest class.
     logger.info("  - Analyzing Parent 1's performance by class...")
-    class_accuracies = evaluate_by_class(parent1, seed=seed)
+    class_accuracies = evaluate_by_class(parent1, dataset_name=dataset_name, seed=seed)
     weakest_class_index = class_accuracies.index(min(class_accuracies))
     logger.info(f"  - Parent 1's weakest class is {weakest_class_index} (Accuracy: {class_accuracies[weakest_class_index]:.2f}%)")
 
@@ -553,7 +559,7 @@ def create_next_generation(current_population, new_child, population_size):
 
     return next_generation
 
-def finetune(model_wrapper, epochs=3, precision='32', seed=None):
+def finetune(model_wrapper, dataset_name, epochs=3, precision='32', seed=None):
     """Fine-tunes a model in-place on the full dataset with a scheduler.
 
     This step is crucial for a newly merged child model. It uses an Adam
@@ -562,6 +568,7 @@ def finetune(model_wrapper, epochs=3, precision='32', seed=None):
 
     Args:
         model_wrapper (ModelWrapper): The model to be fine-tuned in-place.
+        dataset_name (str): The name of the dataset to use for training.
         epochs (int, optional): The number of fine-tuning epochs.
             Defaults to 3.
         precision (str, optional): The training precision ('16', '32', '64').
@@ -571,7 +578,7 @@ def finetune(model_wrapper, epochs=3, precision='32', seed=None):
     """
     logger.info(f"Fine-tuning model for {epochs} epoch(s) with {precision}-bit precision and LR scheduler...")
 
-    train_loader, _, _ = get_dataloaders(dataset_name=model_wrapper.model_name, subset_percentage=0.1, seed=seed)
+    train_loader, _, _ = get_dataloaders(dataset_name=dataset_name, model_name=model_wrapper.model_name, subset_percentage=0.1, seed=seed)
     optimizer = optim.Adam(model_wrapper.model.parameters(), lr=0.001)
     scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=1, gamma=0.7)
 
