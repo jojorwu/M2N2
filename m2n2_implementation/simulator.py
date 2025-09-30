@@ -92,7 +92,11 @@ class EvolutionSimulator:
                     wrapper = ModelWrapper(model_name=self.model_config, niche_classes=niche_classes, device=self.device)
                     wrapper.model.load_state_dict(torch.load(f, map_location=self.device))
                     wrapper.fitness = fitness
-                    wrapper.fitness_is_current = True
+                    # BUG FIX: Ensure that loaded models are re-evaluated.
+                    # Their fitness from a previous run is not guaranteed to be
+                    # relevant for the current run's (potentially different)
+                    # dataset subset.
+                    wrapper.fitness_is_current = False
                     self.population.append(wrapper)
         else:
             logger.info("No pretrained models found. Initializing a new population from scratch.")
