@@ -4,6 +4,7 @@ This module provides functions for plotting and saving the results of the
 evolutionary simulation, such as the fitness history over generations.
 """
 import matplotlib.pyplot as plt
+from matplotlib.ticker import MaxNLocator
 
 def plot_fitness_history(fitness_history, output_path):
     """Plots and saves the fitness history of the population.
@@ -32,8 +33,10 @@ def plot_fitness_history(fitness_history, output_path):
     plt.legend()
     plt.grid(True)
 
-    # Ensure the x-axis has integer labels
-    plt.xticks(generations)
+    # BUG FIX: Use MaxNLocator to ensure the x-axis has a reasonable number
+    # of integer ticks, preventing overcrowding on long runs.
+    ax = plt.gca()
+    ax.xaxis.set_major_locator(MaxNLocator(integer=True, prune='both'))
 
     plt.savefig(output_path)
     print(f"\nFitness history plot saved to {output_path}")
