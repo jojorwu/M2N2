@@ -30,6 +30,22 @@ class EvolutionSimulator:
             config_path (str, optional): The path to the configuration YAML
                 file. Defaults to 'config.yaml'.
         """
+        self._setup_environment(config_path)
+        self._initialize_parameters()
+
+        logger.info("--- M2N2 Simplified Implementation ---")
+        logger.info(f"Loaded configuration for model: {self.model_config}")
+        logger.info(f"Using device: {self.device}")
+        logger.info(f"Experiment seed: {self.seed}\n")
+
+        # --- 3. Initialize Population and DataLoaders ---
+        self.population = []
+        self.fitness_history = []
+        self._initialize_dataloaders()
+        self._initialize_population()
+
+    def _setup_environment(self, config_path):
+        """Loads configuration and sets up the logger."""
         # --- 1. Load Configuration from YAML ---
         with open(config_path, 'r') as f:
             self.config = yaml.safe_load(f)
@@ -38,6 +54,8 @@ class EvolutionSimulator:
         log_file = self.config.get('log_file')
         setup_logger(log_file=log_file)
 
+    def _initialize_parameters(self):
+        """Initializes simulator parameters from the config."""
         # General settings
         self.model_config = self.config['model_config']
         self.dataset_name = self.config['dataset_name']
@@ -65,17 +83,6 @@ class EvolutionSimulator:
 
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.seed = np.random.randint(0, 1_000_000)  # Seed for this experiment run
-
-        logger.info("--- M2N2 Simplified Implementation ---")
-        logger.info(f"Loaded configuration for model: {self.model_config}")
-        logger.info(f"Using device: {self.device}")
-        logger.info(f"Experiment seed: {self.seed}\n")
-
-        # --- 3. Initialize Population and DataLoaders ---
-        self.population = []
-        self.fitness_history = []
-        self._initialize_dataloaders()
-        self._initialize_population()
 
     def _initialize_dataloaders(self):
         """Creates the necessary DataLoaders for the experiment."""
