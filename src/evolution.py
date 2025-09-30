@@ -363,7 +363,7 @@ def select_mates(population, dataset_name, seed=None):
         logger.info("  - Could not select a pair of parents.")
         return None, None
 
-def merge(parent1, parent2, strategy='average', validation_loader=None):
+def merge(parent1, parent2, strategy='average', validation_loader=None, seed=None):
     """Merges two parent models into a new child model (crossover).
 
     This function combines the weights of two parents to produce a new child
@@ -378,7 +378,7 @@ def merge(parent1, parent2, strategy='average', validation_loader=None):
             - 'fitness_weighted': A weighted average where each parent's
               contribution is proportional to its fitness score.
             - 'layer-wise': Randomly selects each entire layer from one
-              of the two parents.
+              of the two parents. This is made deterministic by the `seed`.
             - 'sequential_constructive': Intelligently builds a child by
               starting with the fitter parent and sequentially swapping in
               layers from the weaker parent if they improve performance.
@@ -386,6 +386,8 @@ def merge(parent1, parent2, strategy='average', validation_loader=None):
             Defaults to 'average'.
         validation_loader (DataLoader, optional): A DataLoader for a
             validation set, required by certain strategies. Defaults to None.
+        seed (int, optional): A seed for the random number generator to
+            ensure deterministic layer selection. Defaults to None.
 
     Returns:
         ModelWrapper: A new model wrapper containing the merged child model.
@@ -426,8 +428,10 @@ def merge(parent1, parent2, strategy='average', validation_loader=None):
             child_model_state_dict[key] = (parent1_state_dict[key] + parent2_state_dict[key]) / 2.0
 
     elif strategy == 'layer-wise':
+        # Use a seeded random number generator for deterministic layer selection
+        rng = random.Random(seed)
         layer_prefixes = sorted(list(set([k.split('.')[0] for k in parent1_state_dict.keys()])))
-        parent_choices = {p: random.choice([1, 2]) for p in layer_prefixes}
+        parent_choices = {p: rng.choice([1, 2]) for p in layer_prefixes}
         for key in child_model_state_dict:
             prefix = key.split('.')[0]
             child_model_state_dict[key] = parent1_state_dict[key] if parent_choices[prefix] == 1 else parent2_state_dict[key]

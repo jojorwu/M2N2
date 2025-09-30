@@ -130,5 +130,50 @@ class TestEvolution(unittest.TestCase):
         )
 
 
+    def test_layer_wise_merge_is_deterministic_with_seed(self):
+        """
+        Tests that the 'layer-wise' merge strategy produces identical models
+        when given the same seed, and different models with different seeds.
+        """
+        # Arrange
+        seed1 = 42
+        seed2 = 1337
+
+        parent1 = ModelWrapper(model_name='CIFAR10', niche_classes=[0], device=self.device)
+        parent2 = ModelWrapper(model_name='CIFAR10', niche_classes=[1], device=self.device)
+
+        # Assign easily trackable weights
+        with torch.no_grad():
+            for param in parent1.model.parameters():
+                param.fill_(1.0)
+            for param in parent2.model.parameters():
+                param.fill_(0.0)
+
+        # Act
+        # Merge twice with the same seed
+        child1 = merge(parent1, parent2, strategy='layer-wise', seed=seed1)
+        child2 = merge(parent1, parent2, strategy='layer-wise', seed=seed1)
+
+        # Merge once with a different seed
+        child3 = merge(parent1, parent2, strategy='layer-wise', seed=seed2)
+
+        # Assert
+        # 1. The two children created with the same seed should be identical
+        child1_params = list(child1.model.parameters())
+        child2_params = list(child2.model.parameters())
+        self.assertEqual(len(child1_params), len(child2_params))
+        for p1, p2 in zip(child1_params, child2_params):
+            self.assertTrue(torch.equal(p1, p2), "Models created with the same seed are not identical.")
+
+        # 2. The child created with a different seed should be different
+        child3_params = list(child3.model.parameters())
+        is_different = False
+        for p1, p3 in zip(child1_params, child3_params):
+            if not torch.equal(p1, p3):
+                is_different = True
+                break
+        self.assertTrue(is_different, "Model created with a different seed was not different.")
+
+
 if __name__ == '__main__':
     unittest.main()

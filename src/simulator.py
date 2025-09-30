@@ -147,7 +147,7 @@ class EvolutionSimulator:
             parent1, parent2 = select_mates(self.population, dataset_name=self.dataset_name, seed=self.seed)
 
             if parent1 and parent2:
-                child = merge(parent1, parent2, strategy=self.merge_strategy, validation_loader=self.validation_loader)
+                child = merge(parent1, parent2, strategy=self.merge_strategy, validation_loader=self.validation_loader, seed=self.seed)
                 child = mutate(
                     child,
                     generation=generation,
