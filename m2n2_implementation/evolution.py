@@ -383,12 +383,22 @@ def merge(parent1, parent2, strategy='average', validation_loader=None):
     parent2_state_dict = parent2.model.state_dict()
 
     if strategy == 'fitness_weighted':
-        total_fitness = parent1.fitness + parent2.fitness
-        if total_fitness == 0:
+        # BUG FIX: Added a dampening factor to prevent a high-fitness
+        # parent from completely overwhelming a low-fitness specialist.
+        # This makes the "healing" process more effective.
+        dampening_factor = 25.0
+        dampened_fitness1 = parent1.fitness + dampening_factor
+        dampened_fitness2 = parent2.fitness + dampening_factor
+        total_dampened_fitness = dampened_fitness1 + dampened_fitness2
+
+        if total_dampened_fitness == 0:
             weight1, weight2 = 0.5, 0.5
         else:
-            weight1 = parent1.fitness / total_fitness
-            weight2 = parent2.fitness / total_fitness
+            weight1 = dampened_fitness1 / total_dampened_fitness
+            weight2 = dampened_fitness2 / total_dampened_fitness
+
+        logger.info(f"  - Dampened weights: Parent 1 ({weight1:.2f}), Parent 2 ({weight2:.2f})")
+
         for key in child_model_state_dict:
             child_model_state_dict[key] = (parent1_state_dict[key] * weight1) + (parent2_state_dict[key] * weight2)
 

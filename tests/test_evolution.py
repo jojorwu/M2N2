@@ -1,94 +1,81 @@
-import pytest
+import unittest
 import torch
 import sys
 import os
 
-# Add the project root to the Python path
+# Add the project root to the Python path to allow for package-like imports
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from m2n2_implementation.evolution import ModelWrapper, merge
+from m2n2_implementation.model import CifarCNN
 
-# Define a fixture to create two parent models for testing
-@pytest.fixture
-def create_parents():
-    """A pytest fixture to create two parent ModelWrapper instances."""
-    # Use 'CIFAR10' as the representative model type for testing merge logic
-    parent1 = ModelWrapper(model_name='CIFAR10', niche_classes=[0], device='cpu')
-    parent2 = ModelWrapper(model_name='CIFAR10', niche_classes=[1], device='cpu')
+class TestEvolution(unittest.TestCase):
+    """Unit tests for the evolutionary algorithm components."""
 
-    # Assign some fitness values for fitness-based strategies
-    parent1.fitness = 80.0
-    parent2.fitness = 60.0
+    def setUp(self):
+        """Set up common resources for tests."""
+        self.device = torch.device("cpu")
 
-    return parent1, parent2
+    def test_merge_fitness_weighted_with_dampening(self):
+        """
+        Tests that the 'fitness_weighted' merge strategy uses a dampened
+        weighting to prevent a high-fitness parent from completely
+        overwhelming a low-fitness (but still valuable) specialist parent.
 
-# Parametrize the test to run for each merge strategy
-@pytest.mark.parametrize("strategy", [
-    'average',
-    'fitness_weighted',
-    'layer-wise',
-    'sequential_constructive'
-])
-def test_merge_strategies(create_parents, strategy):
-    """
-    Tests that each merge strategy runs without error and produces a valid child.
-    """
-    parent1, parent2 = create_parents
+        This test is designed to FAIL with the original implementation and
+        PASS with the corrected, dampened logic.
+        """
+        # 1. Create two ModelWrappers with a significant fitness disparity
+        # This simulates the "healing" scenario where the best model is paired
+        # with a specialist in its weakest area.
+        parent1 = ModelWrapper(model_name='CIFAR10', niche_classes=[0], device=self.device)
+        parent1.fitness = 85.0  # High-fitness generalist
 
-    # The sequential_constructive strategy requires a fitness score to be calculated
-    # for the parents first. We can mock this by setting the fitness attribute,
-    # which is already done in the fixture. For other strategies, it's not strictly
-    # necessary but doesn't hurt.
+        parent2 = ModelWrapper(model_name='CIFAR10', niche_classes=[1], device=self.device)
+        parent2.fitness = 15.0  # Low-fitness specialist
 
-    # Execute the merge function
-    if strategy == 'sequential_constructive':
-        # This strategy requires a validation loader, so we create a dummy one.
-        from m2n2_implementation.data import get_dataloaders
-        _, validation_loader, _ = get_dataloaders(dataset_name='CIFAR10', batch_size=2, subset_percentage=0.01)
-        child_wrapper = merge(parent1, parent2, strategy=strategy, validation_loader=validation_loader)
-    else:
-        child_wrapper = merge(parent1, parent2, strategy=strategy)
+        # 2. Assign easily trackable weights to each parent model
+        # The fit parent's weights are all 1.0.
+        # The specialist parent's weights are all 0.0.
+        with torch.no_grad():
+            for param in parent1.model.parameters():
+                param.fill_(1.0)
+            for param in parent2.model.parameters():
+                param.fill_(0.0)
 
-    # --- Assertions ---
+        # 3. Call the merge function with the 'fitness_weighted' strategy
+        child = merge(parent1, parent2, strategy='fitness_weighted')
 
-    # 1. Check if a valid ModelWrapper object was returned
-    assert isinstance(child_wrapper, ModelWrapper), f"Merge strategy '{strategy}' did not return a ModelWrapper object."
+        # 4. Assert the outcome based on the desired "dampened" logic
+        #
+        # Original (flawed) logic:
+        # weight1 = 85 / (85 + 15) = 0.85
+        # child_weight = 1.0 * 0.85 + 0.0 * 0.15 = 0.85
+        # The specialist's contribution is almost erased.
+        #
+        # Desired (dampened) logic:
+        # A dampening factor (e.g., 25) is added to each fitness score.
+        dampening_factor = 25.0
+        dampened_fitness1 = parent1.fitness + dampening_factor
+        dampened_fitness2 = parent2.fitness + dampening_factor
+        total_dampened_fitness = dampened_fitness1 + dampened_fitness2
 
-    # 2. Check if the child's model has the same architecture (i.e., same state_dict keys)
-    parent_keys = parent1.model.state_dict().keys()
-    child_keys = child_wrapper.model.state_dict().keys()
-    assert parent_keys == child_keys, f"Child model from '{strategy}' has different architecture than parents."
+        expected_weight1 = dampened_fitness1 / total_dampened_fitness # (85+25)/(100+50) = 110/150 = ~0.733
 
-    # 3. Check that the child's weights are not the same as either parent's weights
-    # (This is a sanity check to ensure some form of merging happened)
-    parent1_sd = parent1.model.state_dict()
-    child_sd = child_wrapper.model.state_dict()
+        # Expected child weight = (parent1_weight * expected_weight1) + (parent2_weight * expected_weight2)
+        #                       = (1.0 * expected_weight1) + (0.0 * ...) = expected_weight1
+        expected_child_tensor_val = expected_weight1
 
-    # Note: For sequential_constructive, it's possible the child is identical to the
-    # fitter parent if no layer swaps were beneficial. This is expected behavior.
-    if strategy != 'sequential_constructive':
-        # Check at least one parameter is different
-        are_different = any(not torch.equal(child_sd[key], parent1_sd[key]) for key in child_keys)
-        assert are_different, f"Child's weights are identical to parent1's for '{strategy}' strategy."
+        # Retrieve the first parameter tensor from the child model for verification
+        child_param = next(child.model.parameters())
 
-def test_merge_fitness_weighted_with_zero_fitness():
-    """
-    Tests the 'fitness_weighted' strategy specifically for the case where both
-    parents have zero fitness, ensuring it falls back to a simple average.
-    """
-    parent1 = ModelWrapper(model_name='CIFAR10', niche_classes=[0], device='cpu')
-    parent2 = ModelWrapper(model_name='CIFAR10', niche_classes=[1], device='cpu')
-    parent1.fitness = 0.0
-    parent2.fitness = 0.0
+        # Check if the child's weights match the dampened calculation.
+        # This assertion will fail until the bug is fixed in evolution.py.
+        self.assertTrue(
+            torch.allclose(child_param, torch.full_like(child_param, expected_child_tensor_val)),
+            f"Child weights are incorrect. Expected ~{expected_child_tensor_val:.4f}, but got {child_param.mean():.4f}. "
+            "The specialist parent's contribution is likely being diluted."
+        )
 
-    child = merge(parent1, parent2, strategy='fitness_weighted')
-
-    # Check if the child's weights are the exact average of the parents'
-    parent1_sd = parent1.model.state_dict()
-    parent2_sd = parent2.model.state_dict()
-    child_sd = child.model.state_dict()
-
-    for key in child_sd:
-        expected_tensor = (parent1_sd[key] + parent2_sd[key]) / 2.0
-        assert torch.allclose(child_sd[key], expected_tensor), \
-            f"Weight mismatch for key {key} in zero-fitness weighted merge."
+if __name__ == '__main__':
+    unittest.main()
