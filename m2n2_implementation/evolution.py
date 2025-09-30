@@ -523,7 +523,7 @@ def mutate(model_wrapper, generation, mutation_rate=0.01, initial_mutation_stren
     logger.info("Mutation complete.")
     return model_wrapper
 
-def create_next_generation(current_population, new_child, population_size):
+def create_next_generation(current_population, new_child, population_size, dataset_name, seed=None):
     """Creates the next generation's population using elitist selection.
 
     This function implements the selection step of the algorithm. It combines
@@ -537,6 +537,9 @@ def create_next_generation(current_population, new_child, population_size):
         new_child (ModelWrapper): The newly created child model to be
             evaluated and included in the selection pool.
         population_size (int): The maximum size of the population.
+        dataset_name (str): The name of the dataset to use for evaluation.
+        seed (int, optional): A seed for the random number generator to
+            ensure deterministic data splitting. Defaults to None.
 
     Returns:
         list[ModelWrapper]: A new list of models for the next generation,
@@ -544,7 +547,7 @@ def create_next_generation(current_population, new_child, population_size):
     """
     logger.info("Creating the next generation...")
     # Evaluate the new child to make sure its fitness is calculated
-    evaluate(new_child)
+    evaluate(new_child, dataset_name=dataset_name, seed=seed)
 
     # Combine the old population with the new child
     full_pool = current_population + [new_child]

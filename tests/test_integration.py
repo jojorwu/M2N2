@@ -85,5 +85,37 @@ class TestResnetIntegration(unittest.TestCase):
             f"Resize transform has incorrect size. Expected (224, 224), got {resize_transform.size}."
         )
 
+    def test_simulator_runs_for_multiple_generations(self):
+        """
+        Tests that the simulator can run for more than one generation without
+        crashing due to missing arguments in the `create_next_generation` call.
+        """
+        # Arrange
+        # Modify the config to run for 2 generations and use a simple model
+        self.config['num_generations'] = 2
+        self.config['population_size'] = 2 # At least 2 for mate selection
+        self.config['model_config'] = 'CIFAR10'
+        with open(self.config_path, 'w') as f:
+            yaml.dump(self.config, f)
+
+        # Act
+        try:
+            # This would crash at the end of generation 1 with the bug
+            simulator = EvolutionSimulator(config_path=self.config_path)
+            simulator.run()
+        except TypeError as e:
+            self.fail(f"Simulator crashed with TypeError, likely due to the bug in create_next_generation: {e}")
+        except Exception as e:
+            self.fail(f"Simulator crashed with an unexpected exception: {e}")
+
+        # Assert
+        # The simulator should have recorded fitness for 2 generations
+        self.assertEqual(
+            len(simulator.fitness_history),
+            2,
+            "Simulator did not complete 2 generations as expected."
+        )
+
+
 if __name__ == '__main__':
     unittest.main()
