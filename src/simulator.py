@@ -119,7 +119,7 @@ class EvolutionSimulator:
 
             logger.info("--- Specializing Initial Models ---")
             for model_wrapper in self.population:
-                specialize(model_wrapper, dataset_name=self.dataset_name, epochs=self.specialize_epochs, precision=self.precision_config)
+                specialize(model_wrapper, dataset_name=self.dataset_name, epochs=self.specialize_epochs, precision=self.precision_config, seed=self.seed)
             logger.info("")
 
     def run(self):

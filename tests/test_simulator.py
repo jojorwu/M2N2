@@ -99,5 +99,43 @@ class TestSimulatorInitialization(unittest.TestCase):
         # Check that the specific log file was not created.
         self.assertFalse(os.path.exists(log_file_path), "Log file was created even when disabled in config.")
 
+    def test_initial_specialization_is_deterministic_with_seed(self):
+        """
+        Tests that when a seed is provided, two simulators created with the
+        same config will have identical initial populations after specialization.
+        This test is designed to FAIL until the bug is fixed.
+        """
+        # Arrange: Config with non-zero specialization epochs
+        config = self.base_config.copy()
+        config['default_epochs']['specialize'] = 1  # Enable specialization
+        config['population_size'] = 2
+        with open(self.config_path, 'w') as f:
+            yaml.dump(config, f)
+
+        # Act
+        # Create the first simulator and specialize its population
+        sim1 = EvolutionSimulator(config_path=self.config_path)
+        sim1.seed = 42  # Manually set a fixed seed for reproducibility
+
+        # This call is what the test is verifying. We are manually running what should happen.
+        # In the bugged version, the `_initialize_population` does NOT use the seed.
+        sim1._initialize_population()
+        # Store the weights of the first model in the population
+        model1_params = [p.clone() for p in sim1.population[0].model.parameters()]
+
+        # Create a second simulator with the exact same config and seed
+        sim2 = EvolutionSimulator(config_path=self.config_path)
+        sim2.seed = 42 # Manually set the same fixed seed
+        sim2._initialize_population()
+        model2_params = [p.clone() for p in sim2.population[0].model.parameters()]
+
+        # Assert
+        # The weights should be identical if the seed was used for specialization
+        self.assertEqual(len(model1_params), len(model2_params))
+        for p1, p2 in zip(model1_params, model2_params):
+            self.assertTrue(torch.equal(p1, p2),
+                            "Model weights are not identical between two simulators with the same seed. "
+                            "Initial specialization is likely not using the provided seed.")
+
 if __name__ == '__main__':
     unittest.main()
