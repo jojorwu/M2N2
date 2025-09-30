@@ -28,39 +28,9 @@ class TextDataset(Dataset):
     def __len__(self):
         return len(self.labels)
 
-def get_dataloaders(dataset_name='CIFAR10', model_name=None, batch_size=64, niche_classes=None, subset_percentage=1.0, validation_split=0.1, seed=None):
-    """Creates and returns PyTorch DataLoaders for a specified dataset.
-
-    This function prepares a dataset for training and testing. It can serve
-    the full dataset, a "niche" subset of specific classes, or a random
-    subset for rapid testing. It also partitions the training set to create
-    a validation loader.
-
-    Args:
-        dataset_name (str, optional): The name of the dataset to load.
-            Supported options are 'CIFAR10', 'MNIST', and 'LLM'.
-            Defaults to 'CIFAR10'.
-        model_name (str, optional): The name of the model architecture.
-            Used to apply model-specific transforms (e.g., resizing for
-            ResNet). Defaults to None.
-        batch_size (int, optional): The number of samples per batch.
-            Defaults to 64.
-        niche_classes (list[int], optional): A list of class indices to
-            exclusively include in the training set. Defaults to None.
-        subset_percentage (float, optional): A float between 0.0 and 1.0
-            specifying the fraction of the dataset to use. Defaults to 1.0.
-        validation_split (float, optional): The proportion of the training
-            set to use for validation. Defaults to 0.1.
-
-    Returns:
-        tuple[DataLoader, DataLoader, DataLoader]: A tuple containing the
-            training, validation, and test DataLoaders.
-
-    Raises:
-        ValueError: If an unsupported `dataset_name` is provided.
-    """
+def _load_full_datasets(dataset_name, model_name):
+    """Loads the full training and testing datasets based on the dataset name."""
     if dataset_name == 'CIFAR10':
-        # BUG FIX: Conditionally resize images for ResNet, which expects 224x224 inputs.
         transform_list = []
         if model_name == 'RESNET':
             transform_list.append(transforms.Resize((224, 224)))
@@ -103,9 +73,41 @@ def get_dataloaders(dataset_name='CIFAR10', model_name=None, batch_size=64, nich
             torch.save(full_test_dataset, test_cache_path)
     else:
         raise ValueError(f"Unsupported dataset: {dataset_name}. Please use 'CIFAR10', 'MNIST', or 'LLM'.")
+    return full_train_dataset, full_test_dataset
 
-    # BUG FIX: Use a seeded random number generator to ensure that the
-    # train/validation split is deterministic throughout a single experiment.
+def get_dataloaders(dataset_name='CIFAR10', model_name=None, batch_size=64, niche_classes=None, subset_percentage=1.0, validation_split=0.1, seed=None):
+    """Creates and returns PyTorch DataLoaders for a specified dataset.
+
+    This function prepares a dataset for training and testing. It can serve
+    the full dataset, a "niche" subset of specific classes, or a random
+    subset for rapid testing. It also partitions the training set to create
+    a validation loader.
+
+    Args:
+        dataset_name (str, optional): The name of the dataset to load.
+            Supported options are 'CIFAR10', 'MNIST', and 'LLM'.
+            Defaults to 'CIFAR10'.
+        model_name (str, optional): The name of the model architecture.
+            Used to apply model-specific transforms (e.g., resizing for
+            ResNet). Defaults to None.
+        batch_size (int, optional): The number of samples per batch.
+            Defaults to 64.
+        niche_classes (list[int], optional): A list of class indices to
+            exclusively include in the training set. Defaults to None.
+        subset_percentage (float, optional): A float between 0.0 and 1.0
+            specifying the fraction of the dataset to use. Defaults to 1.0.
+        validation_split (float, optional): The proportion of the training
+            set to use for validation. Defaults to 0.1.
+
+    Returns:
+        tuple[DataLoader, DataLoader, DataLoader]: A tuple containing the
+            training, validation, and test DataLoaders.
+
+    Raises:
+        ValueError: If an unsupported `dataset_name` is provided.
+    """
+    full_train_dataset, full_test_dataset = _load_full_datasets(dataset_name, model_name)
+
     rng = np.random.RandomState(seed)
 
     if subset_percentage < 1.0:
