@@ -7,6 +7,7 @@ import os
 import glob
 import re
 import yaml
+import numpy as np
 from .logger_config import logger
 from .evolution import ModelWrapper, specialize, evaluate, select_mates, merge, mutate, finetune, create_next_generation
 from .data import get_dataloaders
@@ -55,9 +56,11 @@ class EvolutionSimulator:
             self.finetune_epochs = self.config['default_epochs']['finetune']
 
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.seed = np.random.randint(0, 1_000_000)  # Seed for this experiment run
         logger.info("--- M2N2 Simplified Implementation ---")
         logger.info(f"Loaded configuration for model: {self.model_config}")
-        logger.info(f"Using device: {self.device}\n")
+        logger.info(f"Using device: {self.device}")
+        logger.info(f"Experiment seed: {self.seed}\n")
 
         # --- 2. Initialize Population and DataLoaders ---
         self.population = []
@@ -72,7 +75,8 @@ class EvolutionSimulator:
             dataset_name=self.model_config,
             batch_size=64,
             subset_percentage=self.subset_percentage,
-            validation_split=self.validation_split
+            validation_split=self.validation_split,
+            seed=self.seed
         )
 
     def _initialize_population(self):
@@ -117,12 +121,12 @@ class EvolutionSimulator:
                 logger.info("--- Specializing Models ---")
                 for model_wrapper in self.population:
                     if model_wrapper.niche_classes != list(range(10)):
-                        specialize(model_wrapper, epochs=self.specialize_epochs, precision=self.precision_config)
+                        specialize(model_wrapper, epochs=self.specialize_epochs, precision=self.precision_config, seed=self.seed)
                 logger.info("")
 
             logger.info("--- Evaluating Population on Test Set ---")
             for model_wrapper in self.population:
-                evaluate(model_wrapper)
+                evaluate(model_wrapper, seed=self.seed)
 
             best_fitness = max([m.fitness for m in self.population])
             avg_fitness = sum([m.fitness for m in self.population]) / len(self.population)
@@ -130,7 +134,7 @@ class EvolutionSimulator:
             logger.info(f"\nGeneration {generation + 1} Stats: Best Fitness = {best_fitness:.2f}%, Avg Fitness = {avg_fitness:.2f}%\n")
 
             logger.info("--- Mating and Evolution ---")
-            parent1, parent2 = select_mates(self.population)
+            parent1, parent2 = select_mates(self.population, seed=self.seed)
 
             if parent1 and parent2:
                 child = merge(parent1, parent2, strategy=self.merge_strategy, validation_loader=self.validation_loader)
@@ -141,7 +145,7 @@ class EvolutionSimulator:
                     initial_mutation_strength=self.initial_mutation_strength,
                     decay_factor=self.mutation_decay_factor
                 )
-                finetune(child, epochs=self.finetune_epochs, precision=self.precision_config)
+                finetune(child, epochs=self.finetune_epochs, precision=self.precision_config, seed=self.seed)
                 self.population = create_next_generation(self.population, child, self.population_size)
             else:
                 logger.info("Population will carry over to the next generation without changes.")

@@ -15,3 +15,14 @@
 2025-09-30 05:32:11,792 - M2N2_SIMULATOR - INFO - --- Creating DataLoaders ---
 2025-09-30 05:32:20,107 - M2N2_SIMULATOR - INFO - --- STEP 1: Initializing or Loading Population ---
 2025-09-30 05:32:20,107 - M2N2_SIMULATOR - INFO - Found 1 models in m2n2_implementation/pretrained_models. Loading them.
+2025-09-30 05:43:51,027 - M2N2_SIMULATOR - INFO - Merging parent models to create child using 'fitness_weighted' strategy...
+2025-09-30 05:43:51,065 - M2N2_SIMULATOR - INFO -   - Dampened weights: Parent 1 (0.73), Parent 2 (0.27)
+2025-09-30 05:43:51,090 - M2N2_SIMULATOR - INFO - Merging complete.
+2025-09-30 05:43:51,142 - M2N2_SIMULATOR - INFO - --- M2N2 Simplified Implementation ---
+2025-09-30 05:43:51,142 - M2N2_SIMULATOR - INFO - Loaded configuration for model: CIFAR10
+2025-09-30 05:43:51,142 - M2N2_SIMULATOR - INFO - Using device: cpu
+2025-09-30 05:43:51,142 - M2N2_SIMULATOR - INFO - Experiment seed: 839590
+
+2025-09-30 05:43:51,142 - M2N2_SIMULATOR - INFO - --- Creating DataLoaders ---
+2025-09-30 05:43:53,057 - M2N2_SIMULATOR - INFO - --- STEP 1: Initializing or Loading Population ---
+2025-09-30 05:43:53,057 - M2N2_SIMULATOR - INFO - Found 1 models in m2n2_implementation/pretrained_models. Loading them.

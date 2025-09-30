@@ -28,7 +28,7 @@ class TextDataset(Dataset):
     def __len__(self):
         return len(self.labels)
 
-def get_dataloaders(dataset_name='CIFAR10', batch_size=64, niche_classes=None, subset_percentage=1.0, validation_split=0.1):
+def get_dataloaders(dataset_name='CIFAR10', batch_size=64, niche_classes=None, subset_percentage=1.0, validation_split=0.1, seed=None):
     """Creates and returns PyTorch DataLoaders for a specified dataset.
 
     This function prepares a dataset for training and testing. It can serve
@@ -86,19 +86,24 @@ def get_dataloaders(dataset_name='CIFAR10', batch_size=64, niche_classes=None, s
     else:
         raise ValueError(f"Unsupported dataset: {dataset_name}. Please use 'CIFAR10', 'MNIST', or 'LLM'.")
 
+    # BUG FIX: Use a seeded random number generator to ensure that the
+    # train/validation split is deterministic throughout a single experiment.
+    rng = np.random.RandomState(seed)
+
     if subset_percentage < 1.0:
         num_train = int(len(full_train_dataset) * subset_percentage)
-        train_indices = np.random.permutation(len(full_train_dataset))[:num_train]
+        train_indices = rng.permutation(len(full_train_dataset))[:num_train]
         full_train_dataset = Subset(full_train_dataset, train_indices)
+
         num_test = int(len(full_test_dataset) * subset_percentage)
-        test_indices = np.random.permutation(len(full_test_dataset))[:num_test]
+        test_indices = rng.permutation(len(full_test_dataset))[:num_test]
         full_test_dataset = Subset(full_test_dataset, test_indices)
 
     # Split training data into training and validation
     num_train = len(full_train_dataset)
     indices = list(range(num_train))
     split = int(np.floor(validation_split * num_train))
-    np.random.shuffle(indices)
+    rng.shuffle(indices)
     train_idx, valid_idx = indices[split:], indices[:split]
 
     train_subset = Subset(full_train_dataset, train_idx)
