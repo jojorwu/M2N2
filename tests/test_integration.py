@@ -1,4 +1,5 @@
 import unittest
+from unittest.mock import patch
 import os
 import shutil
 import yaml
@@ -44,12 +45,17 @@ class TestResnetIntegration(unittest.TestCase):
         """Clean up the temporary environment after the test."""
         shutil.rmtree(self.test_dir)
 
-    def test_resnet_config_initializes_and_applies_resize_transform(self):
+    @patch('m2n2_implementation.simulator.glob.glob')
+    def test_resnet_config_initializes_and_applies_resize_transform(self, mock_glob):
         """
         Tests that setting model_config to RESNET correctly initializes the
         simulator without crashing and applies the necessary Resize transform
         to the data.
         """
+        # Arrange
+        # Prevent loading incompatible models from other tests
+        mock_glob.return_value = []
+
         # Act
         try:
             # This will crash if the dataset_name is not correctly decoupled

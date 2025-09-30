@@ -3,6 +3,7 @@
 # General settings
 model_config: 'RESNET'      # Options: 'CIFAR10', 'MNIST', 'LLM', 'RESNET'
 dataset_name: 'CIFAR10' # The dataset to use ('CIFAR10', 'MNIST', or 'LLM')
+log_file: 'simulation.log' # Path for the log file. Set to null or remove to disable file logging.
 precision_config: '32'    # Options: '16' (mixed), '32' (standard), '64' (double)
 num_generations: 2        # Number of evolutionary cycles to run
 population_size: 10       # Number of models in the population

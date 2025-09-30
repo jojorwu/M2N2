@@ -18,20 +18,11 @@ class TestSimulatorInitialization(unittest.TestCase):
     def setUp(self):
         """Set up a temporary environment for the simulator test."""
         self.test_dir = "tests/temp_simulator_test"
-        self.model_dir = os.path.join(self.test_dir, "pretrained_models")
         self.config_path = os.path.join(self.test_dir, "temp_config.yaml")
+        os.makedirs(self.test_dir, exist_ok=True)
 
-        # Create temporary directories
-        os.makedirs(self.model_dir, exist_ok=True)
-
-        # Create a dummy model state_dict to be "loaded"
-        dummy_model = CifarCNN()
-        self.model_path = os.path.join(self.model_dir, "model_niche_0_fitness_99.9.pth")
-        torch.save(dummy_model.state_dict(), self.model_path)
-
-        # Create a dummy config file for the simulator
-        # The parameters are minimal to ensure the simulator can initialize.
-        self.config = {
+        # Base config that can be modified by each test
+        self.base_config = {
             'model_config': 'CIFAR10',
             'dataset_name': 'CIFAR10',
             'precision_config': '32',
@@ -45,8 +36,6 @@ class TestSimulatorInitialization(unittest.TestCase):
             'validation_split': 0.1,
             'default_epochs': {'specialize': 0, 'finetune': 0},
         }
-        with open(self.config_path, 'w') as f:
-            yaml.dump(self.config, f)
 
     def tearDown(self):
         """Clean up the temporary environment after the test."""
@@ -57,34 +46,58 @@ class TestSimulatorInitialization(unittest.TestCase):
         """
         Tests that a model loaded from a file has its `fitness_is_current`
         flag set to False, forcing a re-evaluation on the new dataset.
-
-        This test is designed to FAIL with the original implementation, which
-        incorrectly sets the flag to True, leading to the use of stale data.
         """
-        # Arrange:
-        # Make the mocked glob.glob return the path to our temporary model file
-        # when the simulator tries to find models in its hardcoded directory.
-        mock_glob.return_value = [self.model_path]
+        # Arrange
+        model_dir = os.path.join(self.test_dir, "pretrained_models")
+        os.makedirs(model_dir, exist_ok=True)
+        dummy_model_path = os.path.join(model_dir, "model_niche_0_fitness_99.9.pth")
+        torch.save(CifarCNN().state_dict(), dummy_model_path)
 
-        # Act:
-        # Instantiate the simulator. The __init__ method calls
-        # `_initialize_population`, which will use our mocked glob.
+        with open(self.config_path, 'w') as f:
+            yaml.dump(self.base_config, f)
+
+        mock_glob.return_value = [dummy_model_path]
+
+        # Act
         simulator = EvolutionSimulator(config_path=self.config_path)
 
-        # Assert:
-        # Check that the loaded model is correctly marked for re-evaluation.
+        # Assert
         self.assertGreater(len(simulator.population), 0, "Simulator failed to load any models.")
+        self.assertFalse(simulator.population[0].fitness_is_current)
 
-        loaded_model_wrapper = simulator.population[0]
+    def test_logging_is_configurable(self):
+        """
+        Tests that file logging can be enabled or disabled via the config file.
+        """
+        # --- Part 1: Test that the log file IS created when specified ---
+        log_file_path = os.path.join(self.test_dir, "test.log")
+        config_with_log = self.base_config.copy()
+        config_with_log['log_file'] = log_file_path
+        with open(self.config_path, 'w') as f:
+            yaml.dump(config_with_log, f)
 
-        # This is the key assertion. With the bug, this flag is True.
-        # The fix is to ensure it is False.
-        self.assertFalse(
-            loaded_model_wrapper.fitness_is_current,
-            "Loaded model's fitness_is_current flag was incorrectly set to True, "
-            "which will cause the simulation to use stale fitness data from the "
-            "previous experiment."
-        )
+        # Act
+        EvolutionSimulator(config_path=self.config_path)
+
+        # Assert
+        self.assertTrue(os.path.exists(log_file_path), "Log file was not created when path was specified.")
+
+        # Clean up the created log file before the next assertion
+        if os.path.exists(log_file_path):
+            os.remove(log_file_path)
+
+        # --- Part 2: Test that the log file IS NOT created when disabled ---
+        config_without_log = self.base_config.copy()
+        config_without_log['log_file'] = None # Explicitly disable
+        with open(self.config_path, 'w') as f:
+            yaml.dump(config_without_log, f)
+
+        # Act
+        EvolutionSimulator(config_path=self.config_path)
+
+        # Assert
+        # Check that the specific log file was not created.
+        self.assertFalse(os.path.exists(log_file_path), "Log file was created even when disabled in config.")
 
 if __name__ == '__main__':
     unittest.main()

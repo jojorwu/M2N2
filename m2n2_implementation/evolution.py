@@ -9,9 +9,11 @@ associated metadata, conforming to Google's Python docstring style.
 import torch
 import torch.optim as optim
 import torch.nn.functional as F
-from .logger_config import logger
+import logging
 from .model import CifarCNN, MnistCNN, LLMClassifier, ResNetClassifier
 from .data import get_dataloaders
+
+logger = logging.getLogger("M2N2_SIMULATOR")
 import copy
 import random
 from tqdm import tqdm

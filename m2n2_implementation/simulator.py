@@ -8,10 +8,13 @@ import glob
 import re
 import yaml
 import numpy as np
-from .logger_config import logger
+import logging
+from .logger_config import setup_logger
 from .evolution import ModelWrapper, specialize, evaluate, select_mates, merge, mutate, finetune, create_next_generation
 from .data import get_dataloaders
 from .visualization import plot_fitness_history
+
+logger = logging.getLogger("M2N2_SIMULATOR")
 
 class EvolutionSimulator:
     """
@@ -30,6 +33,10 @@ class EvolutionSimulator:
         # --- 1. Load Configuration from YAML ---
         with open(config_path, 'r') as f:
             self.config = yaml.safe_load(f)
+
+        # --- 2. Configure Logging ---
+        log_file = self.config.get('log_file')
+        setup_logger(log_file=log_file)
 
         # General settings
         self.model_config = self.config['model_config']
@@ -58,12 +65,13 @@ class EvolutionSimulator:
 
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.seed = np.random.randint(0, 1_000_000)  # Seed for this experiment run
+
         logger.info("--- M2N2 Simplified Implementation ---")
         logger.info(f"Loaded configuration for model: {self.model_config}")
         logger.info(f"Using device: {self.device}")
         logger.info(f"Experiment seed: {self.seed}\n")
 
-        # --- 2. Initialize Population and DataLoaders ---
+        # --- 3. Initialize Population and DataLoaders ---
         self.population = []
         self.fitness_history = []
         self._initialize_dataloaders()
