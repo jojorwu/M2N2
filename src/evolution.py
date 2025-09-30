@@ -127,27 +127,22 @@ def specialize(model_wrapper, dataset_name, epochs=1, precision='32', seed=None)
     model_wrapper.fitness_is_current = False
     logger.info("Specialization complete.")
 
-def _get_validation_fitness(model_wrapper, validation_loader):
-    """Calculates a fitness score using a provided validation loader.
-
-    This is the fastest evaluation function, designed for the high-frequency
-    evaluations that occur during the sequential constructive crossover. It
-    uses a small, pre-made validation set to quickly estimate a model's
-    performance without touching the final test set.
+def _calculate_accuracy(model_wrapper, data_loader):
+    """A generic helper to calculate accuracy on a given data loader.
 
     Args:
-        model_wrapper (ModelWrapper): The model wrapper to evaluate.
-        validation_loader (DataLoader): The pre-made loader for the validation set.
+        model_wrapper (ModelWrapper): The model to evaluate.
+        data_loader (DataLoader): The data to evaluate on.
 
     Returns:
-        float: The calculated accuracy on the validation set.
+        float: The accuracy of the model on the data.
     """
     model_wrapper.model.eval()
     correct = 0
     total = 0
 
     with torch.no_grad():
-        for batch in validation_loader:
+        for batch in data_loader:
             if model_wrapper.model_name == 'LLM':
                 input_ids = batch['input_ids'].to(model_wrapper.device)
                 attention_mask = batch['attention_mask'].to(model_wrapper.device)
@@ -170,6 +165,23 @@ def _get_validation_fitness(model_wrapper, validation_loader):
 
     return 100 * correct / total
 
+def _get_validation_fitness(model_wrapper, validation_loader):
+    """Calculates a fitness score using a provided validation loader.
+
+    This is the fastest evaluation function, designed for the high-frequency
+    evaluations that occur during the sequential constructive crossover. It
+    uses a small, pre-made validation set to quickly estimate a model's
+    performance without touching the final test set.
+
+    Args:
+        model_wrapper (ModelWrapper): The model wrapper to evaluate.
+        validation_loader (DataLoader): The pre-made loader for the validation set.
+
+    Returns:
+        float: The calculated accuracy on the validation set.
+    """
+    return _calculate_accuracy(model_wrapper, validation_loader)
+
 def _get_fitness_score(model_wrapper, dataset_name, seed=None):
     """Calculates and returns the fitness score for a model on the test set.
 
@@ -189,34 +201,7 @@ def _get_fitness_score(model_wrapper, dataset_name, seed=None):
     """
     # We always evaluate on the full test set to measure general performance
     _, _, test_loader = get_dataloaders(dataset_name=dataset_name, model_name=model_wrapper.model_name, subset_percentage=0.1, validation_split=0, seed=seed) # No validation split needed here
-    model_wrapper.model.eval()
-    correct = 0
-    total = 0
-
-    with torch.no_grad():
-        for batch in test_loader:
-            if model_wrapper.model_name == 'LLM':
-                input_ids = batch['input_ids'].to(model_wrapper.device)
-                attention_mask = batch['attention_mask'].to(model_wrapper.device)
-                labels = batch['labels'].to(model_wrapper.device)
-                outputs = model_wrapper.model(input_ids=input_ids, attention_mask=attention_mask)
-                _, predicted = torch.max(outputs, 1)
-                total += labels.size(0)
-                correct += (predicted == labels).sum().item()
-            else:
-                data, target = batch
-                data = data.to(model_wrapper.device)
-                target = target.to(model_wrapper.device)
-                # Ensure data type matches model's precision
-                if next(model_wrapper.model.parameters()).dtype == torch.float64:
-                    data = data.double()
-                output = model_wrapper.model(data)
-                _, predicted = torch.max(output.data, 1)
-                total += target.size(0)
-                correct += (predicted == target).sum().item()
-
-    accuracy = 100 * correct / total
-    return accuracy
+    return _calculate_accuracy(model_wrapper, test_loader)
 
 def evaluate(model_wrapper, dataset_name, seed=None):
     """Evaluates fitness on the full test set and updates the wrapper.
