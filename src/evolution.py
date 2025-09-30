@@ -459,6 +459,14 @@ def merge(parent1, parent2, strategy='average', validation_loader=None):
             layer_prefixes = sorted(list(set([k.split('.')[0] for k in fitter_parent.model.state_dict().keys()])))
 
         for prefix in layer_prefixes:
+            # OPTIMIZATION: For ResNet, some children (like relu, maxpool) have no parameters.
+            # Skip the expensive validation for these layers.
+            if fitter_parent.model_name == 'RESNET':
+                module_to_check = dict(fitter_parent.model.resnet.named_children()).get(prefix)
+                if module_to_check and not list(module_to_check.parameters()):
+                    logger.info(f"  - Skipping layer '{prefix}' as it has no learnable parameters.")
+                    continue
+
             temp_state_dict = copy.deepcopy(best_child_state_dict)
             for key in temp_state_dict:
                 if key.startswith(prefix):
