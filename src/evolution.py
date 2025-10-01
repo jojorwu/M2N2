@@ -12,6 +12,9 @@ import torch.nn.functional as F
 import logging
 from .model import CifarCNN, MnistCNN, LLMClassifier, ResNetClassifier
 from .data import get_dataloaders
+from typing import List, Optional, Tuple
+from torch.utils.data import DataLoader
+from torch import nn
 
 logger = logging.getLogger("M2N2_SIMULATOR")
 import copy
@@ -34,7 +37,14 @@ class ModelWrapper:
         fitness_is_current (bool): A flag to indicate if the fitness score
             is up-to-date. Initialized to `False`.
     """
-    def __init__(self, model_name, niche_classes, device='cpu'):
+    model_name: str
+    niche_classes: List[int]
+    device: str
+    model: nn.Module
+    fitness: float
+    fitness_is_current: bool
+
+    def __init__(self, model_name: str, niche_classes: List[int], device: str = 'cpu'):
         """Initializes the ModelWrapper with a model and its niche.
 
         Args:
@@ -64,7 +74,7 @@ class ModelWrapper:
         # This flag prevents redundant evaluations.
         self.fitness_is_current = False
 
-def specialize(model_wrapper, dataset_name, epochs=1, precision='32', seed=None, learning_rate=0.001):
+def specialize(model_wrapper: ModelWrapper, dataset_name: str, epochs: int = 1, precision: str = '32', seed: Optional[int] = None, learning_rate: float = 0.001) -> None:
     """Trains a model in-place on its specialized data niche.
 
     This simulates the "resource competition" phase where a model becomes an
@@ -130,7 +140,7 @@ def specialize(model_wrapper, dataset_name, epochs=1, precision='32', seed=None,
     model_wrapper.fitness_is_current = False
     logger.info("Specialization complete.")
 
-def _calculate_accuracy(model_wrapper, data_loader):
+def _calculate_accuracy(model_wrapper: ModelWrapper, data_loader: DataLoader) -> float:
     """A generic helper to calculate accuracy on a given data loader.
 
     Args:
@@ -168,7 +178,7 @@ def _calculate_accuracy(model_wrapper, data_loader):
 
     return 100 * correct / total
 
-def _get_validation_fitness(model_wrapper, validation_loader):
+def _get_validation_fitness(model_wrapper: ModelWrapper, validation_loader: DataLoader) -> float:
     """Calculates a fitness score using a provided validation loader.
 
     This is the fastest evaluation function, designed for the high-frequency
@@ -185,7 +195,7 @@ def _get_validation_fitness(model_wrapper, validation_loader):
     """
     return _calculate_accuracy(model_wrapper, validation_loader)
 
-def _get_fitness_score(model_wrapper, dataset_name, seed=None):
+def _get_fitness_score(model_wrapper: ModelWrapper, dataset_name: str, seed: Optional[int] = None) -> float:
     """Calculates and returns the fitness score for a model on the test set.
 
     This is a lightweight, side-effect-free version of the `evaluate`
@@ -206,7 +216,7 @@ def _get_fitness_score(model_wrapper, dataset_name, seed=None):
     _, _, test_loader = get_dataloaders(dataset_name=dataset_name, model_name=model_wrapper.model_name, subset_percentage=0.1, validation_split=0, seed=seed) # No validation split needed here
     return _calculate_accuracy(model_wrapper, test_loader)
 
-def evaluate(model_wrapper, dataset_name, seed=None):
+def evaluate(model_wrapper: ModelWrapper, dataset_name: str, seed: Optional[int] = None) -> float:
     """Evaluates fitness on the full test set and updates the wrapper.
 
     This function skips evaluation if the model's fitness is already
@@ -231,7 +241,7 @@ def evaluate(model_wrapper, dataset_name, seed=None):
     model_wrapper.fitness_is_current = True
     return accuracy
 
-def evaluate_by_class(model_wrapper, dataset_name, seed=None):
+def evaluate_by_class(model_wrapper: ModelWrapper, dataset_name: str, seed: Optional[int] = None) -> List[float]:
     """Evaluates a model's accuracy on each individual class.
 
     This function is used to identify a model's strengths and weaknesses,
@@ -286,7 +296,7 @@ def evaluate_by_class(model_wrapper, dataset_name, seed=None):
 
     return class_accuracies
 
-def select_mates(population, dataset_name, seed=None):
+def select_mates(population: List[ModelWrapper], dataset_name: str, seed: Optional[int] = None) -> Tuple[Optional[ModelWrapper], Optional[ModelWrapper]]:
     """Selects a complementary pair of parents using an advanced strategy.
 
     This function promotes "healing" by pairing a strong model with a model
@@ -353,7 +363,7 @@ def select_mates(population, dataset_name, seed=None):
         logger.info("  - Could not select a pair of parents.")
         return None, None
 
-def merge(parent1, parent2, strategy='average', validation_loader=None, seed=None, dampening_factor=25.0):
+def merge(parent1: ModelWrapper, parent2: ModelWrapper, strategy: str = 'average', validation_loader: Optional[DataLoader] = None, seed: Optional[int] = None, dampening_factor: float = 25.0) -> ModelWrapper:
     """Merges two parent models into a new child model (crossover).
 
     This function combines the weights of two parents to produce a new child
@@ -490,7 +500,7 @@ def merge(parent1, parent2, strategy='average', validation_loader=None, seed=Non
     logger.info("Merging complete.")
     return child_wrapper
 
-def mutate(model_wrapper, generation, mutation_rate=0.01, initial_mutation_strength=0.1, decay_factor=0.9):
+def mutate(model_wrapper: ModelWrapper, generation: int, mutation_rate: float = 0.01, initial_mutation_strength: float = 0.1, decay_factor: float = 0.9) -> ModelWrapper:
     """Applies random, adaptively scaled Gaussian mutations to a model's weights.
 
     This function introduces genetic diversity by altering a fraction of the
@@ -533,7 +543,7 @@ def mutate(model_wrapper, generation, mutation_rate=0.01, initial_mutation_stren
     logger.info("Mutation complete.")
     return model_wrapper
 
-def create_next_generation(current_population, new_child, population_size, dataset_name, seed=None):
+def create_next_generation(current_population: List[ModelWrapper], new_child: ModelWrapper, population_size: int, dataset_name: str, seed: Optional[int] = None) -> List[ModelWrapper]:
     """Creates the next generation's population using elitist selection.
 
     This function implements the selection step of the algorithm. It combines
@@ -572,7 +582,7 @@ def create_next_generation(current_population, new_child, population_size, datas
 
     return next_generation
 
-def _calculate_loss(model_wrapper, data_loader):
+def _calculate_loss(model_wrapper: ModelWrapper, data_loader: DataLoader) -> float:
     """A generic helper to calculate loss on a given data loader."""
     model_wrapper.model.eval()
     total_loss = 0.0
@@ -600,7 +610,7 @@ def _calculate_loss(model_wrapper, data_loader):
     return total_loss / len(data_loader)
 
 
-def finetune(model_wrapper, dataset_name, validation_loader, epochs=3, precision='32', seed=None, learning_rate=0.001, scheduler_patience=2, scheduler_factor=0.5):
+def finetune(model_wrapper: ModelWrapper, dataset_name: str, validation_loader: DataLoader, epochs: int = 3, precision: str = '32', seed: Optional[int] = None, learning_rate: float = 0.001, scheduler_patience: int = 2, scheduler_factor: float = 0.5) -> None:
     """Fine-tunes a model in-place on the full dataset with a scheduler.
 
     This step is crucial for a newly merged child model. It uses an Adam

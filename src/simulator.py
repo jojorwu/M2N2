@@ -13,6 +13,8 @@ from .logger_config import setup_logger
 from .evolution import ModelWrapper, specialize, evaluate, select_mates, merge, mutate, finetune, create_next_generation
 from .data import get_dataloaders
 from .visualization import plot_fitness_history
+from typing import List, Tuple, Dict, Any, Optional
+from torch.utils.data import DataLoader
 
 logger = logging.getLogger("M2N2_SIMULATOR")
 
@@ -21,7 +23,32 @@ class EvolutionSimulator:
     Encapsulates the entire evolutionary simulation, from configuration
     loading to running the generational loop and saving the results.
     """
-    def __init__(self, config_path='config.yaml'):
+    config: Dict[str, Any]
+    model_config: str
+    dataset_name: str
+    precision_config: str
+    num_generations: int
+    population_size: int
+    merge_strategy: str
+    dampening_factor: float
+    mutation_rate: float
+    initial_mutation_strength: float
+    mutation_decay_factor: float
+    learning_rate: float
+    scheduler_patience: int
+    scheduler_factor: float
+    subset_percentage: float
+    validation_split: float
+    batch_size: int
+    specialize_epochs: int
+    finetune_epochs: int
+    device: torch.device
+    seed: int
+    population: List[ModelWrapper]
+    fitness_history: List[Tuple[float, float]]
+    validation_loader: DataLoader
+
+    def __init__(self, config_path: str = 'config.yaml') -> None:
         """
         Initializes the simulator by loading configuration and setting up
         the environment.
@@ -44,7 +71,7 @@ class EvolutionSimulator:
         self._initialize_dataloaders()
         self._initialize_population()
 
-    def _setup_environment(self, config_path):
+    def _setup_environment(self, config_path: str) -> None:
         """Loads configuration and sets up the logger."""
         # --- 1. Load Configuration from YAML ---
         with open(config_path, 'r') as f:
@@ -54,7 +81,7 @@ class EvolutionSimulator:
         log_file = self.config.get('log_file')
         setup_logger(log_file=log_file)
 
-    def _initialize_parameters(self):
+    def _initialize_parameters(self) -> None:
         """Initializes simulator parameters from the config."""
         # --- General settings ---
         self.model_config = self.config['model_config']
@@ -93,7 +120,7 @@ class EvolutionSimulator:
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.seed = np.random.randint(0, 1_000_000)  # Seed for this experiment run
 
-    def _initialize_dataloaders(self):
+    def _initialize_dataloaders(self) -> None:
         """Creates the necessary DataLoaders for the experiment."""
         logger.info("--- Creating DataLoaders ---")
         _, self.validation_loader, _ = get_dataloaders(
@@ -105,41 +132,54 @@ class EvolutionSimulator:
             seed=self.seed
         )
 
-    def _initialize_population(self):
+    def _initialize_population(self) -> None:
         """Initializes or loads the population of models."""
         if self.seed is not None:
             torch.manual_seed(self.seed)
         logger.info("--- STEP 1: Initializing or Loading Population ---")
         model_dir = "src/pretrained_models"
-        niches = [[i] for i in range(self.population_size)]
         model_files = glob.glob(os.path.join(model_dir, "*.pth"))
 
         if model_files:
-            logger.info(f"Found {len(model_files)} models in {model_dir}. Loading them.")
-            for f in model_files:
-                match = re.search(r'model_niche_([\d_]+)_fitness_([\d\.]+)\.pth', os.path.basename(f))
-                if match:
-                    niche_classes = [int(n) for n in match.group(1).split('_')]
-                    fitness = float(match.group(2))
-                    wrapper = ModelWrapper(model_name=self.model_config, niche_classes=niche_classes, device=self.device)
-                    wrapper.model.load_state_dict(torch.load(f, map_location=self.device))
-                    wrapper.fitness = fitness
-                    # Ensure that loaded models are re-evaluated, as their
-                    # fitness from a previous run may not be relevant for
-                    # the current run's dataset subset.
-                    wrapper.fitness_is_current = False
-                    self.population.append(wrapper)
+            self._load_population_from_files(model_files)
         else:
-            logger.info("No pretrained models found. Initializing a new population from scratch.")
-            for i in range(self.population_size):
-                self.population.append(ModelWrapper(model_name=self.model_config, niche_classes=niches[i], device=self.device))
+            self._initialize_new_population()
 
-            logger.info("--- Specializing Initial Models ---")
-            for model_wrapper in self.population:
-                specialize(model_wrapper, dataset_name=self.dataset_name, epochs=self.specialize_epochs, precision=self.precision_config, seed=self.seed, learning_rate=self.learning_rate)
-            logger.info("")
+    def _load_population_from_files(self, model_files: List[str]) -> None:
+        """Loads a population of models from saved .pth files."""
+        logger.info(f"Found {len(model_files)} models in 'src/pretrained_models'. Loading them.")
+        for f in model_files:
+            match = re.search(r'model_niche_([\d_]+)_fitness_([\d\.]+)\.pth', os.path.basename(f))
+            if match:
+                niche_classes = [int(n) for n in match.group(1).split('_')]
+                fitness = float(match.group(2))
+                wrapper = ModelWrapper(model_name=self.model_config, niche_classes=niche_classes, device=self.device)
+                wrapper.model.load_state_dict(torch.load(f, map_location=self.device))
+                wrapper.fitness = fitness
+                # Ensure that loaded models are re-evaluated.
+                wrapper.fitness_is_current = False
+                self.population.append(wrapper)
 
-    def run(self):
+    def _initialize_new_population(self) -> None:
+        """Initializes a new population from scratch and specializes them."""
+        logger.info("No pretrained models found. Initializing a new population from scratch.")
+        niches = [[i] for i in range(self.population_size)]
+        for i in range(self.population_size):
+            self.population.append(ModelWrapper(model_name=self.model_config, niche_classes=niches[i], device=self.device))
+
+        logger.info("--- Specializing Initial Models ---")
+        for model_wrapper in self.population:
+            specialize(
+                model_wrapper,
+                dataset_name=self.dataset_name,
+                epochs=self.specialize_epochs,
+                precision=self.precision_config,
+                seed=self.seed,
+                learning_rate=self.learning_rate
+            )
+        logger.info("")
+
+    def run(self) -> None:
         """Runs the main evolutionary loop."""
         for generation in range(self.num_generations):
             logger.info(f"\n--- GENERATION {generation + 1}/{self.num_generations} ---")
@@ -188,7 +228,7 @@ class EvolutionSimulator:
 
         self._summarize_and_save()
 
-    def _summarize_and_save(self):
+    def _summarize_and_save(self) -> None:
         """Prints a final summary and saves the results."""
         logger.info("\n\n--- EXPERIMENT SUMMARY ---")
         logger.info("Fitness history (Best, Average):")
