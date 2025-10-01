@@ -229,7 +229,7 @@ class EvolutionSimulator:
         self._summarize_and_save()
 
     def _summarize_and_save(self) -> None:
-        """Prints a final summary and saves the results."""
+        """Prints a final summary, visualizes fitness history, and saves the final population."""
         logger.info("\n\n--- EXPERIMENT SUMMARY ---")
         logger.info("Fitness history (Best, Average):")
         for i, (best, avg) in enumerate(self.fitness_history):
@@ -240,12 +240,16 @@ class EvolutionSimulator:
 
         # Visualize and Save
         plot_fitness_history(self.fitness_history, 'fitness_history.png')
+        self._save_final_population()
 
+    def _save_final_population(self) -> None:
+        """Saves the models in the final population to the 'src/pretrained_models' directory."""
         logger.info("\n--- Saving final population to pretrained_models/ ---")
         model_dir = "src/pretrained_models"
         if not os.path.exists(model_dir):
             os.makedirs(model_dir)
         else:
+            # Clear out old models from previous runs to prevent confusion.
             files = glob.glob(os.path.join(model_dir, "*.pth"))
             for f in files:
                 os.remove(f)
