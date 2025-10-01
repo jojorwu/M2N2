@@ -565,16 +565,46 @@ def create_next_generation(current_population, new_child, population_size, datas
 
     return next_generation
 
-def finetune(model_wrapper, dataset_name, epochs=3, precision='32', seed=None):
+def _calculate_loss(model_wrapper, data_loader):
+    """A generic helper to calculate loss on a given data loader."""
+    model_wrapper.model.eval()
+    total_loss = 0.0
+    device = model_wrapper.device
+
+    with torch.no_grad():
+        for batch in data_loader:
+            if model_wrapper.model_name == 'LLM':
+                input_ids = batch['input_ids'].to(device)
+                attention_mask = batch['attention_mask'].to(device)
+                labels = batch['labels'].to(device)
+                outputs = model_wrapper.model(input_ids=input_ids, attention_mask=attention_mask)
+                loss = F.cross_entropy(outputs, labels)
+            else:
+                data, target = batch
+                data, target = data.to(device), target.to(device)
+                if next(model_wrapper.model.parameters()).dtype == torch.float64:
+                    data = data.double()
+                output = model_wrapper.model(data)
+                loss = F.cross_entropy(output, target)
+            total_loss += loss.item()
+
+    if len(data_loader) == 0:
+        return 0.0
+    return total_loss / len(data_loader)
+
+
+def finetune(model_wrapper, dataset_name, validation_loader, epochs=3, precision='32', seed=None):
     """Fine-tunes a model in-place on the full dataset with a scheduler.
 
     This step is crucial for a newly merged child model. It uses an Adam
-    optimizer and a learning rate scheduler, and supports different training
-    precisions.
+    optimizer and a `ReduceLROnPlateau` learning rate scheduler, and supports
+    different training precisions.
 
     Args:
         model_wrapper (ModelWrapper): The model to be fine-tuned in-place.
         dataset_name (str): The name of the dataset to use for training.
+        validation_loader (DataLoader): A DataLoader for the validation set,
+            used to control the learning rate scheduler.
         epochs (int, optional): The number of fine-tuning epochs.
             Defaults to 3.
         precision (str, optional): The training precision ('16', '32', '64').
@@ -582,25 +612,33 @@ def finetune(model_wrapper, dataset_name, epochs=3, precision='32', seed=None):
         seed (int, optional): A seed for the random number generator to
             ensure deterministic data splitting. Defaults to None.
     """
-    logger.info(f"Fine-tuning model for {epochs} epoch(s) with {precision}-bit precision and LR scheduler...")
+    logger.info(f"Fine-tuning model for {epochs} epoch(s) with {precision}-bit precision and ReduceLROnPlateau scheduler...")
 
-    train_loader, _, _ = get_dataloaders(dataset_name=dataset_name, model_name=model_wrapper.model_name, subset_percentage=0.1, seed=seed)
+    # We get a train_loader with the full training data (no validation split here)
+    train_loader, _, _ = get_dataloaders(
+        dataset_name=dataset_name,
+        model_name=model_wrapper.model_name,
+        subset_percentage=0.1,
+        seed=seed,
+        validation_split=0.0
+    )
     optimizer = optim.Adam(model_wrapper.model.parameters(), lr=0.001)
-    scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=1, gamma=0.7)
+    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min', patience=2, factor=0.5, verbose=True)
 
     if precision == '64':
         model_wrapper.model.double()
 
-    scaler = torch.cuda.amp.GradScaler(enabled=(precision == '16'))
+    scaler = torch.cuda.amp.GradScaler(enabled=(precision == '16' and 'cuda' in model_wrapper.device))
 
     for epoch in range(epochs):
         model_wrapper.model.train()
         logger.info(f"  - Epoch {epoch + 1}/{epochs}")
         pbar = tqdm(train_loader, desc=f"Fine-tuning Child")
+        total_train_loss = 0
         for batch in pbar:
             optimizer.zero_grad()
 
-            with torch.cuda.amp.autocast(enabled=(precision == '16')):
+            with torch.cuda.amp.autocast(enabled=(precision == '16' and 'cuda' in model_wrapper.device)):
                 if model_wrapper.model_name == 'LLM':
                     input_ids = batch['input_ids'].to(model_wrapper.device)
                     attention_mask = batch['attention_mask'].to(model_wrapper.device)
@@ -619,9 +657,15 @@ def finetune(model_wrapper, dataset_name, epochs=3, precision='32', seed=None):
             scaler.scale(loss).backward()
             scaler.step(optimizer)
             scaler.update()
-            pbar.set_postfix({'loss': loss.item(), 'lr': scheduler.get_last_lr()[0]})
+            total_train_loss += loss.item()
+            pbar.set_postfix({'train_loss': f"{loss.item():.4f}", 'lr': optimizer.param_groups[0]['lr']})
 
-        scheduler.step()
+        # Calculate validation loss for the scheduler
+        avg_val_loss = _calculate_loss(model_wrapper, validation_loader)
+        scheduler.step(avg_val_loss)
+
+        avg_train_loss = total_train_loss / len(train_loader)
+        logger.info(f"  - Avg Train Loss: {avg_train_loss:.4f}, Avg Val Loss: {avg_val_loss:.4f}")
 
     # The model remains in its trained precision for subsequent evaluation
     model_wrapper.fitness_is_current = False

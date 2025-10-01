@@ -162,7 +162,7 @@ class EvolutionSimulator:
                     initial_mutation_strength=self.initial_mutation_strength,
                     decay_factor=self.mutation_decay_factor
                 )
-                finetune(child, dataset_name=self.dataset_name, epochs=self.finetune_epochs, precision=self.precision_config, seed=self.seed)
+                finetune(child, dataset_name=self.dataset_name, validation_loader=self.validation_loader, epochs=self.finetune_epochs, precision=self.precision_config, seed=self.seed)
                 self.population = create_next_generation(self.population, child, self.population_size, dataset_name=self.dataset_name, seed=self.seed)
             else:
                 logger.info("Population will carry over to the next generation without changes.")

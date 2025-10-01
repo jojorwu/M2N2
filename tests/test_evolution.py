@@ -244,5 +244,37 @@ class TestEvolution(unittest.TestCase):
         )
 
 
+    @patch('src.data.get_dataloaders')
+    @patch('src.evolution._calculate_loss')
+    @patch('torch.optim.lr_scheduler.ReduceLROnPlateau')
+    def test_finetune_uses_reduce_lr_on_plateau(self, mock_scheduler_class, mock_calculate_loss, mock_get_dataloaders):
+        """
+        Tests that the `finetune` function correctly uses the ReduceLROnPlateau
+        scheduler by stepping it with the calculated validation loss.
+        """
+        # Arrange
+        # 1. Mock the behavior of the dependencies
+        mock_scheduler_instance = mock_scheduler_class.return_value
+        mock_calculate_loss.return_value = 0.123  # A dummy validation loss
+        mock_get_dataloaders.return_value = (None, None, None) # Prevent actual data loading
+
+        # 2. Create the necessary inputs for the finetune function
+        model_wrapper = ModelWrapper(model_name='CIFAR10', niche_classes=[0], device=self.device)
+        dummy_validation_loader = "dummy_loader" # Can be a simple string as it's just passed through
+
+        # Act
+        # 3. Call the finetune function
+        from src.evolution import finetune
+        finetune(model_wrapper, 'CIFAR10', dummy_validation_loader, epochs=1)
+
+        # Assert
+        # 4. Verify that the scheduler was created and its step method was called
+        self.assertTrue(mock_scheduler_class.called, "ReduceLROnPlateau scheduler was not created.")
+        self.assertTrue(mock_scheduler_instance.step.called, "Scheduler's step() method was not called.")
+
+        # 5. Verify that the step method was called with the correct validation loss
+        mock_scheduler_instance.step.assert_called_once_with(0.123)
+
+
 if __name__ == '__main__':
     unittest.main()
