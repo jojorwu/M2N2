@@ -30,10 +30,10 @@ class TestEvolution(unittest.TestCase):
         # 1. Create two ModelWrappers with a significant fitness disparity
         # This simulates the "healing" scenario where the best model is paired
         # with a specialist in its weakest area.
-        parent1 = ModelWrapper(model_name='CIFAR10', niche_classes=[0], device=self.device)
+        parent1 = ModelWrapper(model_name='CIFAR10', niche_classes=[0], num_classes=10, device=self.device)
         parent1.fitness = 85.0  # High-fitness generalist
 
-        parent2 = ModelWrapper(model_name='CIFAR10', niche_classes=[1], device=self.device)
+        parent2 = ModelWrapper(model_name='CIFAR10', niche_classes=[1], num_classes=10, device=self.device)
         parent2.fitness = 15.0  # Low-fitness specialist
 
         # 2. Assign easily trackable weights to each parent model
@@ -102,9 +102,9 @@ class TestEvolution(unittest.TestCase):
         mock_resnet_constructor.return_value = MockResNetModule()
 
         # 3. Create parent wrappers. They will now be valid ResNetClassifiers containing our mock.
-        parent1 = ModelWrapper(model_name='RESNET', niche_classes=[0], device=self.device)
+        parent1 = ModelWrapper(model_name='RESNET', niche_classes=[0], num_classes=10, device=self.device)
         parent1.fitness = 80.0
-        parent2 = ModelWrapper(model_name='RESNET', niche_classes=[1], device=self.device)
+        parent2 = ModelWrapper(model_name='RESNET', niche_classes=[1], num_classes=10, device=self.device)
         parent2.fitness = 20.0
 
         # 4. The mock for the validation function will return a constant value
@@ -140,8 +140,8 @@ class TestEvolution(unittest.TestCase):
         seed1 = 42
         seed2 = 1337
 
-        parent1 = ModelWrapper(model_name='CIFAR10', niche_classes=[0], device=self.device)
-        parent2 = ModelWrapper(model_name='CIFAR10', niche_classes=[1], device=self.device)
+        parent1 = ModelWrapper(model_name='CIFAR10', niche_classes=[0], num_classes=10, device=self.device)
+        parent2 = ModelWrapper(model_name='CIFAR10', niche_classes=[1], num_classes=10, device=self.device)
 
         # Assign easily trackable weights
         with torch.no_grad():
@@ -195,12 +195,12 @@ class TestEvolution(unittest.TestCase):
         # Create a population: a "best" model (Parent 1) and specialists
         # for all classes so a mate can always be found.
         population = []
-        parent1 = ModelWrapper(model_name='CIFAR10', niche_classes=[], device=self.device)
+        parent1 = ModelWrapper(model_name='CIFAR10', niche_classes=[], num_classes=10, device=self.device)
         parent1.fitness = 90.0 # This will be chosen as Parent 1
         population.append(parent1)
 
         for i in range(10):
-            specialist = ModelWrapper(model_name='CIFAR10', niche_classes=[i], device=self.device)
+            specialist = ModelWrapper(model_name='CIFAR10', niche_classes=[i], num_classes=10, device=self.device)
             specialist.fitness = 20.0
             # Ensure the specialist for class 3 isn't the same object as parent1
             if i == 3:

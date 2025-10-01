@@ -71,8 +71,17 @@ def _load_full_datasets(dataset_name, model_name):
             os.makedirs(cache_dir, exist_ok=True)
             torch.save(full_train_dataset, train_cache_path)
             torch.save(full_test_dataset, test_cache_path)
+    elif dataset_name == 'IMAGENET':
+        # For ImageNet, we expect 224x224 images.
+        # We use FakeData to simulate the dataset without needing to download it.
+        transform = transforms.Compose([
+            transforms.ToTensor(),
+            transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
+        ])
+        full_train_dataset = datasets.FakeData(size=1000, image_size=(3, 224, 224), num_classes=1000, transform=transform)
+        full_test_dataset = datasets.FakeData(size=200, image_size=(3, 224, 224), num_classes=1000, transform=transform)
     else:
-        raise ValueError(f"Unsupported dataset: {dataset_name}. Please use 'CIFAR10', 'MNIST', or 'LLM'.")
+        raise ValueError(f"Unsupported dataset: {dataset_name}. Please use 'CIFAR10', 'MNIST', 'LLM', or 'IMAGENET'.")
     return full_train_dataset, full_test_dataset
 
 def get_dataloaders(dataset_name='CIFAR10', model_name=None, batch_size=64, niche_classes=None, subset_percentage=1.0, validation_split=0.1, seed=None):

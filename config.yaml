@@ -33,3 +33,14 @@ model_specific_epochs:
   RESNET:
     specialize: 1
     finetune: 2
+
+# --- Dataset Settings ---
+dataset_configs:
+  CIFAR10:
+    num_classes: 10
+  MNIST:
+    num_classes: 10
+  LLM:
+    num_classes: 77 # For banking77
+  IMAGENET:
+    num_classes: 1000

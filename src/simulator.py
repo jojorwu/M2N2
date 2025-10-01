@@ -13,9 +13,10 @@ from concurrent.futures import ProcessPoolExecutor
 from functools import partial
 from .logger_config import setup_logger
 from .utils import set_seed
-from .evolution import ModelWrapper, specialize, evaluate, select_mates, merge, mutate, finetune, create_next_generation, _get_fitness_score
+from .evolution import ModelWrapper, select_mates, merge, mutate, finetune, create_next_generation
 from .data import get_dataloaders
 from .visualization import plot_fitness_history
+from .workers import specialize_worker, evaluate_worker
 
 logger = logging.getLogger("M2N2_SIMULATOR")
 
@@ -65,6 +66,7 @@ class EvolutionSimulator:
         self.model_config = self.config['model_config']
         self.dataset_name = self.config['dataset_name']
         self.model_dir = self.config['model_dir']
+        self.num_classes = self.config['dataset_configs'][self.dataset_name]['num_classes']
         self.precision_config = str(self.config['precision_config'])
         self.num_generations = self.config['num_generations']
         self.population_size = self.config['population_size']
@@ -119,7 +121,7 @@ class EvolutionSimulator:
                 if match:
                     niche_classes = [int(n) for n in match.group(1).split('_')]
                     fitness = float(match.group(2))
-                    wrapper = ModelWrapper(model_name=self.model_config, niche_classes=niche_classes, device=self.device)
+                    wrapper = ModelWrapper(model_name=self.model_config, niche_classes=niche_classes, num_classes=self.num_classes, device=self.device)
                     wrapper.model.load_state_dict(torch.load(f, map_location=self.device))
                     wrapper.fitness = fitness
                     # BUG FIX: Ensure that loaded models are re-evaluated.
@@ -130,13 +132,27 @@ class EvolutionSimulator:
                     self.population.append(wrapper)
         else:
             logger.info("No pretrained models found. Initializing a new population from scratch.")
-            initial_population = [ModelWrapper(model_name=self.model_config, niche_classes=niches[i], device=self.device) for i in range(self.population_size)]
+
+            # Prepare arguments for the worker function. Each tuple is one unit of work.
+            worker_args = [
+                (self.model_config, niches[i], self.num_classes, self.device, self.dataset_name, self.specialize_epochs, self.precision_config, self.seed)
+                for i in range(self.population_size)
+            ]
 
             logger.info("--- Specializing Initial Models (in parallel) ---")
-            specialize_fn = partial(specialize, dataset_name=self.dataset_name, epochs=self.specialize_epochs, precision=self.precision_config, seed=self.seed)
             with ProcessPoolExecutor() as executor:
-                self.population = list(executor.map(specialize_fn, initial_population))
-            logger.info("")
+                # The map function returns the state dictionaries from the workers.
+                state_dicts = list(executor.map(specialize_worker, worker_args))
+
+            # Now, create the population in the main process and load the states.
+            self.population = []
+            for i, state_dict in enumerate(state_dicts):
+                wrapper = ModelWrapper(self.model_config, niches[i], self.num_classes, self.device)
+                wrapper.model.load_state_dict(state_dict)
+                wrapper.fitness_is_current = False # Mark for evaluation
+                self.population.append(wrapper)
+
+            logger.info("Parallel specialization complete.")
 
     def run(self):
         """Runs the main evolutionary loop."""
@@ -144,30 +160,46 @@ class EvolutionSimulator:
             logger.info(f"\n--- GENERATION {generation + 1}/{self.num_generations} ---")
 
             if generation > 0:
-                logger.info("--- Specializing Models ---")
-                for model_wrapper in self.population:
-                    if model_wrapper.niche_classes != list(range(10)):
-                        specialize(model_wrapper, dataset_name=self.dataset_name, epochs=self.specialize_epochs, precision=self.precision_config, seed=self.seed)
-                logger.info("")
+                logger.info("--- Specializing Models (in parallel) ---")
+
+                # A generalist model will have all classes in its niche.
+                # Any model that is not a generalist is considered a specialist.
+                specialists_to_train = [m for m in self.population if len(m.niche_classes) < self.num_classes]
+
+                if specialists_to_train:
+                    worker_args = [
+                        (m.model_name, m.niche_classes, m.model.num_classes, self.device, self.dataset_name, self.specialize_epochs, self.precision_config, self.seed)
+                        for m in specialists_to_train
+                    ]
+
+                    with ProcessPoolExecutor() as executor:
+                        new_state_dicts = list(executor.map(specialize_worker, worker_args))
+
+                    # Update the specialists with their new weights
+                    for i, model_wrapper in enumerate(specialists_to_train):
+                        model_wrapper.model.load_state_dict(new_state_dicts[i])
+                        model_wrapper.fitness_is_current = False # Mark for re-evaluation
+
+                logger.info("Generational specialization complete.")
 
             logger.info("--- Evaluating Population on Test Set (in parallel) ---")
-            # Identify models that need evaluation
             models_to_evaluate = [m for m in self.population if not m.fitness_is_current]
 
             if models_to_evaluate:
-                # Use a partial function to pass static arguments to the mapping function
-                eval_fn = partial(_get_fitness_score, dataset_name=self.dataset_name, seed=self.seed)
+                # Prepare arguments for the worker function
+                worker_args = [
+                    (m.model.state_dict(), m.model_name, m.niche_classes, m.model.num_classes, self.device, self.dataset_name, self.seed)
+                    for m in models_to_evaluate
+                ]
 
                 with ProcessPoolExecutor() as executor:
-                    # Map the evaluation function to the models that need it
-                    fitness_scores = list(executor.map(eval_fn, models_to_evaluate))
+                    fitness_scores = list(executor.map(evaluate_worker, worker_args))
 
                 # Update fitness scores on the original population objects
                 for i, model_wrapper in enumerate(models_to_evaluate):
                     model_wrapper.fitness = fitness_scores[i]
                     model_wrapper.fitness_is_current = True
 
-            # Log if any models were skipped
             num_skipped = len(self.population) - len(models_to_evaluate)
             if num_skipped > 0:
                 logger.info(f"Skipped evaluation for {num_skipped} model(s) with up-to-date fitness.")

@@ -126,5 +126,49 @@ class TestResnetIntegration(unittest.TestCase):
         )
 
 
+    def test_imagenet_config_creates_correct_model_and_data(self):
+        """
+        Tests that using the 'IMAGENET' dataset config correctly initializes
+        a ResNet model with 1000 classes and a data loader that produces
+        224x224 images.
+        """
+        # Arrange
+        # 1. Modify the config to use the new IMAGENET dataset
+        self.config['dataset_name'] = 'IMAGENET'
+        self.config['model_config'] = 'RESNET' # ResNet is required for this image size
+        self.config['dataset_configs'] = {
+            'IMAGENET': {'num_classes': 1000}
+        }
+        with open(self.config_path, 'w') as f:
+            yaml.dump(self.config, f)
+
+        # Act
+        # 2. Initialize the simulator with this config
+        simulator = EvolutionSimulator(config_path=self.config_path, seed=1337)
+
+        # Assert
+        # 3. Check the model's output classes
+        self.assertEqual(
+            simulator.population[0].model.num_classes,
+            1000,
+            "Model was not initialized with 1000 classes for IMAGENET config."
+        )
+
+        # 4. Check the data loader's image dimensions
+        # Get one batch from the validation loader
+        data_batch, _ = next(iter(simulator.validation_loader))
+        # The shape should be (N, C, H, W) -> (batch_size, 3, 224, 224)
+        self.assertEqual(
+            data_batch.shape[2],
+            224,
+            f"Image height is not 224, got {data_batch.shape[2]} instead."
+        )
+        self.assertEqual(
+            data_batch.shape[3],
+            224,
+            f"Image width is not 224, got {data_batch.shape[3]} instead."
+        )
+
+
 if __name__ == '__main__':
     unittest.main()
