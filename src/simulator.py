@@ -9,9 +9,11 @@ import re
 import yaml
 import numpy as np
 import logging
+from concurrent.futures import ProcessPoolExecutor
+from functools import partial
 from .logger_config import setup_logger
 from .utils import set_seed
-from .evolution import ModelWrapper, specialize, evaluate, select_mates, merge, mutate, finetune, create_next_generation
+from .evolution import ModelWrapper, specialize, evaluate, select_mates, merge, mutate, finetune, create_next_generation, _get_fitness_score
 from .data import get_dataloaders
 from .visualization import plot_fitness_history
 
@@ -148,9 +150,27 @@ class EvolutionSimulator:
                         specialize(model_wrapper, dataset_name=self.dataset_name, epochs=self.specialize_epochs, precision=self.precision_config, seed=self.seed)
                 logger.info("")
 
-            logger.info("--- Evaluating Population on Test Set ---")
-            for model_wrapper in self.population:
-                evaluate(model_wrapper, dataset_name=self.dataset_name, seed=self.seed)
+            logger.info("--- Evaluating Population on Test Set (in parallel) ---")
+            # Identify models that need evaluation
+            models_to_evaluate = [m for m in self.population if not m.fitness_is_current]
+
+            if models_to_evaluate:
+                # Use a partial function to pass static arguments to the mapping function
+                eval_fn = partial(_get_fitness_score, dataset_name=self.dataset_name, seed=self.seed)
+
+                with ProcessPoolExecutor() as executor:
+                    # Map the evaluation function to the models that need it
+                    fitness_scores = list(executor.map(eval_fn, models_to_evaluate))
+
+                # Update fitness scores on the original population objects
+                for i, model_wrapper in enumerate(models_to_evaluate):
+                    model_wrapper.fitness = fitness_scores[i]
+                    model_wrapper.fitness_is_current = True
+
+            # Log if any models were skipped
+            num_skipped = len(self.population) - len(models_to_evaluate)
+            if num_skipped > 0:
+                logger.info(f"Skipped evaluation for {num_skipped} model(s) with up-to-date fitness.")
 
             best_fitness = max([m.fitness for m in self.population])
             avg_fitness = sum([m.fitness for m in self.population]) / len(self.population)

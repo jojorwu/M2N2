@@ -5,12 +5,14 @@ import shutil
 import torch
 import yaml
 import sys
+from functools import partial
 
 # Add project root to path to allow for package-like imports
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from src.simulator import EvolutionSimulator
 from src.model import CifarCNN
+from src.evolution import _get_fitness_score
 
 class TestSimulatorInitialization(unittest.TestCase):
     """Unit tests for the EvolutionSimulator's initialization logic."""
@@ -131,6 +133,66 @@ class TestSimulatorInitialization(unittest.TestCase):
             self.assertTrue(torch.equal(p1, p2),
                             "Model weights are not identical between two simulators with the same seed. "
                             "Initial specialization is likely not using the provided seed.")
+
+    @patch('src.simulator.ProcessPoolExecutor')
+    def test_parallel_evaluation_logic_is_correct(self, MockProcessPoolExecutor):
+        """
+        Verifies the LOGIC of the parallel evaluation without running the actual
+        expensive evaluation function, which was causing timeouts. This test
+        mocks the executor to ensure it's called correctly and that the
+        results are properly assigned back to the population.
+        """
+        # Arrange
+        # 1. Configure the mock executor to behave predictably.
+        #    The `__enter__` part is needed to mock the `with` statement context.
+        mock_executor_instance = MockProcessPoolExecutor.return_value.__enter__.return_value
+        # When `executor.map` is called, make it return a list of fake scores.
+        fake_fitness_scores = [95.5, 85.2, 75.3, 65.4]
+        mock_executor_instance.map.return_value = fake_fitness_scores
+
+        # 2. Create a simulator with a population where fitness is not current.
+        config = self.base_config.copy()
+        config['population_size'] = 4 # Match the number of fake scores
+        config['num_generations'] = 1 # Only need to run one cycle
+        with open(self.config_path, 'w') as f:
+            yaml.dump(config, f)
+
+        simulator = EvolutionSimulator(config_path=self.config_path, seed=1337)
+        # Ensure all models are marked for evaluation
+        for model in simulator.population:
+            model.fitness_is_current = False
+
+        # Keep a reference to the models that should be evaluated
+        models_that_should_be_evaluated = simulator.population
+
+        # Act
+        # 3. Run the simulator for one generation. This will call the evaluation logic.
+        # We wrap this in a patch for `plot_fitness_history` to avoid errors
+        # related to GUI elements in a non-interactive environment.
+        with patch('src.simulator.plot_fitness_history'):
+            simulator.run()
+
+        # Assert
+        # 4. Verify that the ProcessPoolExecutor was used.
+        self.assertTrue(MockProcessPoolExecutor.called, "ProcessPoolExecutor was not used.")
+
+        # 5. Verify that the 'map' method was called correctly.
+        mock_executor_instance.map.assert_called_once()
+
+        # 6. Check that the 'map' method was called with the correct models.
+        args, _ = mock_executor_instance.map.call_args
+        # The first argument is the function, the second is the iterable (the models).
+        self.assertEqual(list(args[1]), models_that_should_be_evaluated,
+                         "The evaluation was not mapped over the correct models.")
+
+        # 7. Verify that the fitness scores from the mock were correctly assigned.
+        final_fitnesses = [m.fitness for m in simulator.population]
+        self.assertListEqual(
+            final_fitnesses,
+            fake_fitness_scores,
+            "Fitness scores were not correctly updated from the parallel evaluation results."
+        )
+
 
 if __name__ == '__main__':
     unittest.main()
