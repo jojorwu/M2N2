@@ -7,7 +7,8 @@ import os
 # Add the project root to the Python path to allow for package-like imports
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from src.evolution import ModelWrapper, merge
+import random
+from src.evolution import ModelWrapper, merge, select_mates
 from src.model import CifarCNN
 
 class TestEvolution(unittest.TestCase):
@@ -173,6 +174,64 @@ class TestEvolution(unittest.TestCase):
                 is_different = True
                 break
         self.assertTrue(is_different, "Model created with a different seed was not different.")
+
+
+    @patch('src.evolution.evaluate_by_class')
+    def test_select_mates_handles_multiple_weakest_classes(self, mock_evaluate_by_class):
+        """
+        Tests that if the best model has multiple classes with the same lowest
+        accuracy, the mate selection process will randomly choose from among
+        them, rather than deterministically picking the first one.
+
+        This test is designed to FAIL with the original implementation and
+        PASS with the corrected, randomized logic.
+        """
+        # 1. Arrange
+        # Define the fixed accuracies where classes 3 and 6 are equally weak.
+        accuracies = [90, 80, 70, 50, 60, 85, 50, 95, 88, 75]
+        mock_evaluate_by_class.return_value = accuracies
+        expected_weakest_indices = {3, 6}
+
+        # Create a population: a "best" model (Parent 1) and specialists
+        # for all classes so a mate can always be found.
+        population = []
+        parent1 = ModelWrapper(model_name='CIFAR10', niche_classes=[], device=self.device)
+        parent1.fitness = 90.0 # This will be chosen as Parent 1
+        population.append(parent1)
+
+        for i in range(10):
+            specialist = ModelWrapper(model_name='CIFAR10', niche_classes=[i], device=self.device)
+            specialist.fitness = 20.0
+            # Ensure the specialist for class 3 isn't the same object as parent1
+            if i == 3:
+                self.assertIsNot(specialist, parent1)
+            population.append(specialist)
+
+        # 2. Act
+        # Run the selection process multiple times to check for randomness.
+        # We set a seed to make the "random" choice deterministic for the test.
+        random.seed(42)
+        selected_weakest_classes = []
+        for _ in range(30): # Run enough times to ensure a random choice would be made.
+             _, parent2 = select_mates(population, dataset_name='CIFAR10')
+             # The niche of Parent 2 reveals which "weakest class" was selected.
+             selected_weakest_classes.append(parent2.niche_classes[0])
+
+        # 3. Assert
+        # With the bug, `selected_weakest_classes` will be `[3, 3, 3, ...]`.
+        # After the fix, it should be a mix of 3s and 6s.
+        unique_selected = set(selected_weakest_classes)
+
+        self.assertTrue(
+            len(unique_selected) > 1,
+            f"Mate selection appears biased. Only one weakest class was ever chosen: {unique_selected}. "
+            f"Expected selections from {expected_weakest_indices}."
+        )
+        self.assertEqual(
+            unique_selected, expected_weakest_indices,
+            f"The selected weakest classes {unique_selected} do not match the "
+            f"expected set of weakest classes {expected_weakest_indices}."
+        )
 
 
 if __name__ == '__main__':

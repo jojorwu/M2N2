@@ -317,7 +317,9 @@ def select_mates(population, dataset_name, seed=None):
     # 2. Analyze Parent 1 to find its weakest class.
     logger.info("  - Analyzing Parent 1's performance by class...")
     class_accuracies = evaluate_by_class(parent1, dataset_name=dataset_name, seed=seed)
-    weakest_class_index = class_accuracies.index(min(class_accuracies))
+    min_accuracy = min(class_accuracies)
+    weakest_indices = [i for i, acc in enumerate(class_accuracies) if acc == min_accuracy]
+    weakest_class_index = random.choice(weakest_indices)
     logger.info(f"  - Parent 1's weakest class is {weakest_class_index} (Accuracy: {class_accuracies[weakest_class_index]:.2f}%)")
 
     # 3. Find the specialist for that weakest class to be Parent 2.
