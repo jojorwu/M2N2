@@ -179,52 +179,86 @@ class EvolutionSimulator:
             )
         logger.info("")
 
+    def _run_specialization_phase(self, generation: int) -> None:
+        """Handles the specialization of models in the population."""
+        if generation > 0:
+            logger.info("--- Specializing Models ---")
+            for model_wrapper in self.population:
+                if model_wrapper.niche_classes != list(range(10)):
+                    specialize(
+                        model_wrapper,
+                        dataset_name=self.dataset_name,
+                        epochs=self.specialize_epochs,
+                        precision=self.precision_config,
+                        seed=self.seed,
+                        learning_rate=self.learning_rate
+                    )
+            logger.info("")
+
+    def _run_evaluation_phase(self) -> None:
+        """Handles the evaluation of the population."""
+        logger.info("--- Evaluating Population on Test Set ---")
+        for model_wrapper in self.population:
+            evaluate(model_wrapper, dataset_name=self.dataset_name, seed=self.seed)
+
+        best_fitness = max([m.fitness for m in self.population])
+        avg_fitness = sum([m.fitness for m in self.population]) / len(self.population)
+        self.fitness_history.append((best_fitness, avg_fitness))
+        generation = len(self.fitness_history)
+        logger.info(f"\nGeneration {generation} Stats: Best Fitness = {best_fitness:.2f}%, Avg Fitness = {avg_fitness:.2f}%\n")
+
+    def _run_evolution_phase(self, generation: int) -> None:
+        """Handles the mating, mutation, and selection of models."""
+        logger.info("--- Mating and Evolution ---")
+        parent1, parent2 = select_mates(self.population, dataset_name=self.dataset_name, seed=self.seed)
+
+        if parent1 and parent2:
+            # Crossover
+            child = merge(
+                parent1, parent2,
+                strategy=self.merge_strategy,
+                validation_loader=self.validation_loader,
+                seed=self.seed,
+                dampening_factor=self.dampening_factor
+            )
+            # Mutation
+            child = mutate(
+                child,
+                generation=generation,
+                mutation_rate=self.mutation_rate,
+                initial_mutation_strength=self.initial_mutation_strength,
+                decay_factor=self.mutation_decay_factor
+            )
+            # Fine-tuning
+            finetune(
+                child,
+                dataset_name=self.dataset_name,
+                validation_loader=self.validation_loader,
+                epochs=self.finetune_epochs,
+                precision=self.precision_config,
+                seed=self.seed,
+                learning_rate=self.learning_rate,
+                scheduler_patience=self.scheduler_patience,
+                scheduler_factor=self.scheduler_factor
+            )
+            # Selection
+            self.population = create_next_generation(
+                self.population,
+                child,
+                self.population_size,
+                dataset_name=self.dataset_name,
+                seed=self.seed
+            )
+        else:
+            logger.info("Population will carry over to the next generation without changes.")
+
     def run(self) -> None:
-        """Runs the main evolutionary loop."""
+        """Runs the main evolutionary loop by coordinating the different phases."""
         for generation in range(self.num_generations):
             logger.info(f"\n--- GENERATION {generation + 1}/{self.num_generations} ---")
-
-            # --- 1. Specialization ---
-            # In subsequent generations, specialize models that are not generalists.
-            if generation > 0:
-                logger.info("--- Specializing Models ---")
-                for model_wrapper in self.population:
-                    if model_wrapper.niche_classes != list(range(10)):
-                        specialize(model_wrapper, dataset_name=self.dataset_name, epochs=self.specialize_epochs, precision=self.precision_config, seed=self.seed, learning_rate=self.learning_rate)
-                logger.info("")
-
-            # --- 2. Evaluation ---
-            # Evaluate all models in the population on the test set.
-            logger.info("--- Evaluating Population on Test Set ---")
-            for model_wrapper in self.population:
-                evaluate(model_wrapper, dataset_name=self.dataset_name, seed=self.seed)
-
-            best_fitness = max([m.fitness for m in self.population])
-            avg_fitness = sum([m.fitness for m in self.population]) / len(self.population)
-            self.fitness_history.append((best_fitness, avg_fitness))
-            logger.info(f"\nGeneration {generation + 1} Stats: Best Fitness = {best_fitness:.2f}%, Avg Fitness = {avg_fitness:.2f}%\n")
-
-            # --- 3. Mating and Evolution ---
-            logger.info("--- Mating and Evolution ---")
-            parent1, parent2 = select_mates(self.population, dataset_name=self.dataset_name, seed=self.seed)
-
-            if parent1 and parent2:
-                # Crossover
-                child = merge(parent1, parent2, strategy=self.merge_strategy, validation_loader=self.validation_loader, seed=self.seed, dampening_factor=self.dampening_factor)
-                # Mutation
-                child = mutate(
-                    child,
-                    generation=generation,
-                    mutation_rate=self.mutation_rate,
-                    initial_mutation_strength=self.initial_mutation_strength,
-                    decay_factor=self.mutation_decay_factor
-                )
-                # Fine-tuning
-                finetune(child, dataset_name=self.dataset_name, validation_loader=self.validation_loader, epochs=self.finetune_epochs, precision=self.precision_config, seed=self.seed, learning_rate=self.learning_rate, scheduler_patience=self.scheduler_patience, scheduler_factor=self.scheduler_factor)
-                # Selection
-                self.population = create_next_generation(self.population, child, self.population_size, dataset_name=self.dataset_name, seed=self.seed)
-            else:
-                logger.info("Population will carry over to the next generation without changes.")
+            self._run_specialization_phase(generation)
+            self._run_evaluation_phase()
+            self._run_evolution_phase(generation)
 
         self._summarize_and_save()
 
