@@ -136,7 +136,13 @@ def get_dataloaders(dataset_name='CIFAR10', model_name=None, batch_size=64, nich
     train_subset = Subset(full_train_dataset, train_idx)
     validation_subset = Subset(full_train_dataset, valid_idx)
 
-    train_loader = DataLoader(dataset=train_subset, batch_size=batch_size, shuffle=True)
+    g = None
+    if seed is not None:
+        torch.manual_seed(seed)
+        g = torch.Generator()
+        g.manual_seed(seed)
+
+    train_loader = DataLoader(dataset=train_subset, batch_size=batch_size, shuffle=True, generator=g)
     validation_loader = DataLoader(dataset=validation_subset, batch_size=batch_size, shuffle=False)
     test_loader = DataLoader(dataset=full_test_dataset, batch_size=batch_size, shuffle=False)
 

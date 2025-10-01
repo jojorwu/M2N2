@@ -98,6 +98,8 @@ class EvolutionSimulator:
 
     def _initialize_population(self):
         """Initializes or loads the population of models."""
+        if self.seed is not None:
+            torch.manual_seed(self.seed)
         logger.info("--- STEP 1: Initializing or Loading Population ---")
         model_dir = "src/pretrained_models"
         niches = [[i] for i in range(self.population_size)]

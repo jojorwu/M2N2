@@ -1,4 +1,5 @@
 import unittest
+import torch
 import numpy as np
 import sys
 import os
@@ -107,6 +108,39 @@ class TestDataDeterminism(unittest.TestCase):
             f"Validation set contains labels outside the specified niche {niche_classes}. "
             f"Found labels: {sorted(list(set(found_labels)))}"
         )
+
+    def test_train_loader_shuffle_is_deterministic_with_seed(self):
+        """
+        Tests that the shuffling of the training DataLoader is deterministic
+        when a seed is provided. This is the key to fully reproducible
+        training runs.
+
+        This test is designed to FAIL with the original implementation and
+        PASS with the corrected one.
+        """
+        # Arrange
+        seed = 456
+
+        # Act
+        train_loader_1, _, _ = get_dataloaders(
+            dataset_name='CIFAR10',
+            subset_percentage=0.1,
+            seed=seed
+        )
+        train_loader_2, _, _ = get_dataloaders(
+            dataset_name='CIFAR10',
+            subset_percentage=0.1,
+            seed=seed
+        )
+
+        # Assert
+        # Iterate through both loaders and compare the data of each batch
+        for batch1, batch2 in zip(train_loader_1, train_loader_2):
+            data1, target1 = batch1
+            data2, target2 = batch2
+            self.assertTrue(torch.equal(data1, data2), "Batch data is not identical.")
+            self.assertTrue(torch.equal(target1, target2), "Batch targets are not identical.")
+            break # Only need to check the first batch to detect shuffle differences
 
 
 if __name__ == '__main__':
