@@ -130,12 +130,12 @@ class EvolutionSimulator:
                     self.population.append(wrapper)
         else:
             logger.info("No pretrained models found. Initializing a new population from scratch.")
-            for i in range(self.population_size):
-                self.population.append(ModelWrapper(model_name=self.model_config, niche_classes=niches[i], device=self.device))
+            initial_population = [ModelWrapper(model_name=self.model_config, niche_classes=niches[i], device=self.device) for i in range(self.population_size)]
 
-            logger.info("--- Specializing Initial Models ---")
-            for model_wrapper in self.population:
-                specialize(model_wrapper, dataset_name=self.dataset_name, epochs=self.specialize_epochs, precision=self.precision_config, seed=self.seed)
+            logger.info("--- Specializing Initial Models (in parallel) ---")
+            specialize_fn = partial(specialize, dataset_name=self.dataset_name, epochs=self.specialize_epochs, precision=self.precision_config, seed=self.seed)
+            with ProcessPoolExecutor() as executor:
+                self.population = list(executor.map(specialize_fn, initial_population))
             logger.info("")
 
     def run(self):

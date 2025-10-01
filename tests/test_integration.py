@@ -4,6 +4,7 @@ import os
 import shutil
 import yaml
 import sys
+import pytest
 from torchvision import transforms
 
 # Add project root to path to allow for package-like imports
@@ -11,6 +12,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')
 
 from src.simulator import EvolutionSimulator
 
+@pytest.mark.slow
 class TestResnetIntegration(unittest.TestCase):
     """
     Integration test to ensure the RESNET configuration works end-to-end,

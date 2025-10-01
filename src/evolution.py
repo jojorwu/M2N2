@@ -126,6 +126,7 @@ def specialize(model_wrapper, dataset_name, epochs=1, precision='32', seed=None)
     # The model remains in its trained precision for subsequent evaluation
     model_wrapper.fitness_is_current = False
     logger.info("Specialization complete.")
+    return model_wrapper
 
 def _calculate_accuracy(model_wrapper, data_loader):
     """A generic helper to calculate accuracy on a given data loader.
