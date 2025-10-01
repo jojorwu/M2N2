@@ -56,24 +56,33 @@ class EvolutionSimulator:
 
     def _initialize_parameters(self):
         """Initializes simulator parameters from the config."""
-        # General settings
+        # --- General settings ---
         self.model_config = self.config['model_config']
         self.dataset_name = self.config['dataset_name']
         self.precision_config = str(self.config['precision_config'])
         self.num_generations = self.config['num_generations']
         self.population_size = self.config['population_size']
 
-        # Evolutionary settings
+        # --- Evolutionary settings ---
         self.merge_strategy = self.config['merge_strategy']
+        self.dampening_factor = self.config['fitness_weighted_merge_dampening_factor']
         self.mutation_rate = self.config['mutation_rate']
         self.initial_mutation_strength = self.config['initial_mutation_strength']
         self.mutation_decay_factor = self.config['mutation_decay_factor']
 
-        # Data settings
+        # --- Optimizer settings ---
+        self.learning_rate = self.config['optimizer_config']['learning_rate']
+
+        # --- Scheduler settings ---
+        self.scheduler_patience = self.config['scheduler_config']['patience']
+        self.scheduler_factor = self.config['scheduler_config']['factor']
+
+        # --- Data settings ---
         self.subset_percentage = self.config['subset_percentage']
         self.validation_split = self.config['validation_split']
+        self.batch_size = self.config['batch_size']
 
-        # Determine epochs based on model-specific or default settings
+        # --- Training epochs ---
         if self.model_config in self.config.get('model_specific_epochs', {}):
             self.specialize_epochs = self.config['model_specific_epochs'][self.model_config]['specialize']
             self.finetune_epochs = self.config['model_specific_epochs'][self.model_config]['finetune']
@@ -90,7 +99,7 @@ class EvolutionSimulator:
         _, self.validation_loader, _ = get_dataloaders(
             dataset_name=self.dataset_name,
             model_name=self.model_config,
-            batch_size=64,
+            batch_size=self.batch_size,
             subset_percentage=self.subset_percentage,
             validation_split=self.validation_split,
             seed=self.seed
@@ -115,10 +124,9 @@ class EvolutionSimulator:
                     wrapper = ModelWrapper(model_name=self.model_config, niche_classes=niche_classes, device=self.device)
                     wrapper.model.load_state_dict(torch.load(f, map_location=self.device))
                     wrapper.fitness = fitness
-                    # BUG FIX: Ensure that loaded models are re-evaluated.
-                    # Their fitness from a previous run is not guaranteed to be
-                    # relevant for the current run's (potentially different)
-                    # dataset subset.
+                    # Ensure that loaded models are re-evaluated, as their
+                    # fitness from a previous run may not be relevant for
+                    # the current run's dataset subset.
                     wrapper.fitness_is_current = False
                     self.population.append(wrapper)
         else:
@@ -128,7 +136,7 @@ class EvolutionSimulator:
 
             logger.info("--- Specializing Initial Models ---")
             for model_wrapper in self.population:
-                specialize(model_wrapper, dataset_name=self.dataset_name, epochs=self.specialize_epochs, precision=self.precision_config, seed=self.seed)
+                specialize(model_wrapper, dataset_name=self.dataset_name, epochs=self.specialize_epochs, precision=self.precision_config, seed=self.seed, learning_rate=self.learning_rate)
             logger.info("")
 
     def run(self):
@@ -136,13 +144,17 @@ class EvolutionSimulator:
         for generation in range(self.num_generations):
             logger.info(f"\n--- GENERATION {generation + 1}/{self.num_generations} ---")
 
+            # --- 1. Specialization ---
+            # In subsequent generations, specialize models that are not generalists.
             if generation > 0:
                 logger.info("--- Specializing Models ---")
                 for model_wrapper in self.population:
                     if model_wrapper.niche_classes != list(range(10)):
-                        specialize(model_wrapper, dataset_name=self.dataset_name, epochs=self.specialize_epochs, precision=self.precision_config, seed=self.seed)
+                        specialize(model_wrapper, dataset_name=self.dataset_name, epochs=self.specialize_epochs, precision=self.precision_config, seed=self.seed, learning_rate=self.learning_rate)
                 logger.info("")
 
+            # --- 2. Evaluation ---
+            # Evaluate all models in the population on the test set.
             logger.info("--- Evaluating Population on Test Set ---")
             for model_wrapper in self.population:
                 evaluate(model_wrapper, dataset_name=self.dataset_name, seed=self.seed)
@@ -152,11 +164,14 @@ class EvolutionSimulator:
             self.fitness_history.append((best_fitness, avg_fitness))
             logger.info(f"\nGeneration {generation + 1} Stats: Best Fitness = {best_fitness:.2f}%, Avg Fitness = {avg_fitness:.2f}%\n")
 
+            # --- 3. Mating and Evolution ---
             logger.info("--- Mating and Evolution ---")
             parent1, parent2 = select_mates(self.population, dataset_name=self.dataset_name, seed=self.seed)
 
             if parent1 and parent2:
-                child = merge(parent1, parent2, strategy=self.merge_strategy, validation_loader=self.validation_loader, seed=self.seed)
+                # Crossover
+                child = merge(parent1, parent2, strategy=self.merge_strategy, validation_loader=self.validation_loader, seed=self.seed, dampening_factor=self.dampening_factor)
+                # Mutation
                 child = mutate(
                     child,
                     generation=generation,
@@ -164,7 +179,9 @@ class EvolutionSimulator:
                     initial_mutation_strength=self.initial_mutation_strength,
                     decay_factor=self.mutation_decay_factor
                 )
-                finetune(child, dataset_name=self.dataset_name, validation_loader=self.validation_loader, epochs=self.finetune_epochs, precision=self.precision_config, seed=self.seed)
+                # Fine-tuning
+                finetune(child, dataset_name=self.dataset_name, validation_loader=self.validation_loader, epochs=self.finetune_epochs, precision=self.precision_config, seed=self.seed, learning_rate=self.learning_rate, scheduler_patience=self.scheduler_patience, scheduler_factor=self.scheduler_factor)
+                # Selection
                 self.population = create_next_generation(self.population, child, self.population_size, dataset_name=self.dataset_name, seed=self.seed)
             else:
                 logger.info("Population will carry over to the next generation without changes.")

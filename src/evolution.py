@@ -61,9 +61,10 @@ class ModelWrapper:
             raise ValueError(f"Unsupported model name: {self.model_name}")
 
         self.fitness = 0.0
+        # This flag prevents redundant evaluations.
         self.fitness_is_current = False
 
-def specialize(model_wrapper, dataset_name, epochs=1, precision='32', seed=None):
+def specialize(model_wrapper, dataset_name, epochs=1, precision='32', seed=None, learning_rate=0.001):
     """Trains a model in-place on its specialized data niche.
 
     This simulates the "resource competition" phase where a model becomes an
@@ -77,6 +78,8 @@ def specialize(model_wrapper, dataset_name, epochs=1, precision='32', seed=None)
             Defaults to '32'.
         seed (int, optional): A seed for the random number generator to
             ensure deterministic data splitting. Defaults to None.
+        learning_rate (float, optional): The learning rate for the optimizer.
+            Defaults to 0.001.
     """
     logger.info(f"Specializing model on niche {model_wrapper.niche_classes} for {epochs} epoch(s) with {precision}-bit precision...")
 
@@ -87,7 +90,7 @@ def specialize(model_wrapper, dataset_name, epochs=1, precision='32', seed=None)
         subset_percentage=0.1,
         seed=seed
     )
-    optimizer = optim.Adam(model_wrapper.model.parameters(), lr=0.001)
+    optimizer = optim.Adam(model_wrapper.model.parameters(), lr=learning_rate)
 
     # Handle precision
     if precision == '64':
@@ -123,7 +126,7 @@ def specialize(model_wrapper, dataset_name, epochs=1, precision='32', seed=None)
             scaler.update()
             pbar.set_postfix({'loss': loss.item()})
 
-    # The model remains in its trained precision for subsequent evaluation
+    # Mark fitness as not current, as the model has been modified.
     model_wrapper.fitness_is_current = False
     logger.info("Specialization complete.")
 
@@ -350,7 +353,7 @@ def select_mates(population, dataset_name, seed=None):
         logger.info("  - Could not select a pair of parents.")
         return None, None
 
-def merge(parent1, parent2, strategy='average', validation_loader=None, seed=None):
+def merge(parent1, parent2, strategy='average', validation_loader=None, seed=None, dampening_factor=25.0):
     """Merges two parent models into a new child model (crossover).
 
     This function combines the weights of two parents to produce a new child
@@ -375,6 +378,9 @@ def merge(parent1, parent2, strategy='average', validation_loader=None, seed=Non
             validation set, required by certain strategies. Defaults to None.
         seed (int, optional): A seed for the random number generator to
             ensure deterministic layer selection. Defaults to None.
+        dampening_factor (float, optional): A factor to reduce the impact of
+            large fitness disparities in 'fitness_weighted' merge.
+            Defaults to 25.0.
 
     Returns:
         ModelWrapper: A new model wrapper containing the merged child model.
@@ -392,10 +398,10 @@ def merge(parent1, parent2, strategy='average', validation_loader=None, seed=Non
     parent2_state_dict = parent2.model.state_dict()
 
     if strategy == 'fitness_weighted':
-        # BUG FIX: Added a dampening factor to prevent a high-fitness
-        # parent from completely overwhelming a low-fitness specialist.
-        # This makes the "healing" process more effective.
-        dampening_factor = 25.0
+        # The dampening factor prevents a high-fitness parent from
+        # completely overwhelming a low-fitness specialist. This makes
+        # the "healing" process of combining a generalist with a
+        # specialist more effective.
         dampened_fitness1 = parent1.fitness + dampening_factor
         dampened_fitness2 = parent2.fitness + dampening_factor
         total_dampened_fitness = dampened_fitness1 + dampened_fitness2
@@ -522,6 +528,7 @@ def mutate(model_wrapper, generation, mutation_rate=0.01, initial_mutation_stren
                 mutation = torch.randn(param.shape).to(model_wrapper.device) * decayed_strength
                 # Apply the mutation where the mask is True
                 param.data += mutation * mutation_mask
+    # Mark fitness as not current, as the model has been modified.
     model_wrapper.fitness_is_current = False
     logger.info("Mutation complete.")
     return model_wrapper
@@ -593,7 +600,7 @@ def _calculate_loss(model_wrapper, data_loader):
     return total_loss / len(data_loader)
 
 
-def finetune(model_wrapper, dataset_name, validation_loader, epochs=3, precision='32', seed=None):
+def finetune(model_wrapper, dataset_name, validation_loader, epochs=3, precision='32', seed=None, learning_rate=0.001, scheduler_patience=2, scheduler_factor=0.5):
     """Fine-tunes a model in-place on the full dataset with a scheduler.
 
     This step is crucial for a newly merged child model. It uses an Adam
@@ -611,6 +618,12 @@ def finetune(model_wrapper, dataset_name, validation_loader, epochs=3, precision
             Defaults to '32'.
         seed (int, optional): A seed for the random number generator to
             ensure deterministic data splitting. Defaults to None.
+        learning_rate (float, optional): The learning rate for the optimizer.
+            Defaults to 0.001.
+        scheduler_patience (int, optional): The patience for the learning rate
+            scheduler. Defaults to 2.
+        scheduler_factor (float, optional): The factor for the learning rate
+            scheduler. Defaults to 0.5.
     """
     logger.info(f"Fine-tuning model for {epochs} epoch(s) with {precision}-bit precision and ReduceLROnPlateau scheduler...")
 
@@ -622,8 +635,8 @@ def finetune(model_wrapper, dataset_name, validation_loader, epochs=3, precision
         seed=seed,
         validation_split=0.0
     )
-    optimizer = optim.Adam(model_wrapper.model.parameters(), lr=0.001)
-    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min', patience=2, factor=0.5, verbose=True)
+    optimizer = optim.Adam(model_wrapper.model.parameters(), lr=learning_rate)
+    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min', patience=scheduler_patience, factor=scheduler_factor, verbose=True)
 
     if precision == '64':
         model_wrapper.model.double()
@@ -667,6 +680,6 @@ def finetune(model_wrapper, dataset_name, validation_loader, epochs=3, precision
         avg_train_loss = total_train_loss / len(train_loader)
         logger.info(f"  - Avg Train Loss: {avg_train_loss:.4f}, Avg Val Loss: {avg_val_loss:.4f}")
 
-    # The model remains in its trained precision for subsequent evaluation
+    # Mark fitness as not current, as the model has been modified.
     model_wrapper.fitness_is_current = False
     logger.info("Fine-tuning complete.")

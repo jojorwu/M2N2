@@ -31,6 +31,10 @@ class TestResnetIntegration(unittest.TestCase):
             'num_generations': 1,
             'population_size': 1, # Keep population small for speed
             'merge_strategy': 'average',
+            'fitness_weighted_merge_dampening_factor': 25.0,
+            'optimizer_config': {'learning_rate': 0.001},
+            'scheduler_config': {'patience': 2, 'factor': 0.5},
+            'batch_size': 64,
             'mutation_rate': 0.0,
             'initial_mutation_strength': 0.0,
             'mutation_decay_factor': 1.0,
