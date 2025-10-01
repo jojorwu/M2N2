@@ -10,6 +10,7 @@ import yaml
 import numpy as np
 import logging
 from .logger_config import setup_logger
+from .utils import set_seed
 from .evolution import ModelWrapper, specialize, evaluate, select_mates, merge, mutate, finetune, create_next_generation
 from .data import get_dataloaders
 from .visualization import plot_fitness_history
@@ -21,7 +22,7 @@ class EvolutionSimulator:
     Encapsulates the entire evolutionary simulation, from configuration
     loading to running the generational loop and saving the results.
     """
-    def __init__(self, config_path='config.yaml'):
+    def __init__(self, config_path='config.yaml', seed=None):
         """
         Initializes the simulator by loading configuration and setting up
         the environment.
@@ -29,9 +30,11 @@ class EvolutionSimulator:
         Args:
             config_path (str, optional): The path to the configuration YAML
                 file. Defaults to 'config.yaml'.
+            seed (int, optional): A specific seed for reproducibility. If
+                None, a random seed will be generated. Defaults to None.
         """
         self._setup_environment(config_path)
-        self._initialize_parameters()
+        self._initialize_parameters(seed=seed)
 
         logger.info("--- M2N2 Simplified Implementation ---")
         logger.info(f"Loaded configuration for model: {self.model_config}")
@@ -54,11 +57,12 @@ class EvolutionSimulator:
         log_file = self.config.get('log_file')
         setup_logger(log_file=log_file)
 
-    def _initialize_parameters(self):
+    def _initialize_parameters(self, seed=None):
         """Initializes simulator parameters from the config."""
         # General settings
         self.model_config = self.config['model_config']
         self.dataset_name = self.config['dataset_name']
+        self.model_dir = self.config['model_dir']
         self.precision_config = str(self.config['precision_config'])
         self.num_generations = self.config['num_generations']
         self.population_size = self.config['population_size']
@@ -82,7 +86,11 @@ class EvolutionSimulator:
             self.finetune_epochs = self.config['default_epochs']['finetune']
 
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        self.seed = np.random.randint(0, 1_000_000)  # Seed for this experiment run
+        if seed is not None:
+            self.seed = seed
+        else:
+            self.seed = np.random.randint(0, 1_000_000)
+        set_seed(self.seed)
 
     def _initialize_dataloaders(self):
         """Creates the necessary DataLoaders for the experiment."""
@@ -99,12 +107,11 @@ class EvolutionSimulator:
     def _initialize_population(self):
         """Initializes or loads the population of models."""
         logger.info("--- STEP 1: Initializing or Loading Population ---")
-        model_dir = "src/pretrained_models"
         niches = [[i] for i in range(self.population_size)]
-        model_files = glob.glob(os.path.join(model_dir, "*.pth"))
+        model_files = glob.glob(os.path.join(self.model_dir, "*.pth"))
 
         if model_files:
-            logger.info(f"Found {len(model_files)} models in {model_dir}. Loading them.")
+            logger.info(f"Found {len(model_files)} models in {self.model_dir}. Loading them.")
             for f in model_files:
                 match = re.search(r'model_niche_([\d_]+)_fitness_([\d\.]+)\.pth', os.path.basename(f))
                 if match:
@@ -182,17 +189,16 @@ class EvolutionSimulator:
         # Visualize and Save
         plot_fitness_history(self.fitness_history, 'fitness_history.png')
 
-        logger.info("\n--- Saving final population to pretrained_models/ ---")
-        model_dir = "src/pretrained_models"
-        if not os.path.exists(model_dir):
-            os.makedirs(model_dir)
+        logger.info(f"\n--- Saving final population to {self.model_dir}/ ---")
+        if not os.path.exists(self.model_dir):
+            os.makedirs(self.model_dir)
         else:
-            files = glob.glob(os.path.join(model_dir, "*.pth"))
+            files = glob.glob(os.path.join(self.model_dir, "*.pth"))
             for f in files:
                 os.remove(f)
 
         for i, model_wrapper in enumerate(self.population):
             niche_str = "_".join(map(str, model_wrapper.niche_classes))
-            model_path = os.path.join(model_dir, f"model_niche_{niche_str}_fitness_{model_wrapper.fitness:.2f}.pth")
+            model_path = os.path.join(self.model_dir, f"model_niche_{niche_str}_fitness_{model_wrapper.fitness:.2f}.pth")
             torch.save(model_wrapper.model.state_dict(), model_path)
             logger.info(f"  - Saved model to {model_path}")

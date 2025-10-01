@@ -27,6 +27,7 @@ class TestResnetIntegration(unittest.TestCase):
         self.config = {
             'model_config': 'RESNET',
             'dataset_name': 'CIFAR10',
+            'model_dir': os.path.join(self.test_dir, 'models'),
             'precision_config': '32',
             'num_generations': 1,
             'population_size': 1, # Keep population small for speed

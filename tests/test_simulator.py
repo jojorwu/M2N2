@@ -25,6 +25,7 @@ class TestSimulatorInitialization(unittest.TestCase):
         self.base_config = {
             'model_config': 'CIFAR10',
             'dataset_name': 'CIFAR10',
+            'model_dir': os.path.join(self.test_dir, 'models'),
             'precision_config': '32',
             'num_generations': 1,
             'population_size': 1,
@@ -113,20 +114,14 @@ class TestSimulatorInitialization(unittest.TestCase):
             yaml.dump(config, f)
 
         # Act
-        # Create the first simulator and specialize its population
-        sim1 = EvolutionSimulator(config_path=self.config_path)
-        sim1.seed = 42  # Manually set a fixed seed for reproducibility
-
-        # This call is what the test is verifying. We are manually running what should happen.
-        # In the bugged version, the `_initialize_population` does NOT use the seed.
-        sim1._initialize_population()
-        # Store the weights of the first model in the population
+        # Create two simulators with the same fixed seed. The `__init__` method
+        # now handles setting the seed and initializing the population.
+        sim1 = EvolutionSimulator(config_path=self.config_path, seed=42)
         model1_params = [p.clone() for p in sim1.population[0].model.parameters()]
 
-        # Create a second simulator with the exact same config and seed
-        sim2 = EvolutionSimulator(config_path=self.config_path)
-        sim2.seed = 42 # Manually set the same fixed seed
-        sim2._initialize_population()
+        # Re-create the simulator with the same seed to ensure a fresh but
+        # identical initialization.
+        sim2 = EvolutionSimulator(config_path=self.config_path, seed=42)
         model2_params = [p.clone() for p in sim2.population[0].model.parameters()]
 
         # Assert
