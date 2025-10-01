@@ -3,11 +3,11 @@ from unittest.mock import patch
 import torch
 import sys
 import os
+import random
 
 # Add the project root to the Python path to allow for package-like imports
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-import random
 from src.evolution import ModelWrapper, merge, select_mates
 from src.model import CifarCNN
 
@@ -30,10 +30,10 @@ class TestEvolution(unittest.TestCase):
         # 1. Create two ModelWrappers with a significant fitness disparity
         # This simulates the "healing" scenario where the best model is paired
         # with a specialist in its weakest area.
-        parent1 = ModelWrapper(model_name='CIFAR10', niche_classes=[0], num_classes=10, device=self.device)
+        parent1 = ModelWrapper(model_name='CIFAR10', niche_classes=[0], device=self.device)
         parent1.fitness = 85.0  # High-fitness generalist
 
-        parent2 = ModelWrapper(model_name='CIFAR10', niche_classes=[1], num_classes=10, device=self.device)
+        parent2 = ModelWrapper(model_name='CIFAR10', niche_classes=[1], device=self.device)
         parent2.fitness = 15.0  # Low-fitness specialist
 
         # 2. Assign easily trackable weights to each parent model
@@ -102,9 +102,9 @@ class TestEvolution(unittest.TestCase):
         mock_resnet_constructor.return_value = MockResNetModule()
 
         # 3. Create parent wrappers. They will now be valid ResNetClassifiers containing our mock.
-        parent1 = ModelWrapper(model_name='RESNET', niche_classes=[0], num_classes=10, device=self.device)
+        parent1 = ModelWrapper(model_name='RESNET', niche_classes=[0], device=self.device)
         parent1.fitness = 80.0
-        parent2 = ModelWrapper(model_name='RESNET', niche_classes=[1], num_classes=10, device=self.device)
+        parent2 = ModelWrapper(model_name='RESNET', niche_classes=[1], device=self.device)
         parent2.fitness = 20.0
 
         # 4. The mock for the validation function will return a constant value
@@ -140,8 +140,8 @@ class TestEvolution(unittest.TestCase):
         seed1 = 42
         seed2 = 1337
 
-        parent1 = ModelWrapper(model_name='CIFAR10', niche_classes=[0], num_classes=10, device=self.device)
-        parent2 = ModelWrapper(model_name='CIFAR10', niche_classes=[1], num_classes=10, device=self.device)
+        parent1 = ModelWrapper(model_name='CIFAR10', niche_classes=[0], device=self.device)
+        parent2 = ModelWrapper(model_name='CIFAR10', niche_classes=[1], device=self.device)
 
         # Assign easily trackable weights
         with torch.no_grad():
@@ -182,55 +182,65 @@ class TestEvolution(unittest.TestCase):
         Tests that if the best model has multiple classes with the same lowest
         accuracy, the mate selection process will randomly choose from among
         them, rather than deterministically picking the first one.
-
-        This test is designed to FAIL with the original implementation and
-        PASS with the corrected, randomized logic.
         """
-        # 1. Arrange
-        # Define the fixed accuracies where classes 3 and 6 are equally weak.
+        # Arrange
         accuracies = [90, 80, 70, 50, 60, 85, 50, 95, 88, 75]
         mock_evaluate_by_class.return_value = accuracies
         expected_weakest_indices = {3, 6}
 
-        # Create a population: a "best" model (Parent 1) and specialists
-        # for all classes so a mate can always be found.
         population = []
-        parent1 = ModelWrapper(model_name='CIFAR10', niche_classes=[], num_classes=10, device=self.device)
-        parent1.fitness = 90.0 # This will be chosen as Parent 1
+        parent1 = ModelWrapper(model_name='CIFAR10', niche_classes=[], device=self.device)
+        parent1.fitness = 90.0
         population.append(parent1)
 
         for i in range(10):
-            specialist = ModelWrapper(model_name='CIFAR10', niche_classes=[i], num_classes=10, device=self.device)
+            specialist = ModelWrapper(model_name='CIFAR10', niche_classes=[i], device=self.device)
             specialist.fitness = 20.0
-            # Ensure the specialist for class 3 isn't the same object as parent1
-            if i == 3:
-                self.assertIsNot(specialist, parent1)
             population.append(specialist)
 
-        # 2. Act
-        # Run the selection process multiple times to check for randomness.
-        # We set a seed to make the "random" choice deterministic for the test.
+        # Act
         random.seed(42)
         selected_weakest_classes = []
-        for _ in range(30): # Run enough times to ensure a random choice would be made.
-             _, parent2 = select_mates(population, dataset_name='CIFAR10')
-             # The niche of Parent 2 reveals which "weakest class" was selected.
-             selected_weakest_classes.append(parent2.niche_classes[0])
+        for _ in range(30):
+            _, parent2 = select_mates(population, dataset_name='CIFAR10')
+            selected_weakest_classes.append(parent2.niche_classes[0])
 
-        # 3. Assert
-        # With the bug, `selected_weakest_classes` will be `[3, 3, 3, ...]`.
-        # After the fix, it should be a mix of 3s and 6s.
+        # Assert
         unique_selected = set(selected_weakest_classes)
+        self.assertTrue(len(unique_selected) > 1, "Mate selection appears biased.")
+        self.assertEqual(unique_selected, expected_weakest_indices, "The selected weakest classes do not match the expected set.")
 
-        self.assertTrue(
-            len(unique_selected) > 1,
-            f"Mate selection appears biased. Only one weakest class was ever chosen: {unique_selected}. "
-            f"Expected selections from {expected_weakest_indices}."
-        )
+
+    @patch('src.evolution._get_validation_fitness')
+    def test_sequential_constructive_merge_handles_variable_num_classes(self, mock_get_validation_fitness):
+        """
+        Tests that the 'sequential_constructive' merge strategy correctly
+        infers the number of classes from the parent models instead of
+        using a hardcoded value of 10.
+        """
+        # Arrange
+        num_classes = 5 # Use a non-10 number of classes
+        mock_get_validation_fitness.return_value = 50.0
+        dummy_loader = torch.utils.data.DataLoader([torch.randn(10)], batch_size=1)
+
+        # Create parents with a custom number of classes
+        parent1 = ModelWrapper(model_name='CIFAR10', niche_classes=[0], device=self.device)
+        parent1.model.num_classes = num_classes # Manually override for this test
+        parent1.fitness = 80.0
+
+        parent2 = ModelWrapper(model_name='CIFAR10', niche_classes=[1], device=self.device)
+        parent2.model.num_classes = num_classes # Manually override
+        parent2.fitness = 70.0
+
+        # Act
+        child = merge(parent1, parent2, strategy='sequential_constructive', validation_loader=dummy_loader)
+
+        # Assert
+        # The child's niche classes should be a list from 0 to num_classes-1
         self.assertEqual(
-            unique_selected, expected_weakest_indices,
-            f"The selected weakest classes {unique_selected} do not match the "
-            f"expected set of weakest classes {expected_weakest_indices}."
+            child.niche_classes,
+            list(range(num_classes)),
+            f"Child's niche classes should be a range up to {num_classes}, but got {child.niche_classes}."
         )
 
 

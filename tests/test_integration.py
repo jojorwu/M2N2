@@ -4,7 +4,6 @@ import os
 import shutil
 import yaml
 import sys
-import pytest
 from torchvision import transforms
 
 # Add project root to path to allow for package-like imports
@@ -12,7 +11,6 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')
 
 from src.simulator import EvolutionSimulator
 
-@pytest.mark.slow
 class TestResnetIntegration(unittest.TestCase):
     """
     Integration test to ensure the RESNET configuration works end-to-end,
@@ -29,7 +27,6 @@ class TestResnetIntegration(unittest.TestCase):
         self.config = {
             'model_config': 'RESNET',
             'dataset_name': 'CIFAR10',
-            'model_dir': os.path.join(self.test_dir, 'models'),
             'precision_config': '32',
             'num_generations': 1,
             'population_size': 1, # Keep population small for speed
@@ -123,50 +120,6 @@ class TestResnetIntegration(unittest.TestCase):
             len(simulator.fitness_history),
             2,
             "Simulator did not complete 2 generations as expected."
-        )
-
-
-    def test_imagenet_config_creates_correct_model_and_data(self):
-        """
-        Tests that using the 'IMAGENET' dataset config correctly initializes
-        a ResNet model with 1000 classes and a data loader that produces
-        224x224 images.
-        """
-        # Arrange
-        # 1. Modify the config to use the new IMAGENET dataset
-        self.config['dataset_name'] = 'IMAGENET'
-        self.config['model_config'] = 'RESNET' # ResNet is required for this image size
-        self.config['dataset_configs'] = {
-            'IMAGENET': {'num_classes': 1000}
-        }
-        with open(self.config_path, 'w') as f:
-            yaml.dump(self.config, f)
-
-        # Act
-        # 2. Initialize the simulator with this config
-        simulator = EvolutionSimulator(config_path=self.config_path, seed=1337)
-
-        # Assert
-        # 3. Check the model's output classes
-        self.assertEqual(
-            simulator.population[0].model.num_classes,
-            1000,
-            "Model was not initialized with 1000 classes for IMAGENET config."
-        )
-
-        # 4. Check the data loader's image dimensions
-        # Get one batch from the validation loader
-        data_batch, _ = next(iter(simulator.validation_loader))
-        # The shape should be (N, C, H, W) -> (batch_size, 3, 224, 224)
-        self.assertEqual(
-            data_batch.shape[2],
-            224,
-            f"Image height is not 224, got {data_batch.shape[2]} instead."
-        )
-        self.assertEqual(
-            data_batch.shape[3],
-            224,
-            f"Image width is not 224, got {data_batch.shape[3]} instead."
         )
 
 

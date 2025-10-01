@@ -34,7 +34,7 @@ class ModelWrapper:
         fitness_is_current (bool): A flag to indicate if the fitness score
             is up-to-date. Initialized to `False`.
     """
-    def __init__(self, model_name, niche_classes, num_classes, device='cpu'):
+    def __init__(self, model_name, niche_classes, device='cpu'):
         """Initializes the ModelWrapper with a model and its niche.
 
         Args:
@@ -42,8 +42,6 @@ class ModelWrapper:
                 Supported options: 'CIFAR10', 'MNIST', 'LLM', 'RESNET'.
             niche_classes (list[int]): The list of class indices for the
                 model's specialized niche.
-            num_classes (int): The total number of classes for the model's
-                output layer.
             device (str, optional): The device to run the model on.
                 Defaults to 'cpu'.
         """
@@ -52,13 +50,13 @@ class ModelWrapper:
         self.device = device
 
         if self.model_name == 'CIFAR10':
-            self.model = CifarCNN(num_classes=num_classes).to(device)
+            self.model = CifarCNN().to(device)
         elif self.model_name == 'MNIST':
-            self.model = MnistCNN(num_classes=num_classes).to(device)
+            self.model = MnistCNN().to(device)
         elif self.model_name == 'LLM':
-            self.model = LLMClassifier(num_labels=num_classes).to(device)
+            self.model = LLMClassifier().to(device)
         elif self.model_name == 'RESNET':
-            self.model = ResNetClassifier(num_classes=num_classes).to(device)
+            self.model = ResNetClassifier().to(device)
         else:
             raise ValueError(f"Unsupported model name: {self.model_name}")
 
@@ -95,7 +93,7 @@ def specialize(model_wrapper, dataset_name, epochs=1, precision='32', seed=None)
     if precision == '64':
         model_wrapper.model.double()
 
-    scaler = torch.cuda.amp.GradScaler(enabled=(precision == '16' and 'cuda' in model_wrapper.device))
+    scaler = torch.cuda.amp.GradScaler(enabled=(precision == '16'))
 
     for epoch in range(epochs):
         model_wrapper.model.train()
@@ -104,7 +102,7 @@ def specialize(model_wrapper, dataset_name, epochs=1, precision='32', seed=None)
         for batch in pbar:
             optimizer.zero_grad()
 
-            with torch.cuda.amp.autocast(enabled=(precision == '16' and 'cuda' in model_wrapper.device)):
+            with torch.cuda.amp.autocast(enabled=(precision == '16')):
                 if model_wrapper.model_name == 'LLM':
                     input_ids = batch['input_ids'].to(model_wrapper.device)
                     attention_mask = batch['attention_mask'].to(model_wrapper.device)
@@ -128,7 +126,6 @@ def specialize(model_wrapper, dataset_name, epochs=1, precision='32', seed=None)
     # The model remains in its trained precision for subsequent evaluation
     model_wrapper.fitness_is_current = False
     logger.info("Specialization complete.")
-    return model_wrapper
 
 def _calculate_accuracy(model_wrapper, data_loader):
     """A generic helper to calculate accuracy on a given data loader.
@@ -388,7 +385,7 @@ def merge(parent1, parent2, strategy='average', validation_loader=None, seed=Non
     """
     logger.info(f"Merging parent models to create child using '{strategy}' strategy...")
     num_classes = parent1.model.num_classes
-    child_wrapper = ModelWrapper(model_name=parent1.model_name, niche_classes=list(range(num_classes)), num_classes=num_classes, device=parent1.device)
+    child_wrapper = ModelWrapper(model_name=parent1.model_name, niche_classes=list(range(num_classes)), device=parent1.device)
     child_model_state_dict = child_wrapper.model.state_dict()
 
     parent1_state_dict = parent1.model.state_dict()
@@ -438,7 +435,7 @@ def merge(parent1, parent2, strategy='average', validation_loader=None, seed=Non
         best_child_state_dict = copy.deepcopy(fitter_parent.model.state_dict())
 
         num_classes = fitter_parent.model.num_classes
-        temp_model_wrapper = ModelWrapper(model_name=fitter_parent.model_name, niche_classes=list(range(num_classes)), num_classes=num_classes, device=fitter_parent.device)
+        temp_model_wrapper = ModelWrapper(model_name=fitter_parent.model_name, niche_classes=list(range(num_classes)), device=fitter_parent.device)
         temp_model_wrapper.model.load_state_dict(best_child_state_dict)
         best_fitness = _get_validation_fitness(temp_model_wrapper, validation_loader)
         logger.info(f"  - Initial child validation fitness: {best_fitness:.2f}%")
@@ -594,7 +591,7 @@ def finetune(model_wrapper, dataset_name, epochs=3, precision='32', seed=None):
     if precision == '64':
         model_wrapper.model.double()
 
-    scaler = torch.cuda.amp.GradScaler(enabled=(precision == '16' and 'cuda' in model_wrapper.device))
+    scaler = torch.cuda.amp.GradScaler(enabled=(precision == '16'))
 
     for epoch in range(epochs):
         model_wrapper.model.train()
@@ -603,7 +600,7 @@ def finetune(model_wrapper, dataset_name, epochs=3, precision='32', seed=None):
         for batch in pbar:
             optimizer.zero_grad()
 
-            with torch.cuda.amp.autocast(enabled=(precision == '16' and 'cuda' in model_wrapper.device)):
+            with torch.cuda.amp.autocast(enabled=(precision == '16')):
                 if model_wrapper.model_name == 'LLM':
                     input_ids = batch['input_ids'].to(model_wrapper.device)
                     attention_mask = batch['attention_mask'].to(model_wrapper.device)

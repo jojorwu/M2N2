@@ -3,7 +3,6 @@
 # General settings
 model_config: 'RESNET'      # Options: 'CIFAR10', 'MNIST', 'LLM', 'RESNET'
 dataset_name: 'CIFAR10' # The dataset to use ('CIFAR10', 'MNIST', or 'LLM')
-model_dir: 'src/pretrained_models' # Directory to save/load models
 log_file: 'simulation.log' # Path for the log file. Set to null or remove to disable file logging.
 precision_config: '32'    # Options: '16' (mixed), '32' (standard), '64' (double)
 num_generations: 2        # Number of evolutionary cycles to run
@@ -33,14 +32,3 @@ model_specific_epochs:
   RESNET:
     specialize: 1
     finetune: 2
-
-# --- Dataset Settings ---
-dataset_configs:
-  CIFAR10:
-    num_classes: 10
-  MNIST:
-    num_classes: 10
-  LLM:
-    num_classes: 77 # For banking77
-  IMAGENET:
-    num_classes: 1000

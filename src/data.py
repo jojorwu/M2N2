@@ -71,17 +71,8 @@ def _load_full_datasets(dataset_name, model_name):
             os.makedirs(cache_dir, exist_ok=True)
             torch.save(full_train_dataset, train_cache_path)
             torch.save(full_test_dataset, test_cache_path)
-    elif dataset_name == 'IMAGENET':
-        # For ImageNet, we expect 224x224 images.
-        # We use FakeData to simulate the dataset without needing to download it.
-        transform = transforms.Compose([
-            transforms.ToTensor(),
-            transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
-        ])
-        full_train_dataset = datasets.FakeData(size=1000, image_size=(3, 224, 224), num_classes=1000, transform=transform)
-        full_test_dataset = datasets.FakeData(size=200, image_size=(3, 224, 224), num_classes=1000, transform=transform)
     else:
-        raise ValueError(f"Unsupported dataset: {dataset_name}. Please use 'CIFAR10', 'MNIST', 'LLM', or 'IMAGENET'.")
+        raise ValueError(f"Unsupported dataset: {dataset_name}. Please use 'CIFAR10', 'MNIST', or 'LLM'.")
     return full_train_dataset, full_test_dataset
 
 def get_dataloaders(dataset_name='CIFAR10', model_name=None, batch_size=64, niche_classes=None, subset_percentage=1.0, validation_split=0.1, seed=None):
@@ -128,6 +119,13 @@ def get_dataloaders(dataset_name='CIFAR10', model_name=None, batch_size=64, nich
         test_indices = rng.permutation(len(full_test_dataset))[:num_test]
         full_test_dataset = Subset(full_test_dataset, test_indices)
 
+    if niche_classes is not None:
+        if dataset_name == 'LLM':
+            niche_indices = [i for i, item in enumerate(full_train_dataset) if item['labels'].item() in niche_classes]
+        else:
+            niche_indices = [i for i, (_, label) in enumerate(full_train_dataset) if label in niche_classes]
+        full_train_dataset = Subset(full_train_dataset, niche_indices)
+
     # Split training data into training and validation
     num_train = len(full_train_dataset)
     indices = list(range(num_train))
@@ -137,13 +135,6 @@ def get_dataloaders(dataset_name='CIFAR10', model_name=None, batch_size=64, nich
 
     train_subset = Subset(full_train_dataset, train_idx)
     validation_subset = Subset(full_train_dataset, valid_idx)
-
-    if niche_classes is not None:
-        if dataset_name == 'LLM':
-            train_indices = [i for i, item in enumerate(train_subset) if item['labels'].item() in niche_classes]
-        else:
-            train_indices = [i for i, (_, label) in enumerate(train_subset) if label in niche_classes]
-        train_subset = Subset(train_subset, train_indices)
 
     train_loader = DataLoader(dataset=train_subset, batch_size=batch_size, shuffle=True)
     validation_loader = DataLoader(dataset=validation_subset, batch_size=batch_size, shuffle=False)
