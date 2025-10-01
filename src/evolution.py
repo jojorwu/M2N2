@@ -74,6 +74,38 @@ class ModelWrapper:
         # This flag prevents redundant evaluations.
         self.fitness_is_current = False
 
+def _run_training_epoch(model_wrapper: ModelWrapper, optimizer: optim.Optimizer, train_loader: DataLoader, scaler: torch.cuda.amp.GradScaler, precision: str, description: str) -> float:
+    """Runs a single training epoch for a given model and returns the average loss."""
+    model_wrapper.model.train()
+    total_train_loss = 0.0
+    pbar = tqdm(train_loader, desc=description)
+    for batch in pbar:
+        optimizer.zero_grad()
+
+        with torch.cuda.amp.autocast(enabled=(precision == '16' and 'cuda' in model_wrapper.device)):
+            if model_wrapper.model_name == 'LLM':
+                input_ids = batch['input_ids'].to(model_wrapper.device)
+                attention_mask = batch['attention_mask'].to(model_wrapper.device)
+                labels = batch['labels'].to(model_wrapper.device)
+                outputs = model_wrapper.model(input_ids=input_ids, attention_mask=attention_mask)
+                loss = F.cross_entropy(outputs, labels)
+            else:
+                data, target = batch
+                data = data.to(model_wrapper.device)
+                target = target.to(model_wrapper.device)
+                if precision == '64':
+                    data = data.double()
+                output = model_wrapper.model(data)
+                loss = F.cross_entropy(output, target)
+
+        scaler.scale(loss).backward()
+        scaler.step(optimizer)
+        scaler.update()
+        total_train_loss += loss.item()
+        pbar.set_postfix({'train_loss': f"{loss.item():.4f}"})
+
+    return total_train_loss / len(train_loader) if len(train_loader) > 0 else 0.0
+
 def specialize(model_wrapper: ModelWrapper, dataset_name: str, epochs: int = 1, precision: str = '32', seed: Optional[int] = None, learning_rate: float = 0.001) -> None:
     """Trains a model in-place on its specialized data niche.
 
@@ -106,35 +138,18 @@ def specialize(model_wrapper: ModelWrapper, dataset_name: str, epochs: int = 1, 
     if precision == '64':
         model_wrapper.model.double()
 
-    scaler = torch.cuda.amp.GradScaler(enabled=(precision == '16'))
+    scaler = torch.cuda.amp.GradScaler(enabled=(precision == '16' and 'cuda' in model_wrapper.device))
 
     for epoch in range(epochs):
-        model_wrapper.model.train()
         logger.info(f"  - Epoch {epoch + 1}/{epochs}")
-        pbar = tqdm(train_loader, desc=f"Specializing Niche {model_wrapper.niche_classes}")
-        for batch in pbar:
-            optimizer.zero_grad()
-
-            with torch.cuda.amp.autocast(enabled=(precision == '16')):
-                if model_wrapper.model_name == 'LLM':
-                    input_ids = batch['input_ids'].to(model_wrapper.device)
-                    attention_mask = batch['attention_mask'].to(model_wrapper.device)
-                    labels = batch['labels'].to(model_wrapper.device)
-                    outputs = model_wrapper.model(input_ids=input_ids, attention_mask=attention_mask)
-                    loss = F.cross_entropy(outputs, labels)
-                else:
-                    data, target = batch
-                    data = data.to(model_wrapper.device)
-                    target = target.to(model_wrapper.device)
-                    if precision == '64':
-                        data = data.double()
-                    output = model_wrapper.model(data)
-                    loss = F.cross_entropy(output, target)
-
-            scaler.scale(loss).backward()
-            scaler.step(optimizer)
-            scaler.update()
-            pbar.set_postfix({'loss': loss.item()})
+        _run_training_epoch(
+            model_wrapper,
+            optimizer,
+            train_loader,
+            scaler,
+            precision,
+            f"Specializing Niche {model_wrapper.niche_classes}"
+        )
 
     # Mark fitness as not current, as the model has been modified.
     model_wrapper.fitness_is_current = False
@@ -654,40 +669,20 @@ def finetune(model_wrapper: ModelWrapper, dataset_name: str, validation_loader: 
     scaler = torch.cuda.amp.GradScaler(enabled=(precision == '16' and 'cuda' in model_wrapper.device))
 
     for epoch in range(epochs):
-        model_wrapper.model.train()
         logger.info(f"  - Epoch {epoch + 1}/{epochs}")
-        pbar = tqdm(train_loader, desc=f"Fine-tuning Child")
-        total_train_loss = 0
-        for batch in pbar:
-            optimizer.zero_grad()
-
-            with torch.cuda.amp.autocast(enabled=(precision == '16' and 'cuda' in model_wrapper.device)):
-                if model_wrapper.model_name == 'LLM':
-                    input_ids = batch['input_ids'].to(model_wrapper.device)
-                    attention_mask = batch['attention_mask'].to(model_wrapper.device)
-                    labels = batch['labels'].to(model_wrapper.device)
-                    outputs = model_wrapper.model(input_ids=input_ids, attention_mask=attention_mask)
-                    loss = F.cross_entropy(outputs, labels)
-                else:
-                    data, target = batch
-                    data = data.to(model_wrapper.device)
-                    target = target.to(model_wrapper.device)
-                    if precision == '64':
-                        data = data.double()
-                    output = model_wrapper.model(data)
-                    loss = F.cross_entropy(output, target)
-
-            scaler.scale(loss).backward()
-            scaler.step(optimizer)
-            scaler.update()
-            total_train_loss += loss.item()
-            pbar.set_postfix({'train_loss': f"{loss.item():.4f}", 'lr': optimizer.param_groups[0]['lr']})
+        avg_train_loss = _run_training_epoch(
+            model_wrapper,
+            optimizer,
+            train_loader,
+            scaler,
+            precision,
+            "Fine-tuning Child"
+        )
 
         # Calculate validation loss for the scheduler
         avg_val_loss = _calculate_loss(model_wrapper, validation_loader)
         scheduler.step(avg_val_loss)
 
-        avg_train_loss = total_train_loss / len(train_loader)
         logger.info(f"  - Avg Train Loss: {avg_train_loss:.4f}, Avg Val Loss: {avg_val_loss:.4f}")
 
     # Mark fitness as not current, as the model has been modified.
