@@ -1,28 +1,17 @@
-# Python virtual environment
-venv/
-.venv/
-env/
+# Byte-compiled / optimized / DLL files
 __pycache__/
 *.pyc
 
 # Log files
 *.log
 
-# Data and command files
+# Data files
 *.csv
-command_config.json
 fitness_history.png
 
-# Test artifacts
-.pytest_cache/
-jules-scratch/
-
-# Downloaded datasets
+# Downloaded data
 data/
+src/cache/
 
 # Saved models
 src/pretrained_models/
-
-# IDE settings
-.idea/
-.vscode/
