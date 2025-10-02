@@ -66,8 +66,15 @@ class SequentialConstructiveMergeStrategy(MergeStrategy):
         num_classes = fitter_parent.model.num_classes
         temp_model_wrapper = ModelWrapper(model_name=fitter_parent.model_name, niche_classes=list(range(num_classes)), device=fitter_parent.device)
         temp_model_wrapper.model.load_state_dict(best_child_state_dict)
-        best_fitness = _get_validation_fitness(temp_model_wrapper, validation_loader)
-        logger.info(f"  - Initial child validation fitness: {best_fitness:.2f}%")
+
+        # --- Optimization: Use a single batch for quick validation ---
+        try:
+            validation_batch = next(iter(validation_loader))
+        except StopIteration:
+            raise ValueError("Validation loader is empty. Cannot use 'sequential_constructive' strategy.")
+
+        best_fitness = _get_validation_fitness(temp_model_wrapper, validation_loader, batch=validation_batch)
+        logger.info(f"  - Initial child validation fitness (on one batch): {best_fitness:.2f}%")
 
         if fitter_parent.model_name == 'LLM':
             layer_prefixes = ['bert.distilbert.embeddings']
@@ -97,7 +104,7 @@ class SequentialConstructiveMergeStrategy(MergeStrategy):
                 current_state_dict[key].copy_(weaker_parent.model.state_dict()[key])
 
             # 3. Evaluate the new configuration
-            current_fitness = _get_validation_fitness(temp_model_wrapper, validation_loader)
+            current_fitness = _get_validation_fitness(temp_model_wrapper, validation_loader, batch=validation_batch)
 
             # 4. Decide whether to keep or revert the change
             if current_fitness > best_fitness:

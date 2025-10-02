@@ -1,6 +1,7 @@
 import random
 import numpy as np
 import torch
+from typing import Optional, Any
 
 def set_seed(seed: int) -> None:
     """Sets the seed for random number generators in random, numpy, and torch."""
@@ -19,24 +20,30 @@ def set_seed(seed: int) -> None:
 from torch.utils.data import DataLoader
 from .model_wrapper import ModelWrapper
 
-def _calculate_accuracy(model_wrapper: ModelWrapper, data_loader: DataLoader) -> float:
-    """A generic helper to calculate accuracy on a given data loader."""
+def _calculate_accuracy(model_wrapper: ModelWrapper, data_loader: DataLoader, batch: Optional[Any] = None) -> float:
+    """
+    A generic helper to calculate accuracy on a given data loader or a single
+    batch.
+    """
     model_wrapper.model.eval()
     correct = 0
     total = 0
 
     with torch.no_grad():
-        for batch in data_loader:
+        # If a single batch is provided, wrap it in a list to make it iterable
+        data_source = [batch] if batch else data_loader
+
+        for b in data_source:
             if model_wrapper.model_name == 'LLM':
-                input_ids = batch['input_ids'].to(model_wrapper.device)
-                attention_mask = batch['attention_mask'].to(model_wrapper.device)
-                labels = batch['labels'].to(model_wrapper.device)
+                input_ids = b['input_ids'].to(model_wrapper.device)
+                attention_mask = b['attention_mask'].to(model_wrapper.device)
+                labels = b['labels'].to(model_wrapper.device)
                 outputs = model_wrapper.model(input_ids=input_ids, attention_mask=attention_mask)
                 _, predicted = torch.max(outputs, 1)
                 total += labels.size(0)
                 correct += (predicted == labels).sum().item()
             else:
-                data, target = batch
+                data, target = b
                 data = data.to(model_wrapper.device)
                 target = target.to(model_wrapper.device)
                 if next(model_wrapper.model.parameters()).dtype == torch.float64:
@@ -49,6 +56,9 @@ def _calculate_accuracy(model_wrapper: ModelWrapper, data_loader: DataLoader) ->
     return 100 * correct / total if total > 0 else 0.0
 
 
-def _get_validation_fitness(model_wrapper: ModelWrapper, validation_loader: DataLoader) -> float:
-    """Calculates a fitness score using a provided validation loader."""
-    return _calculate_accuracy(model_wrapper, validation_loader)
+def _get_validation_fitness(model_wrapper: ModelWrapper, validation_loader: DataLoader, batch: Optional[Any] = None) -> float:
+    """
+    Calculates a fitness score using a provided validation loader or a single
+    batch.
+    """
+    return _calculate_accuracy(model_wrapper, validation_loader, batch=batch)
