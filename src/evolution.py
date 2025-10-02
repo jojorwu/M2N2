@@ -61,7 +61,7 @@ def _run_training_epoch(model_wrapper: ModelWrapper, optimizer: optim.Optimizer,
 
     return total_train_loss / len(train_loader) if len(train_loader) > 0 else 0.0
 
-def specialize(model_wrapper: ModelWrapper, dataset_name: str, epochs: int = 1, precision: str = '32', seed: Optional[int] = None, learning_rate: float = 0.001) -> None:
+def specialize(model_wrapper: ModelWrapper, dataset_name: str, epochs: int = 1, precision: str = '32', seed: Optional[int] = None, learning_rate: float = 0.001, subset_percentage: float = 0.1) -> None:
     """Trains a model in-place on its specialized data niche.
 
     This simulates the "resource competition" phase where a model becomes an
@@ -77,6 +77,8 @@ def specialize(model_wrapper: ModelWrapper, dataset_name: str, epochs: int = 1, 
             ensure deterministic data splitting. Defaults to None.
         learning_rate (float, optional): The learning rate for the optimizer.
             Defaults to 0.001.
+        subset_percentage (float, optional): The fraction of the training data
+            to use. Defaults to 0.1.
     """
     logger.info(f"Specializing model on niche {model_wrapper.niche_classes} for {epochs} epoch(s) with {precision}-bit precision...")
 
@@ -84,7 +86,7 @@ def specialize(model_wrapper: ModelWrapper, dataset_name: str, epochs: int = 1, 
         dataset_name=dataset_name,
         model_name=model_wrapper.model_name,
         niche_classes=model_wrapper.niche_classes,
-        subset_percentage=0.1,
+        subset_percentage=subset_percentage,
         seed=seed
     )
     optimizer = optim.Adam(model_wrapper.model.parameters(), lr=learning_rate)
@@ -432,7 +434,7 @@ def _calculate_loss(model_wrapper: ModelWrapper, data_loader: DataLoader) -> flo
     return total_loss / len(data_loader)
 
 
-def finetune(model_wrapper: ModelWrapper, dataset_name: str, validation_loader: DataLoader, epochs: int = 3, precision: str = '32', seed: Optional[int] = None, learning_rate: float = 0.001, scheduler_patience: int = 2, scheduler_factor: float = 0.5) -> None:
+def finetune(model_wrapper: ModelWrapper, dataset_name: str, validation_loader: DataLoader, epochs: int = 3, precision: str = '32', seed: Optional[int] = None, learning_rate: float = 0.001, scheduler_patience: int = 2, scheduler_factor: float = 0.5, subset_percentage: float = 0.1) -> None:
     """Fine-tunes a model in-place on the full dataset with a scheduler.
 
     This step is crucial for a newly merged child model. It uses an Adam
@@ -456,6 +458,8 @@ def finetune(model_wrapper: ModelWrapper, dataset_name: str, validation_loader: 
             scheduler. Defaults to 2.
         scheduler_factor (float, optional): The factor for the learning rate
             scheduler. Defaults to 0.5.
+        subset_percentage (float, optional): The fraction of the training data
+            to use. Defaults to 0.1.
     """
     logger.info(f"Fine-tuning model for {epochs} epoch(s) with {precision}-bit precision and ReduceLROnPlateau scheduler...")
 
@@ -463,7 +467,7 @@ def finetune(model_wrapper: ModelWrapper, dataset_name: str, validation_loader: 
     train_loader, _, _ = get_dataloaders(
         dataset_name=dataset_name,
         model_name=model_wrapper.model_name,
-        subset_percentage=0.1,
+        subset_percentage=subset_percentage,
         seed=seed,
         validation_split=0.0
     )

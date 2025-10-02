@@ -184,7 +184,8 @@ class EvolutionSimulator:
                 epochs=self.specialize_epochs,
                 precision=self.precision_config,
                 seed=self.seed,
-                learning_rate=self.learning_rate
+                learning_rate=self.learning_rate,
+                subset_percentage=self.subset_percentage
             )
         logger.info("")
 
@@ -200,7 +201,8 @@ class EvolutionSimulator:
                         epochs=self.specialize_epochs,
                         precision=self.precision_config,
                         seed=self.seed,
-                        learning_rate=self.learning_rate
+                        learning_rate=self.learning_rate,
+                        subset_percentage=self.subset_percentage
                     )
             logger.info("")
 
@@ -351,7 +353,8 @@ class EvolutionSimulator:
                 seed=self.seed,
                 learning_rate=self.learning_rate,
                 scheduler_patience=self.scheduler_patience,
-                scheduler_factor=self.scheduler_factor
+                scheduler_factor=self.scheduler_factor,
+                subset_percentage=self.subset_percentage
             )
             # Selection
             self.population = create_next_generation(
