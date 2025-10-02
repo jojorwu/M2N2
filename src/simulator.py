@@ -121,7 +121,9 @@ class EvolutionSimulator:
             self.finetune_epochs = self.config['default_epochs']['finetune']
 
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        self.seed = np.random.randint(0, 1_000_000)  # Seed for this experiment run
+        # --- Seed for reproducibility ---
+        # Use seed from config if provided, otherwise generate a random one.
+        self.seed = self.config.get('seed') or np.random.randint(0, 1_000_000)
 
     def _initialize_dataloaders(self) -> None:
         """Creates the necessary DataLoaders for the experiment."""
