@@ -267,13 +267,18 @@ def select_mates(population: List[ModelWrapper], dataset_name: str, subset_perce
         parent2 = max(specialist_candidates, key=lambda m: m.fitness)
         logger.info(f"  - Found specialist for class {weakest_class_index} as Parent 2 (Fitness: {parent2.fitness:.2f}%)")
     else:
-        # Fallback: if no suitable specialist is found, pick the second-best model overall.
+        # Fallback: if no suitable specialist is found, pick the second-best model overall,
+        # ensuring it's not the same instance as Parent 1.
         logger.info("  - No suitable specialist found. Using second-best model as fallback Parent 2.")
         sorted_population = sorted(population, key=lambda m: m.fitness, reverse=True)
-        if len(sorted_population) > 1:
-            parent2 = sorted_population[1]
-        else:
-            logger.info("  - Not enough models in population to select a second parent.")
+
+        # Find the first model in the sorted list that is not Parent 1.
+        parent2 = next((model for model in sorted_population if model is not parent1), None)
+
+        if parent2 is None:
+            # This happens if all models in the population are the same instance
+            # or if there's only one model.
+            logger.info("  - Not enough distinct models in population to select a second parent.")
             return parent1, None
 
     if parent1 and parent2:
