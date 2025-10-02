@@ -463,7 +463,7 @@ def finetune(model_wrapper: ModelWrapper, dataset_name: str, validation_loader: 
         validation_split=0.0
     )
     optimizer = optim.Adam(model_wrapper.model.parameters(), lr=learning_rate)
-    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min', patience=scheduler_patience, factor=scheduler_factor, verbose=True)
+    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min', patience=scheduler_patience, factor=scheduler_factor)
 
     if precision == '64':
         model_wrapper.model.double()

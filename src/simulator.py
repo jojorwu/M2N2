@@ -50,6 +50,7 @@ class EvolutionSimulator:
     population: List[ModelWrapper]
     fitness_history: List[Tuple[float, float]]
     validation_loader: DataLoader
+    current_generation: int
 
     def __init__(self, config_path: str = 'config.yaml') -> None:
         """
@@ -71,8 +72,10 @@ class EvolutionSimulator:
         # --- 3. Initialize Population and DataLoaders ---
         self.population = []
         self.fitness_history = []
+        self.current_generation = 0
         self._initialize_dataloaders()
         self._initialize_population()
+        self._initialize_fitness_log()
 
     def _setup_environment(self, config_path: str) -> None:
         """Loads configuration and sets up the logger."""
@@ -200,17 +203,29 @@ class EvolutionSimulator:
                     )
             logger.info("")
 
+    def _initialize_fitness_log(self) -> None:
+        """Creates the fitness log file and writes the header."""
+        with open("fitness_log.csv", "w") as f:
+            f.write("generation,best_fitness,average_fitness\n")
+
+    def _log_fitness_to_csv(self, generation: int, best_fitness: float, avg_fitness: float) -> None:
+        """Appends the current generation's fitness data to the CSV log."""
+        with open("fitness_log.csv", "a") as f:
+            f.write(f"{generation},{best_fitness:.2f},{avg_fitness:.2f}\n")
+
     def _run_evaluation_phase(self) -> None:
         """Handles the evaluation of the population."""
         logger.info("--- Evaluating Population on Test Set ---")
         for model_wrapper in self.population:
-            evaluate(model_wrapper, dataset_name=self.dataset_name, subset_percentage=self.subset_percentage, seed=self.seed)
+            if not model_wrapper.fitness_is_current:
+                evaluate(model_wrapper, dataset_name=self.dataset_name, subset_percentage=self.subset_percentage, seed=self.seed)
 
         best_fitness = max([m.fitness for m in self.population])
         avg_fitness = sum([m.fitness for m in self.population]) / len(self.population)
         self.fitness_history.append((best_fitness, avg_fitness))
         generation = len(self.fitness_history)
         logger.info(f"\nGeneration {generation} Stats: Best Fitness = {best_fitness:.2f}%, Avg Fitness = {avg_fitness:.2f}%\n")
+        self._log_fitness_to_csv(generation, best_fitness, avg_fitness)
 
     def _run_evolution_phase(self, generation: int) -> None:
         """Handles the mating, mutation, and selection of models."""
@@ -257,13 +272,30 @@ class EvolutionSimulator:
         else:
             logger.info("Population will carry over to the next generation without changes.")
 
+    def run_one_generation(self) -> bool:
+        """
+        Runs a single generation of the evolutionary simulation.
+
+        Returns:
+            bool: True if the simulation can continue, False if the final
+                  generation has been reached.
+        """
+        if self.current_generation >= self.num_generations:
+            logger.info("Maximum number of generations reached. Cannot run another generation.")
+            return False
+
+        logger.info(f"\n--- GENERATION {self.current_generation + 1}/{self.num_generations} ---")
+        self._run_specialization_phase(self.current_generation)
+        self._run_evaluation_phase()
+        self._run_evolution_phase(self.current_generation)
+        self.current_generation += 1
+
+        return self.current_generation < self.num_generations
+
     def run(self) -> None:
-        """Runs the main evolutionary loop by coordinating the different phases."""
-        for generation in range(self.num_generations):
-            logger.info(f"\n--- GENERATION {generation + 1}/{self.num_generations} ---")
-            self._run_specialization_phase(generation)
-            self._run_evaluation_phase()
-            self._run_evolution_phase(generation)
+        """Runs the main evolutionary loop until all generations are complete."""
+        while self.run_one_generation():
+            pass  # The logic is handled in run_one_generation
 
         self._summarize_and_save()
 

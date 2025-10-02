@@ -7,3 +7,5 @@ datasets
 matplotlib
 pytest
 pyyaml
+streamlit
+pandas
