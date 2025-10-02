@@ -79,7 +79,7 @@ class TestEvolution(unittest.TestCase):
             "The specialist parent's contribution is likely being diluted."
         )
 
-    @patch('src.evolution._get_validation_fitness')
+    @patch('src.merge_strategies._get_validation_fitness')
     @patch('src.model.models.resnet18')
     def test_sequential_constructive_merge_skips_parameterless_resnet_layers(self, mock_resnet_constructor, mock_get_validation_fitness):
         """
@@ -211,7 +211,7 @@ class TestEvolution(unittest.TestCase):
         self.assertEqual(unique_selected, expected_weakest_indices, "The selected weakest classes do not match the expected set.")
 
 
-    @patch('src.evolution._get_validation_fitness')
+    @patch('src.merge_strategies._get_validation_fitness')
     def test_sequential_constructive_merge_handles_variable_num_classes(self, mock_get_validation_fitness):
         """
         Tests that the 'sequential_constructive' merge strategy correctly

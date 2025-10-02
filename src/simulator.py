@@ -10,7 +10,8 @@ import yaml
 import numpy as np
 import logging
 from .logger_config import setup_logger
-from .evolution import ModelWrapper, specialize, evaluate, select_mates, merge, mutate, finetune, create_next_generation
+from .model_wrapper import ModelWrapper
+from .evolution import specialize, evaluate, select_mates, merge, mutate, finetune, create_next_generation
 from .data import get_dataloaders
 from .visualization import plot_fitness_history
 from .utils import set_seed

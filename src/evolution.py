@@ -12,7 +12,15 @@ import torch.nn.functional as F
 import logging
 from .model import CifarCNN, MnistCNN, LLMClassifier, ResNetClassifier
 from .data import get_dataloaders
-from typing import List, Optional, Tuple
+from .merge_strategies import (
+    AverageMergeStrategy,
+    FitnessWeightedMergeStrategy,
+    LayerWiseMergeStrategy,
+    SequentialConstructiveMergeStrategy,
+)
+from .model_wrapper import ModelWrapper
+from .utils import _calculate_accuracy
+from typing import List, Optional, Tuple, Dict, Any
 from torch.utils.data import DataLoader
 from torch import nn
 
@@ -20,59 +28,6 @@ logger = logging.getLogger("M2N2_SIMULATOR")
 import copy
 import random
 from tqdm import tqdm
-class ModelWrapper:
-    """A wrapper to hold a model and its evolutionary metadata.
-
-    This class encapsulates a model and its associated context, such as its
-    specialized niche, its fitness score, and the model architecture.
-
-    Attributes:
-        model_name (str): The name of the model architecture ('CIFAR10', 'MNIST', 'LLM', or 'RESNET').
-        niche_classes (list[int]): A list of class indices the model is
-            specialized in. An empty or full list implies a generalist.
-        device (str): The device ('cpu' or 'cuda') on which the model's
-            tensors are allocated.
-        model (torch.nn.Module): The underlying neural network model instance.
-        fitness (float): The fitness score of the model. Initialized to 0.0.
-        fitness_is_current (bool): A flag to indicate if the fitness score
-            is up-to-date. Initialized to `False`.
-    """
-    model_name: str
-    niche_classes: List[int]
-    device: str
-    model: nn.Module
-    fitness: float
-    fitness_is_current: bool
-
-    def __init__(self, model_name: str, niche_classes: List[int], device: str = 'cpu'):
-        """Initializes the ModelWrapper with a model and its niche.
-
-        Args:
-            model_name (str): The name of the model to instantiate.
-                Supported options: 'CIFAR10', 'MNIST', 'LLM', 'RESNET'.
-            niche_classes (list[int]): The list of class indices for the
-                model's specialized niche.
-            device (str, optional): The device to run the model on.
-                Defaults to 'cpu'.
-        """
-        self.model_name = model_name
-        self.niche_classes = niche_classes
-        self.device = device
-
-        if self.model_name == 'CIFAR10':
-            self.model = CifarCNN().to(device)
-        elif self.model_name == 'MNIST':
-            self.model = MnistCNN().to(device)
-        elif self.model_name == 'LLM':
-            self.model = LLMClassifier().to(device)
-        elif self.model_name == 'RESNET':
-            self.model = ResNetClassifier().to(device)
-        else:
-            raise ValueError(f"Unsupported model name: {self.model_name}")
-
-        self.fitness = 0.0
-        # This flag prevents redundant evaluations.
-        self.fitness_is_current = False
 
 def _run_training_epoch(model_wrapper: ModelWrapper, optimizer: optim.Optimizer, train_loader: DataLoader, scaler: torch.cuda.amp.GradScaler, precision: str, description: str) -> float:
     """Runs a single training epoch for a given model and returns the average loss."""
@@ -155,60 +110,6 @@ def specialize(model_wrapper: ModelWrapper, dataset_name: str, epochs: int = 1, 
     model_wrapper.fitness_is_current = False
     logger.info("Specialization complete.")
 
-def _calculate_accuracy(model_wrapper: ModelWrapper, data_loader: DataLoader) -> float:
-    """A generic helper to calculate accuracy on a given data loader.
-
-    Args:
-        model_wrapper (ModelWrapper): The model to evaluate.
-        data_loader (DataLoader): The data to evaluate on.
-
-    Returns:
-        float: The accuracy of the model on the data.
-    """
-    model_wrapper.model.eval()
-    correct = 0
-    total = 0
-
-    with torch.no_grad():
-        for batch in data_loader:
-            if model_wrapper.model_name == 'LLM':
-                input_ids = batch['input_ids'].to(model_wrapper.device)
-                attention_mask = batch['attention_mask'].to(model_wrapper.device)
-                labels = batch['labels'].to(model_wrapper.device)
-                outputs = model_wrapper.model(input_ids=input_ids, attention_mask=attention_mask)
-                _, predicted = torch.max(outputs, 1)
-                total += labels.size(0)
-                correct += (predicted == labels).sum().item()
-            else:
-                data, target = batch
-                data = data.to(model_wrapper.device)
-                target = target.to(model_wrapper.device)
-                # Ensure data type matches model's precision
-                if next(model_wrapper.model.parameters()).dtype == torch.float64:
-                    data = data.double()
-                output = model_wrapper.model(data)
-                _, predicted = torch.max(output.data, 1)
-                total += target.size(0)
-                correct += (predicted == target).sum().item()
-
-    return 100 * correct / total
-
-def _get_validation_fitness(model_wrapper: ModelWrapper, validation_loader: DataLoader) -> float:
-    """Calculates a fitness score using a provided validation loader.
-
-    This is the fastest evaluation function, designed for the high-frequency
-    evaluations that occur during the sequential constructive crossover. It
-    uses a small, pre-made validation set to quickly estimate a model's
-    performance without touching the final test set.
-
-    Args:
-        model_wrapper (ModelWrapper): The model wrapper to evaluate.
-        validation_loader (DataLoader): The pre-made loader for the validation set.
-
-    Returns:
-        float: The calculated accuracy on the validation set.
-    """
-    return _calculate_accuracy(model_wrapper, validation_loader)
 
 def _get_fitness_score(model_wrapper: ModelWrapper, dataset_name: str, seed: Optional[int] = None) -> float:
     """Calculates and returns the fitness score for a model on the test set.
@@ -379,138 +280,35 @@ def select_mates(population: List[ModelWrapper], dataset_name: str, seed: Option
         return None, None
 
 def merge(parent1: ModelWrapper, parent2: ModelWrapper, strategy: str = 'average', validation_loader: Optional[DataLoader] = None, seed: Optional[int] = None, dampening_factor: float = 25.0) -> ModelWrapper:
-    """Merges two parent models into a new child model (crossover).
-
-    This function combines the weights of two parents to produce a new child
-    model. The child is initialized as a generalist, with a niche covering
-    all classes. This function prints the strategy details to the console.
-
-    Args:
-        parent1 (ModelWrapper): The first parent model.
-        parent2 (ModelWrapper): The second parent model.
-        strategy (str, optional): The merging strategy. Options are:
-            - 'average': A simple arithmetic mean of the parent weights.
-            - 'fitness_weighted': A weighted average where each parent's
-              contribution is proportional to its fitness score.
-            - 'layer-wise': Randomly selects each entire layer from one
-              of the two parents. This is made deterministic by the `seed`.
-            - 'sequential_constructive': Intelligently builds a child by
-              starting with the fitter parent and sequentially swapping in
-              layers from the weaker parent if they improve performance.
-              Requires the `validation_loader`.
-            Defaults to 'average'.
-        validation_loader (DataLoader, optional): A DataLoader for a
-            validation set, required by certain strategies. Defaults to None.
-        seed (int, optional): A seed for the random number generator to
-            ensure deterministic layer selection. Defaults to None.
-        dampening_factor (float, optional): A factor to reduce the impact of
-            large fitness disparities in 'fitness_weighted' merge.
-            Defaults to 25.0.
-
-    Returns:
-        ModelWrapper: A new model wrapper containing the merged child model.
-
-    Raises:
-        ValueError: If an unknown merge strategy is specified or if a
-            required argument (like `validation_loader`) is missing.
+    """
+    Merges two parent models into a new child model using a specified strategy.
     """
     logger.info(f"Merging parent models to create child using '{strategy}' strategy...")
-    num_classes = parent1.model.num_classes
-    child_wrapper = ModelWrapper(model_name=parent1.model_name, niche_classes=list(range(num_classes)), device=parent1.device)
-    child_model_state_dict = child_wrapper.model.state_dict()
 
-    parent1_state_dict = parent1.model.state_dict()
-    parent2_state_dict = parent2.model.state_dict()
+    strategy_map: Dict[str, Any] = {
+        'average': AverageMergeStrategy,
+        'fitness_weighted': FitnessWeightedMergeStrategy,
+        'layer-wise': LayerWiseMergeStrategy,
+        'sequential_constructive': SequentialConstructiveMergeStrategy,
+    }
 
-    if strategy == 'fitness_weighted':
-        # The dampening factor prevents a high-fitness parent from
-        # completely overwhelming a low-fitness specialist. This makes
-        # the "healing" process of combining a generalist with a
-        # specialist more effective.
-        dampened_fitness1 = parent1.fitness + dampening_factor
-        dampened_fitness2 = parent2.fitness + dampening_factor
-        total_dampened_fitness = dampened_fitness1 + dampened_fitness2
-
-        if total_dampened_fitness == 0:
-            weight1, weight2 = 0.5, 0.5
-        else:
-            weight1 = dampened_fitness1 / total_dampened_fitness
-            weight2 = dampened_fitness2 / total_dampened_fitness
-
-        logger.info(f"  - Dampened weights: Parent 1 ({weight1:.2f}), Parent 2 ({weight2:.2f})")
-
-        for key in child_model_state_dict:
-            child_model_state_dict[key] = (parent1_state_dict[key] * weight1) + (parent2_state_dict[key] * weight2)
-
-    elif strategy == 'average':
-        for key in child_model_state_dict:
-            child_model_state_dict[key] = (parent1_state_dict[key] + parent2_state_dict[key]) / 2.0
-
-    elif strategy == 'layer-wise':
-        # Use a seeded random number generator for deterministic layer selection
-        rng = random.Random(seed)
-        layer_prefixes = sorted(list(set([k.split('.')[0] for k in parent1_state_dict.keys()])))
-        parent_choices = {p: rng.choice([1, 2]) for p in layer_prefixes}
-        for key in child_model_state_dict:
-            prefix = key.split('.')[0]
-            child_model_state_dict[key] = parent1_state_dict[key] if parent_choices[prefix] == 1 else parent2_state_dict[key]
-
-    elif strategy == 'sequential_constructive':
-        if validation_loader is None:
-            raise ValueError("The 'sequential_constructive' strategy requires a 'validation_loader'.")
-
-        fitter_parent = parent1 if parent1.fitness >= parent2.fitness else parent2
-        weaker_parent = parent2 if parent1.fitness >= parent2.fitness else parent1
-        logger.info(f"  - Using fitter parent (Fitness: {fitter_parent.fitness:.2f}) as base.")
-
-        best_child_state_dict = copy.deepcopy(fitter_parent.model.state_dict())
-
-        num_classes = fitter_parent.model.num_classes
-        temp_model_wrapper = ModelWrapper(model_name=fitter_parent.model_name, niche_classes=list(range(num_classes)), device=fitter_parent.device)
-        temp_model_wrapper.model.load_state_dict(best_child_state_dict)
-        best_fitness = _get_validation_fitness(temp_model_wrapper, validation_loader)
-        logger.info(f"  - Initial child validation fitness: {best_fitness:.2f}%")
-
-        if fitter_parent.model_name == 'LLM':
-            layer_prefixes = ['bert.distilbert.embeddings']
-            num_transformer_layers = fitter_parent.model.bert.config.num_hidden_layers
-            for i in range(num_transformer_layers):
-                layer_prefixes.append(f'bert.distilbert.transformer.layer.{i}')
-            layer_prefixes.extend(['bert.pre_classifier', 'bert.classifier'])
-        elif fitter_parent.model_name == 'RESNET':
-            layer_prefixes = [name for name, _ in fitter_parent.model.resnet.named_children()]
-        else:
-            layer_prefixes = sorted(list(set([k.split('.')[0] for k in fitter_parent.model.state_dict().keys()])))
-
-        for prefix in layer_prefixes:
-            # OPTIMIZATION: For ResNet, some children (like relu, maxpool) have no parameters.
-            # Skip the expensive validation for these layers.
-            if fitter_parent.model_name == 'RESNET':
-                module_to_check = dict(fitter_parent.model.resnet.named_children()).get(prefix)
-                if module_to_check and not list(module_to_check.parameters()):
-                    logger.info(f"  - Skipping layer '{prefix}' as it has no learnable parameters.")
-                    continue
-
-            temp_state_dict = copy.deepcopy(best_child_state_dict)
-            for key in temp_state_dict:
-                if key.startswith(prefix):
-                    temp_state_dict[key] = weaker_parent.model.state_dict()[key]
-
-            temp_model_wrapper.model.load_state_dict(temp_state_dict)
-            current_fitness = _get_validation_fitness(temp_model_wrapper, validation_loader)
-
-            if current_fitness > best_fitness:
-                logger.info(f"  - Swapping layer '{prefix}' improved validation fitness to {current_fitness:.2f}%. Keeping it.")
-                best_fitness = current_fitness
-                best_child_state_dict = temp_state_dict
-            else:
-                logger.info(f"  - Swapping layer '{prefix}' did not improve validation fitness ({current_fitness:.2f}%). Discarding.")
-
-        child_model_state_dict = best_child_state_dict
-
-    else:
+    if strategy not in strategy_map:
         raise ValueError(f"Unknown merge strategy: {strategy}")
 
+    # Prepare arguments for the strategy constructor
+    strategy_args = {}
+    if strategy == 'fitness_weighted':
+        strategy_args['dampening_factor'] = dampening_factor
+    elif strategy == 'layer-wise':
+        strategy_args['seed'] = seed
+
+    # Instantiate the strategy and merge
+    merge_strategy = strategy_map[strategy](**strategy_args)
+    child_model_state_dict = merge_strategy.merge(parent1, parent2, validation_loader)
+
+    # Create and return the new child model
+    num_classes = parent1.model.num_classes
+    child_wrapper = ModelWrapper(model_name=parent1.model_name, niche_classes=list(range(num_classes)), device=parent1.device)
     child_wrapper.model.load_state_dict(child_model_state_dict)
     logger.info("Merging complete.")
     return child_wrapper
