@@ -228,35 +228,99 @@ class EvolutionSimulator:
         logger.info(f"\nGeneration {generation} Stats: Best Fitness = {best_fitness:.2f}%, Avg Fitness = {avg_fitness:.2f}%\n")
         self._log_fitness_to_csv(generation, best_fitness, avg_fitness)
 
-    def _load_dynamic_config(self) -> None:
+    def _clear_simulation_artifacts(self) -> None:
+        """Clears logs and saved models from previous runs."""
+        logger.info("--- Clearing simulation artifacts ---")
+        if os.path.exists("fitness_log.csv"):
+            os.remove("fitness_log.csv")
+            logger.info("Removed fitness_log.csv")
+
+        model_dir = "src/pretrained_models"
+        if os.path.exists(model_dir):
+            files = glob.glob(os.path.join(model_dir, "*.pth"))
+            if files:
+                for f in files:
+                    os.remove(f)
+                logger.info(f"Cleared {len(files)} models from {model_dir}")
+
+        if os.path.exists("command_config.json"):
+            os.remove("command_config.json")
+            logger.info("Removed command_config.json")
+
+    def _restart(self) -> None:
+        """Resets the simulation to its initial state for a fresh run."""
+        logger.info("\n--- RESTARTING SIMULATION ---")
+        self._clear_simulation_artifacts()
+
+        # Reset state variables
+        self.population = []
+        self.fitness_history = []
+        self.current_generation = 0
+
+        # Re-initialize
+        self._initialize_population()
+        self._initialize_fitness_log()
+        logger.info("--- Simulation has been restarted ---")
+
+
+    def _load_dynamic_config(self) -> Dict[str, Any]:
         """
         Checks for and loads dynamic configuration from command_config.json,
         allowing for real-time control over the simulation.
+
+        Returns:
+            Dict[str, Any]: The command configuration.
         """
         config_path = 'command_config.json'
         if not os.path.exists(config_path):
-            return  # No command file found, continue with existing config
+            return {}
 
         try:
             with open(config_path, 'r') as f:
                 command_config = json.load(f)
 
-            new_strategy = command_config.get('merge_strategy')
-            if new_strategy and new_strategy != self.merge_strategy:
-                self.merge_strategy = new_strategy
-                logger.info(f"Dynamically updated Merge Strategy to: '{self.merge_strategy}'")
+            # --- Update parameters if they exist in the command config ---
+            updates = {
+                'num_generations': (int, 'Number of Generations'),
+                'population_size': (int, 'Population Size'),
+                'mutation_rate': (float, 'Mutation Rate'),
+                'merge_strategy': (str, 'Merge Strategy'),
+                'initial_mutation_strength': (float, 'Initial Mutation Strength'),
+                'mutation_decay_factor': (float, 'Mutation Decay Factor')
+            }
 
-            new_mutation_rate = command_config.get('mutation_rate')
-            if new_mutation_rate is not None and new_mutation_rate != self.mutation_rate:
-                self.mutation_rate = new_mutation_rate
-                logger.info(f"Dynamically updated Mutation Rate to: {self.mutation_rate:.2f}")
+            for key, (cast, name) in updates.items():
+                new_value = command_config.get(key)
+                if new_value is not None and new_value != getattr(self, key):
+                    setattr(self, key, cast(new_value))
+                    logger.info(f"Dynamically updated {name} to: {getattr(self, key)}")
+
+            # Nested dictionaries for optimizer and scheduler
+            if 'optimizer_config' in command_config:
+                new_lr = command_config['optimizer_config'].get('learning_rate')
+                if new_lr is not None and new_lr != self.learning_rate:
+                    self.learning_rate = new_lr
+                    logger.info(f"Dynamically updated Learning Rate to: {self.learning_rate}")
+
+            if 'scheduler_config' in command_config:
+                new_patience = command_config['scheduler_config'].get('patience')
+                if new_patience is not None and new_patience != self.scheduler_patience:
+                    self.scheduler_patience = new_patience
+                    logger.info(f"Dynamically updated Scheduler Patience to: {self.scheduler_patience}")
+
+                new_factor = command_config['scheduler_config'].get('factor')
+                if new_factor is not None and new_factor != self.scheduler_factor:
+                    self.scheduler_factor = new_factor
+                    logger.info(f"Dynamically updated Scheduler Factor to: {self.scheduler_factor}")
+
+            return command_config
 
         except (json.JSONDecodeError, FileNotFoundError) as e:
             logger.warning(f"Could not load or parse command config file: {e}")
+            return {}
 
     def _run_evolution_phase(self, generation: int) -> None:
         """Handles the mating, mutation, and selection of models."""
-        self._load_dynamic_config()  # Check for real-time commands
         logger.info("--- Mating and Evolution ---")
         parent1, parent2 = select_mates(self.population, dataset_name=self.dataset_name, subset_percentage=self.subset_percentage, seed=self.seed)
 
@@ -300,32 +364,37 @@ class EvolutionSimulator:
         else:
             logger.info("Population will carry over to the next generation without changes.")
 
-    def run_one_generation(self) -> bool:
+    def run_one_generation(self) -> None:
         """
         Runs a single generation of the evolutionary simulation.
-
-        Returns:
-            bool: True if the simulation can continue, False if the final
-                  generation has been reached.
         """
-        if self.current_generation >= self.num_generations:
-            logger.info("Maximum number of generations reached. Cannot run another generation.")
-            return False
-
         logger.info(f"\n--- GENERATION {self.current_generation + 1}/{self.num_generations} ---")
         self._run_specialization_phase(self.current_generation)
         self._run_evaluation_phase()
         self._run_evolution_phase(self.current_generation)
         self.current_generation += 1
 
-        return self.current_generation < self.num_generations
-
     def run(self) -> None:
-        """Runs the main evolutionary loop until all generations are complete."""
-        while self.run_one_generation():
-            pass  # The logic is handled in run_one_generation
+        """
+        Runs the main evolutionary loop, checking for commands each generation.
+        """
+        while self.current_generation < self.num_generations:
+            command_config = self._load_dynamic_config()
 
-        self._summarize_and_save()
+            if command_config.get('restart_simulation'):
+                self._restart()
+                continue
+
+            if command_config.get('stop_simulation'):
+                logger.info("Stop command received. Shutting down gracefully.")
+                break
+
+            self.run_one_generation()
+
+        if self.fitness_history:
+             self._summarize_and_save()
+        else:
+             logger.info("Simulation stopped before any generations were completed. No summary to generate.")
 
     def _summarize_and_save(self) -> None:
         """Prints a final summary, visualizes fitness history, and saves the final population."""

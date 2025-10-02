@@ -152,11 +152,13 @@ class TestSimulatorInitialization(unittest.TestCase):
                          "Simulator did not generate a random seed when none was provided.")
         mock_randint.assert_called_once()
 
+    @patch('src.simulator.EvolutionSimulator._run_specialization_phase')
+    @patch('src.simulator.EvolutionSimulator._run_evaluation_phase')
     @patch('src.simulator.select_mates', return_value=(None, None))
-    def test_simulator_loads_dynamic_config_from_command_file(self, mock_select_mates):
+    def test_simulator_loads_dynamic_config_from_command_file(self, mock_select_mates, mock_evaluation, mock_specialization):
         """
         Tests that the simulator correctly loads and applies parameters
-        from command_config.json during the evolution phase.
+        from command_config.json during a generation run.
         """
         # Arrange
         # 1. Create a standard config file with default values
@@ -180,9 +182,10 @@ class TestSimulatorInitialization(unittest.TestCase):
         self.assertEqual(simulator.mutation_rate, 0.1)
 
         # Act
-        # Call the evolution phase, which triggers the dynamic config load.
-        # We patch select_mates to prevent the rest of the function from running.
-        simulator._run_evolution_phase(generation=1)
+        # Run the simulation, which should trigger the dynamic config load
+        # before the first generation. We patch the other phases to isolate
+        # the config loading and evolution phase.
+        simulator.run()
 
         # Assert
         self.assertEqual(simulator.merge_strategy, 'fitness_weighted',
