@@ -80,6 +80,7 @@ class SequentialConstructiveMergeStrategy(MergeStrategy):
         else:
             layer_prefixes = sorted(list(set([k.split('.')[0] for k in fitter_parent.model.state_dict().keys()])))
 
+        current_state_dict = temp_model_wrapper.model.state_dict()
         for prefix in layer_prefixes:
             if fitter_parent.model_name == 'RESNET':
                 module_to_check = dict(fitter_parent.model.resnet.named_children()).get(prefix)
@@ -87,20 +88,29 @@ class SequentialConstructiveMergeStrategy(MergeStrategy):
                     logger.info(f"  - Skipping layer '{prefix}' as it has no learnable parameters.")
                     continue
 
-            temp_state_dict = copy.deepcopy(best_child_state_dict)
-            for key in temp_state_dict:
-                if key.startswith(prefix):
-                    temp_state_dict[key] = weaker_parent.model.state_dict()[key]
+            # --- Optimization: Avoid deepcopying the entire state dict ---
+            # 1. Store the original layers from the best model
+            original_layers = {key: current_state_dict[key].clone() for key in current_state_dict if key.startswith(prefix)}
 
-            temp_model_wrapper.model.load_state_dict(temp_state_dict)
+            # 2. Swap in the layers from the weaker parent
+            for key in original_layers:
+                current_state_dict[key].copy_(weaker_parent.model.state_dict()[key])
+
+            # 3. Evaluate the new configuration
             current_fitness = _get_validation_fitness(temp_model_wrapper, validation_loader)
 
+            # 4. Decide whether to keep or revert the change
             if current_fitness > best_fitness:
                 logger.info(f"  - Swapping layer '{prefix}' improved validation fitness to {current_fitness:.2f}%. Keeping it.")
                 best_fitness = current_fitness
-                best_child_state_dict = temp_state_dict
+                # The change is already in current_state_dict, so we just update best_child_state_dict
+                for key in original_layers:
+                    best_child_state_dict[key].copy_(current_state_dict[key])
             else:
-                logger.info(f"  - Swapping layer '{prefix}' did not improve validation fitness ({current_fitness:.2f}%). Discarding.")
+                logger.info(f"  - Swapping layer '{prefix}' did not improve validation fitness ({current_fitness:.2f}%). Reverting.")
+                # Revert the change by copying the original layers back
+                for key in original_layers:
+                    current_state_dict[key].copy_(original_layers[key])
 
         return best_child_state_dict
 
