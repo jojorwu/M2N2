@@ -13,6 +13,7 @@ from datasets import load_dataset
 from transformers import AutoTokenizer
 import os
 import numpy as np
+from .utils import set_seed
 
 class TextDataset(Dataset):
     """A custom PyTorch Dataset for handling tokenized text data."""
@@ -106,17 +107,18 @@ def get_dataloaders(dataset_name='CIFAR10', model_name=None, batch_size=64, nich
     Raises:
         ValueError: If an unsupported `dataset_name` is provided.
     """
-    full_train_dataset, full_test_dataset = _load_full_datasets(dataset_name, model_name)
+    if seed is not None:
+        set_seed(seed)
 
-    rng = np.random.RandomState(seed)
+    full_train_dataset, full_test_dataset = _load_full_datasets(dataset_name, model_name)
 
     if subset_percentage < 1.0:
         num_train = int(len(full_train_dataset) * subset_percentage)
-        train_indices = rng.permutation(len(full_train_dataset))[:num_train]
+        train_indices = np.random.permutation(len(full_train_dataset))[:num_train]
         full_train_dataset = Subset(full_train_dataset, train_indices)
 
         num_test = int(len(full_test_dataset) * subset_percentage)
-        test_indices = rng.permutation(len(full_test_dataset))[:num_test]
+        test_indices = np.random.permutation(len(full_test_dataset))[:num_test]
         full_test_dataset = Subset(full_test_dataset, test_indices)
 
     if niche_classes is not None:
@@ -130,7 +132,7 @@ def get_dataloaders(dataset_name='CIFAR10', model_name=None, batch_size=64, nich
     num_train = len(full_train_dataset)
     indices = list(range(num_train))
     split = int(np.floor(validation_split * num_train))
-    rng.shuffle(indices)
+    np.random.shuffle(indices)
     train_idx, valid_idx = indices[split:], indices[:split]
 
     train_subset = Subset(full_train_dataset, train_idx)
@@ -138,7 +140,6 @@ def get_dataloaders(dataset_name='CIFAR10', model_name=None, batch_size=64, nich
 
     g = None
     if seed is not None:
-        torch.manual_seed(seed)
         g = torch.Generator()
         g.manual_seed(seed)
 

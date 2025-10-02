@@ -13,6 +13,7 @@ from .logger_config import setup_logger
 from .evolution import ModelWrapper, specialize, evaluate, select_mates, merge, mutate, finetune, create_next_generation
 from .data import get_dataloaders
 from .visualization import plot_fitness_history
+from .utils import set_seed
 from typing import List, Tuple, Dict, Any, Optional
 from torch.utils.data import DataLoader
 
@@ -135,7 +136,7 @@ class EvolutionSimulator:
     def _initialize_population(self) -> None:
         """Initializes or loads the population of models."""
         if self.seed is not None:
-            torch.manual_seed(self.seed)
+            set_seed(self.seed)
         logger.info("--- STEP 1: Initializing or Loading Population ---")
         model_dir = "src/pretrained_models"
         model_files = glob.glob(os.path.join(model_dir, "*.pth"))
