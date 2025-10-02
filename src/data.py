@@ -14,6 +14,9 @@ from transformers import AutoTokenizer
 import os
 import numpy as np
 from .utils import set_seed
+from .enums import DatasetName, ModelName
+from typing import Optional, List
+from torch.utils.data import DataLoader
 
 class TextDataset(Dataset):
     """A custom PyTorch Dataset for handling tokenized text data."""
@@ -29,11 +32,11 @@ class TextDataset(Dataset):
     def __len__(self):
         return len(self.labels)
 
-def _load_full_datasets(dataset_name, model_name):
+def _load_full_datasets(dataset_name: DatasetName, model_name: ModelName):
     """Loads the full training and testing datasets based on the dataset name."""
-    if dataset_name == 'CIFAR10':
+    if dataset_name == DatasetName.CIFAR10:
         transform_list = []
-        if model_name == 'RESNET':
+        if model_name == ModelName.RESNET:
             transform_list.append(transforms.Resize((224, 224)))
         transform_list.extend([
             transforms.ToTensor(),
@@ -42,9 +45,9 @@ def _load_full_datasets(dataset_name, model_name):
         transform = transforms.Compose(transform_list)
         full_train_dataset = datasets.CIFAR10(root='./data', train=True, download=True, transform=transform)
         full_test_dataset = datasets.CIFAR10(root='./data', train=False, download=True, transform=transform)
-    elif dataset_name == 'MNIST':
+    elif dataset_name == DatasetName.MNIST:
         transform_list = []
-        if model_name == 'RESNET':
+        if model_name == ModelName.RESNET:
             transform_list.append(transforms.Resize((224, 224)))
         transform_list.extend([
             transforms.ToTensor(),
@@ -53,7 +56,7 @@ def _load_full_datasets(dataset_name, model_name):
         transform = transforms.Compose(transform_list)
         full_train_dataset = datasets.MNIST(root='./data', train=True, download=True, transform=transform)
         full_test_dataset = datasets.MNIST(root='./data', train=False, download=True, transform=transform)
-    elif dataset_name == 'LLM':
+    elif dataset_name == DatasetName.LLM:
         cache_dir = 'src/cache'
         train_cache_path = os.path.join(cache_dir, 'cached_banking77_train.pt')
         test_cache_path = os.path.join(cache_dir, 'cached_banking77_test.pt')
@@ -76,7 +79,7 @@ def _load_full_datasets(dataset_name, model_name):
         raise ValueError(f"Unsupported dataset: {dataset_name}. Please use 'CIFAR10', 'MNIST', or 'LLM'.")
     return full_train_dataset, full_test_dataset
 
-def get_dataloaders(dataset_name='CIFAR10', model_name=None, batch_size=64, niche_classes=None, subset_percentage=1.0, validation_split=0.1, seed=None):
+def get_dataloaders(dataset_name: DatasetName = DatasetName.CIFAR10, model_name: Optional[ModelName] = None, batch_size: int = 64, niche_classes: Optional[List[int]] = None, subset_percentage: float = 1.0, validation_split: float = 0.1, seed: Optional[int] = None):
     """Creates and returns PyTorch DataLoaders for a specified dataset.
 
     This function prepares a dataset for training and testing. It can serve
@@ -122,7 +125,7 @@ def get_dataloaders(dataset_name='CIFAR10', model_name=None, batch_size=64, nich
         full_test_dataset = Subset(full_test_dataset, test_indices)
 
     if niche_classes is not None:
-        if dataset_name == 'LLM':
+        if dataset_name == DatasetName.LLM:
             niche_indices = [i for i, item in enumerate(full_train_dataset) if item['labels'].item() in niche_classes]
         else:
             niche_indices = [i for i, (_, label) in enumerate(full_train_dataset) if label in niche_classes]

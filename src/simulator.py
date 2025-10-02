@@ -15,6 +15,7 @@ from .evolution import specialize, evaluate, select_mates, merge, mutate, finetu
 from .data import get_dataloaders
 from .visualization import plot_fitness_history
 from .utils import set_seed
+from .enums import ModelName, DatasetName
 from typing import List, Tuple, Dict, Any, Optional
 from torch.utils.data import DataLoader
 
@@ -26,8 +27,8 @@ class EvolutionSimulator:
     loading to running the generational loop and saving the results.
     """
     config: Dict[str, Any]
-    model_config: str
-    dataset_name: str
+    model_config: ModelName
+    dataset_name: DatasetName
     precision_config: str
     num_generations: int
     population_size: int
@@ -86,8 +87,8 @@ class EvolutionSimulator:
     def _initialize_parameters(self) -> None:
         """Initializes simulator parameters from the config."""
         # --- General settings ---
-        self.model_config = self.config['model_config']
-        self.dataset_name = self.config['dataset_name']
+        self.model_config = ModelName(self.config['model_config'])
+        self.dataset_name = DatasetName(self.config['dataset_name'])
         self.precision_config = str(self.config['precision_config'])
         self.num_generations = self.config['num_generations']
         self.population_size = self.config['population_size']

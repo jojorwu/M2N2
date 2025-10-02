@@ -4,6 +4,7 @@ import torch
 from torch import nn
 
 from .model import CifarCNN, MnistCNN, LLMClassifier, ResNetClassifier
+from .enums import ModelName
 
 
 class ModelWrapper:
@@ -13,7 +14,7 @@ class ModelWrapper:
     specialized niche, its fitness score, and the model architecture.
 
     Attributes:
-        model_name (str): The name of the model architecture ('CIFAR10', 'MNIST', 'LLM', or 'RESNET').
+        model_name (ModelName): The name of the model architecture.
         niche_classes (list[int]): A list of class indices the model is
             specialized in. An empty or full list implies a generalist.
         device (str): The device ('cpu' or 'cuda') on which the model's
@@ -23,19 +24,18 @@ class ModelWrapper:
         fitness_is_current (bool): A flag to indicate if the fitness score
             is up-to-date. Initialized to `False`.
     """
-    model_name: str
+    model_name: ModelName
     niche_classes: List[int]
     device: str
     model: nn.Module
     fitness: float
     fitness_is_current: bool
 
-    def __init__(self, model_name: str, niche_classes: List[int], device: str = 'cpu'):
+    def __init__(self, model_name: ModelName, niche_classes: List[int], device: str = 'cpu'):
         """Initializes the ModelWrapper with a model and its niche.
 
         Args:
-            model_name (str): The name of the model to instantiate.
-                Supported options: 'CIFAR10', 'MNIST', 'LLM', 'RESNET'.
+            model_name (ModelName): The name of the model to instantiate.
             niche_classes (list[int]): The list of class indices for the
                 model's specialized niche.
             device (str, optional): The device to run the model on.
@@ -45,13 +45,13 @@ class ModelWrapper:
         self.niche_classes = niche_classes
         self.device = device
 
-        if self.model_name == 'CIFAR10':
+        if self.model_name == ModelName.CIFAR10:
             self.model = CifarCNN().to(device)
-        elif self.model_name == 'MNIST':
+        elif self.model_name == ModelName.MNIST:
             self.model = MnistCNN().to(device)
-        elif self.model_name == 'LLM':
+        elif self.model_name == ModelName.LLM:
             self.model = LLMClassifier().to(device)
-        elif self.model_name == 'RESNET':
+        elif self.model_name == ModelName.RESNET:
             self.model = ResNetClassifier().to(device)
         else:
             raise ValueError(f"Unsupported model name: {self.model_name}")
