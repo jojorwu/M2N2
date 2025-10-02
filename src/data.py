@@ -8,7 +8,7 @@ validation set.
 """
 import torch
 from torchvision import datasets, transforms
-from torch.utils.data import DataLoader, Subset, Dataset
+from torch.utils.data import DataLoader, Subset, Dataset, random_split
 from datasets import load_dataset
 from transformers import AutoTokenizer
 import os
@@ -16,7 +16,6 @@ import numpy as np
 from .utils import set_seed
 from .enums import DatasetName, ModelName
 from typing import Optional, List
-from torch.utils.data import DataLoader
 
 class TextDataset(Dataset):
     """A custom PyTorch Dataset for handling tokenized text data."""
@@ -131,20 +130,18 @@ def get_dataloaders(dataset_name: DatasetName = DatasetName.CIFAR10, model_name:
             niche_indices = [i for i, (_, label) in enumerate(full_train_dataset) if label in niche_classes]
         full_train_dataset = Subset(full_train_dataset, niche_indices)
 
-    # Split training data into training and validation
+    # Split training data into training and validation using torch's random_split
     num_train = len(full_train_dataset)
-    indices = list(range(num_train))
     split = int(np.floor(validation_split * num_train))
-    np.random.shuffle(indices)
-    train_idx, valid_idx = indices[split:], indices[:split]
+    train_size = num_train - split
+    val_size = split
 
-    train_subset = Subset(full_train_dataset, train_idx)
-    validation_subset = Subset(full_train_dataset, valid_idx)
-
-    g = None
+    # Create a generator for reproducibility if a seed is provided
+    g = torch.Generator()
     if seed is not None:
-        g = torch.Generator()
         g.manual_seed(seed)
+
+    train_subset, validation_subset = random_split(full_train_dataset, [train_size, val_size], generator=g)
 
     train_loader = DataLoader(dataset=train_subset, batch_size=batch_size, shuffle=True, generator=g)
     validation_loader = DataLoader(dataset=validation_subset, batch_size=batch_size, shuffle=False)
