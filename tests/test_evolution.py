@@ -224,12 +224,10 @@ class TestEvolution(unittest.TestCase):
         dummy_loader = torch.utils.data.DataLoader([torch.randn(10)], batch_size=1)
 
         # Create parents with a custom number of classes
-        parent1 = ModelWrapper(model_name='CIFAR10', niche_classes=[0], device=self.device)
-        parent1.model.num_classes = num_classes # Manually override for this test
+        parent1 = ModelWrapper(model_name='CIFAR10', niche_classes=[0], device=self.device, num_classes=num_classes)
         parent1.fitness = 80.0
 
-        parent2 = ModelWrapper(model_name='CIFAR10', niche_classes=[1], device=self.device)
-        parent2.model.num_classes = num_classes # Manually override
+        parent2 = ModelWrapper(model_name='CIFAR10', niche_classes=[1], device=self.device, num_classes=num_classes)
         parent2.fitness = 70.0
 
         # Act
@@ -256,7 +254,7 @@ class TestEvolution(unittest.TestCase):
         # 1. Mock the behavior of the dependencies
         mock_scheduler_instance = mock_scheduler_class.return_value
         mock_calculate_loss.return_value = 0.123  # A dummy validation loss
-        mock_get_dataloaders.return_value = (None, None, None) # Prevent actual data loading
+        mock_get_dataloaders.return_value = (None, None, None, 10) # Prevent actual data loading
 
         # 2. Create the necessary inputs for the finetune function
         model_wrapper = ModelWrapper(model_name='CIFAR10', niche_classes=[0], device=self.device)
@@ -283,7 +281,7 @@ class TestEvolution(unittest.TestCase):
         `subset_percentage` argument to the `get_dataloaders` call.
         """
         # Arrange
-        mock_get_dataloaders.return_value = (None, None, "dummy_test_loader")
+        mock_get_dataloaders.return_value = (None, None, "dummy_test_loader", 10)
         model_wrapper = ModelWrapper(model_name='CIFAR10', niche_classes=[0], device=self.device)
         model_wrapper.fitness_is_current = False # Ensure evaluation is not skipped
         test_subset_percentage = 0.5

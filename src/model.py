@@ -28,10 +28,10 @@ class CifarCNN(nn.Module):
         fc2 (nn.Linear): Second fully connected layer.
         fc3 (nn.Linear): The final output layer (10 classes for CIFAR-10).
     """
-    def __init__(self):
+    def __init__(self, num_classes=10):
         """Initializes the layers of the CifarCNN model."""
         super(CifarCNN, self).__init__()
-        self.num_classes = 10
+        self.num_classes = num_classes
         # Input: 3x32x32
         self.conv1 = nn.Conv2d(3, 32, kernel_size=3, padding=1) # -> 32x32x32
         self.pool = nn.MaxPool2d(kernel_size=2, stride=2)      # -> 32x16x16
@@ -124,13 +124,12 @@ class LLMClassifier(nn.Module):
         bert (DistilBertForSequenceClassification): The underlying
             transformer model.
     """
-    def __init__(self, num_labels=77):
+    def __init__(self, num_labels):
         """Initializes the LLMClassifier model.
 
         Args:
-            num_labels (int, optional): The number of output classes for
-                the classification head. Defaults to 77 for the
-                banking77 dataset.
+            num_labels (int): The number of output classes for the
+                classification head.
         """
         super(LLMClassifier, self).__init__()
         self.num_classes = num_labels

@@ -82,7 +82,7 @@ def specialize(model_wrapper: ModelWrapper, dataset_name: str, epochs: int = 1, 
     """
     logger.info(f"Specializing model on niche {model_wrapper.niche_classes} for {epochs} epoch(s) with {precision}-bit precision...")
 
-    train_loader, _, _ = get_dataloaders(
+    train_loader, _, _, _ = get_dataloaders(
         dataset_name=dataset_name,
         model_name=model_wrapper.model_name,
         niche_classes=model_wrapper.niche_classes,
@@ -132,7 +132,7 @@ def _get_fitness_score(model_wrapper: ModelWrapper, dataset_name: str, subset_pe
         float: The calculated accuracy (fitness) of the model as a percentage.
     """
     # We always evaluate on the full test set to measure general performance
-    _, _, test_loader = get_dataloaders(dataset_name=dataset_name, model_name=model_wrapper.model_name, subset_percentage=subset_percentage, validation_split=0, seed=seed) # No validation split needed here
+    _, _, test_loader, _ = get_dataloaders(dataset_name=dataset_name, model_name=model_wrapper.model_name, subset_percentage=subset_percentage, validation_split=0, seed=seed) # No validation split needed here
     return _calculate_accuracy(model_wrapper, test_loader)
 
 def evaluate(model_wrapper: ModelWrapper, dataset_name: str, subset_percentage: float = 1.0, seed: Optional[int] = None) -> float:
@@ -180,7 +180,7 @@ def evaluate_by_class(model_wrapper: ModelWrapper, dataset_name: str, subset_per
             list corresponds to the class index.
     """
     # We always evaluate on the full test set to measure general performance
-    _, _, test_loader = get_dataloaders(dataset_name=dataset_name, model_name=model_wrapper.model_name, subset_percentage=subset_percentage, validation_split=0, seed=seed) # No validation split needed here
+    _, _, test_loader, _ = get_dataloaders(dataset_name=dataset_name, model_name=model_wrapper.model_name, subset_percentage=subset_percentage, validation_split=0, seed=seed) # No validation split needed here
     model_wrapper.model.eval()
 
     num_classes = model_wrapper.model.num_classes
@@ -319,7 +319,7 @@ def merge(parent1: ModelWrapper, parent2: ModelWrapper, strategy: str = 'average
 
     # Create and return the new child model
     num_classes = parent1.model.num_classes
-    child_wrapper = ModelWrapper(model_name=parent1.model_name, niche_classes=list(range(num_classes)), device=parent1.device)
+    child_wrapper = ModelWrapper(model_name=parent1.model_name, niche_classes=list(range(num_classes)), device=parent1.device, num_classes=num_classes)
     child_wrapper.model.load_state_dict(child_model_state_dict)
     logger.info("Merging complete.")
     return child_wrapper
@@ -464,7 +464,7 @@ def finetune(model_wrapper: ModelWrapper, dataset_name: str, validation_loader: 
     logger.info(f"Fine-tuning model for {epochs} epoch(s) with {precision}-bit precision and ReduceLROnPlateau scheduler...")
 
     # We get a train_loader with the full training data (no validation split here)
-    train_loader, _, _ = get_dataloaders(
+    train_loader, _, _, _ = get_dataloaders(
         dataset_name=dataset_name,
         model_name=model_wrapper.model_name,
         subset_percentage=subset_percentage,

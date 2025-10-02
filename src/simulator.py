@@ -52,6 +52,7 @@ class EvolutionSimulator:
     fitness_history: List[Tuple[float, float]]
     validation_loader: DataLoader
     current_generation: int
+    num_classes: int
 
     def __init__(self, config_path: str = 'config.yaml') -> None:
         """
@@ -132,7 +133,7 @@ class EvolutionSimulator:
     def _initialize_dataloaders(self) -> None:
         """Creates the necessary DataLoaders for the experiment."""
         logger.info("--- Creating DataLoaders ---")
-        _, self.validation_loader, _ = get_dataloaders(
+        _, self.validation_loader, _, self.num_classes = get_dataloaders(
             dataset_name=self.dataset_name,
             model_name=self.model_config,
             batch_size=self.batch_size,
@@ -162,7 +163,7 @@ class EvolutionSimulator:
             if match:
                 niche_classes = [int(n) for n in match.group(1).split('_')]
                 fitness = float(match.group(2))
-                wrapper = ModelWrapper(model_name=self.model_config, niche_classes=niche_classes, device=self.device)
+                wrapper = ModelWrapper(model_name=self.model_config, niche_classes=niche_classes, device=self.device, num_classes=self.num_classes)
                 wrapper.model.load_state_dict(torch.load(f, map_location=self.device))
                 wrapper.fitness = fitness
                 # Ensure that loaded models are re-evaluated.
@@ -174,7 +175,7 @@ class EvolutionSimulator:
         logger.info("No pretrained models found. Initializing a new population from scratch.")
         niches = [[i] for i in range(self.population_size)]
         for i in range(self.population_size):
-            self.population.append(ModelWrapper(model_name=self.model_config, niche_classes=niches[i], device=self.device))
+            self.population.append(ModelWrapper(model_name=self.model_config, niche_classes=niches[i], device=self.device, num_classes=self.num_classes))
 
         logger.info("--- Specializing Initial Models ---")
         for model_wrapper in self.population:

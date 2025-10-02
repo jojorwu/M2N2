@@ -31,7 +31,7 @@ class ModelWrapper:
     fitness: float
     fitness_is_current: bool
 
-    def __init__(self, model_name: ModelName, niche_classes: List[int], device: str = 'cpu'):
+    def __init__(self, model_name: ModelName, niche_classes: List[int], device: str = 'cpu', num_classes: int = 10):
         """Initializes the ModelWrapper with a model and its niche.
 
         Args:
@@ -40,19 +40,21 @@ class ModelWrapper:
                 model's specialized niche.
             device (str, optional): The device to run the model on.
                 Defaults to 'cpu'.
+            num_classes (int, optional): The number of output classes for the
+                model. Defaults to 10.
         """
         self.model_name = model_name
         self.niche_classes = niche_classes
         self.device = device
 
         if self.model_name == ModelName.CIFAR10:
-            self.model = CifarCNN().to(device)
+            self.model = CifarCNN(num_classes=num_classes).to(device)
         elif self.model_name == ModelName.MNIST:
             self.model = MnistCNN().to(device)
         elif self.model_name == ModelName.LLM:
-            self.model = LLMClassifier().to(device)
+            self.model = LLMClassifier(num_labels=num_classes).to(device)
         elif self.model_name == ModelName.RESNET:
-            self.model = ResNetClassifier().to(device)
+            self.model = ResNetClassifier(num_classes=num_classes).to(device)
         else:
             raise ValueError(f"Unsupported model name: {self.model_name}")
 

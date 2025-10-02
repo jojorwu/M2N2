@@ -32,7 +32,7 @@ class TextDataset(Dataset):
         return len(self.labels)
 
 def _load_full_datasets(dataset_name: DatasetName, model_name: ModelName):
-    """Loads the full training and testing datasets based on the dataset name."""
+    """Loads the full training and testing datasets and returns the number of classes."""
     if dataset_name == DatasetName.CIFAR10:
         transform_list = []
         if model_name == ModelName.RESNET:
@@ -44,6 +44,7 @@ def _load_full_datasets(dataset_name: DatasetName, model_name: ModelName):
         transform = transforms.Compose(transform_list)
         full_train_dataset = datasets.CIFAR10(root='./data', train=True, download=True, transform=transform)
         full_test_dataset = datasets.CIFAR10(root='./data', train=False, download=True, transform=transform)
+        num_classes = len(full_train_dataset.classes)
     elif dataset_name == DatasetName.MNIST:
         transform_list = []
         if model_name == ModelName.RESNET:
@@ -55,16 +56,21 @@ def _load_full_datasets(dataset_name: DatasetName, model_name: ModelName):
         transform = transforms.Compose(transform_list)
         full_train_dataset = datasets.MNIST(root='./data', train=True, download=True, transform=transform)
         full_test_dataset = datasets.MNIST(root='./data', train=False, download=True, transform=transform)
+        num_classes = len(full_train_dataset.classes)
     elif dataset_name == DatasetName.LLM:
         cache_dir = 'src/cache'
         train_cache_path = os.path.join(cache_dir, 'cached_banking77_train.pt')
         test_cache_path = os.path.join(cache_dir, 'cached_banking77_test.pt')
+
+        # Load raw dataset info to get number of classes, regardless of cache
+        raw_dataset = load_dataset('banking77')
+        num_classes = raw_dataset['train'].features['label'].num_classes
+
         if os.path.exists(train_cache_path) and os.path.exists(test_cache_path):
             full_train_dataset = torch.load(train_cache_path)
             full_test_dataset = torch.load(test_cache_path)
         else:
             tokenizer = AutoTokenizer.from_pretrained('distilbert-base-uncased')
-            raw_dataset = load_dataset('banking77')
             train_texts, train_labels = list(raw_dataset['train']['text']), list(raw_dataset['train']['label'])
             test_texts, test_labels = list(raw_dataset['test']['text']), list(raw_dataset['test']['label'])
             train_encodings = tokenizer(train_texts, truncation=True, padding=True, max_length=64)
@@ -76,7 +82,7 @@ def _load_full_datasets(dataset_name: DatasetName, model_name: ModelName):
             torch.save(full_test_dataset, test_cache_path)
     else:
         raise ValueError(f"Unsupported dataset: {dataset_name}. Please use 'CIFAR10', 'MNIST', or 'LLM'.")
-    return full_train_dataset, full_test_dataset
+    return full_train_dataset, full_test_dataset, num_classes
 
 def get_dataloaders(dataset_name: DatasetName = DatasetName.CIFAR10, model_name: Optional[ModelName] = None, batch_size: int = 64, niche_classes: Optional[List[int]] = None, subset_percentage: float = 1.0, validation_split: float = 0.1, seed: Optional[int] = None):
     """Creates and returns PyTorch DataLoaders for a specified dataset.
@@ -103,8 +109,9 @@ def get_dataloaders(dataset_name: DatasetName = DatasetName.CIFAR10, model_name:
             set to use for validation. Defaults to 0.1.
 
     Returns:
-        tuple[DataLoader, DataLoader, DataLoader]: A tuple containing the
-            training, validation, and test DataLoaders.
+        tuple[DataLoader, DataLoader, DataLoader, int]: A tuple containing the
+            training, validation, and test DataLoaders, and the number of
+            classes.
 
     Raises:
         ValueError: If an unsupported `dataset_name` is provided.
@@ -112,7 +119,7 @@ def get_dataloaders(dataset_name: DatasetName = DatasetName.CIFAR10, model_name:
     if seed is not None:
         set_seed(seed)
 
-    full_train_dataset, full_test_dataset = _load_full_datasets(dataset_name, model_name)
+    full_train_dataset, full_test_dataset, num_classes = _load_full_datasets(dataset_name, model_name)
 
     if subset_percentage < 1.0:
         num_train = int(len(full_train_dataset) * subset_percentage)
@@ -147,7 +154,7 @@ def get_dataloaders(dataset_name: DatasetName = DatasetName.CIFAR10, model_name:
     validation_loader = DataLoader(dataset=validation_subset, batch_size=batch_size, shuffle=False)
     test_loader = DataLoader(dataset=full_test_dataset, batch_size=batch_size, shuffle=False)
 
-    return train_loader, validation_loader, test_loader
+    return train_loader, validation_loader, test_loader, num_classes
 
 if __name__ == '__main__':
     print("--- Testing DataLoaders with Validation Split ---")

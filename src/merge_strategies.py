@@ -64,7 +64,7 @@ class SequentialConstructiveMergeStrategy(MergeStrategy):
 
         best_child_state_dict = copy.deepcopy(fitter_parent.model.state_dict())
         num_classes = fitter_parent.model.num_classes
-        temp_model_wrapper = ModelWrapper(model_name=fitter_parent.model_name, niche_classes=list(range(num_classes)), device=fitter_parent.device)
+        temp_model_wrapper = ModelWrapper(model_name=fitter_parent.model_name, niche_classes=list(range(num_classes)), device=fitter_parent.device, num_classes=num_classes)
         temp_model_wrapper.model.load_state_dict(best_child_state_dict)
 
         # --- Optimization: Use a single batch for quick validation ---

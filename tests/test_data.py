@@ -42,7 +42,7 @@ class TestDataDeterminism(unittest.TestCase):
 
         # Act
         # Get the first validation loader and its indices using the seed
-        _, validation_loader_1, _ = get_dataloaders(
+        _, validation_loader_1, _, _ = get_dataloaders(
             dataset_name='CIFAR10',
             subset_percentage=0.1,
             validation_split=0.5,
@@ -51,7 +51,7 @@ class TestDataDeterminism(unittest.TestCase):
         indices_1 = get_all_indices_from_loader(validation_loader_1)
 
         # Get the second validation loader and its indices using the same seed
-        _, validation_loader_2, _ = get_dataloaders(
+        _, validation_loader_2, _, _ = get_dataloaders(
             dataset_name='CIFAR10',
             subset_percentage=0.1,
             validation_split=0.5,
@@ -83,7 +83,7 @@ class TestDataDeterminism(unittest.TestCase):
 
         # Act
         # Get the dataloaders for the specified niche
-        _, validation_loader, _ = get_dataloaders(
+        _, validation_loader, _, _ = get_dataloaders(
             dataset_name='CIFAR10',
             subset_percentage=0.1, # Use a subset to speed up the test
             niche_classes=niche_classes,
@@ -122,12 +122,12 @@ class TestDataDeterminism(unittest.TestCase):
         seed = 456
 
         # Act
-        train_loader_1, _, _ = get_dataloaders(
+        train_loader_1, _, _, _ = get_dataloaders(
             dataset_name='CIFAR10',
             subset_percentage=0.1,
             seed=seed
         )
-        train_loader_2, _, _ = get_dataloaders(
+        train_loader_2, _, _, _ = get_dataloaders(
             dataset_name='CIFAR10',
             subset_percentage=0.1,
             seed=seed
