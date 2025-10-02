@@ -77,6 +77,14 @@ streamlit run src/dashboard.py
 
 The dashboard provides a real-time view of the best and average fitness per generation.
 
+### Interactive Controls
+
+The dashboard sidebar contains controls that allow you to modify the simulation **in real-time**. Any changes made to these controls are sent to the simulator and will take effect at the start of the next generation.
+
+You can dynamically adjust:
+- **Merge Strategy:** Change the algorithm used to create the next child model (e.g., switch from `average` to `fitness_weighted`).
+- **Mutation Rate:** Increase or decrease the probability of mutation for the next child model.
+
 ## 4. Configuration
 
 All experiment parameters are managed in the **`config.yaml`** file. This centralized approach allows you to easily modify the simulation without changing the source code.

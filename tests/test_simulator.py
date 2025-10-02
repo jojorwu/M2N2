@@ -2,9 +2,14 @@ import unittest
 from unittest.mock import patch
 import os
 import shutil
+import unittest
+from unittest.mock import patch
+import os
+import shutil
 import torch
 import yaml
 import sys
+import json
 
 # Add project root to path to allow for package-like imports
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
@@ -44,6 +49,8 @@ class TestSimulatorInitialization(unittest.TestCase):
     def tearDown(self):
         """Clean up the temporary environment after the test."""
         shutil.rmtree(self.test_dir)
+        if os.path.exists("command_config.json"):
+            os.remove("command_config.json")
 
     @patch('src.simulator.glob.glob')
     def test_loaded_model_fitness_is_marked_as_stale(self, mock_glob):
@@ -144,6 +151,45 @@ class TestSimulatorInitialization(unittest.TestCase):
         self.assertEqual(simulator.seed, 54321,
                          "Simulator did not generate a random seed when none was provided.")
         mock_randint.assert_called_once()
+
+    @patch('src.simulator.select_mates', return_value=(None, None))
+    def test_simulator_loads_dynamic_config_from_command_file(self, mock_select_mates):
+        """
+        Tests that the simulator correctly loads and applies parameters
+        from command_config.json during the evolution phase.
+        """
+        # Arrange
+        # 1. Create a standard config file with default values
+        config = self.base_config.copy()
+        config['merge_strategy'] = 'average'
+        config['mutation_rate'] = 0.1
+        with open(self.config_path, 'w') as f:
+            yaml.dump(config, f)
+
+        # 2. Create a command config file with new values
+        command_config = {
+            "merge_strategy": "fitness_weighted",
+            "mutation_rate": 0.99
+        }
+        with open("command_config.json", 'w') as f:
+            json.dump(command_config, f)
+
+        # 3. Instantiate the simulator and verify its initial state
+        simulator = EvolutionSimulator(config_path=self.config_path)
+        self.assertEqual(simulator.merge_strategy, 'average')
+        self.assertEqual(simulator.mutation_rate, 0.1)
+
+        # Act
+        # Call the evolution phase, which triggers the dynamic config load.
+        # We patch select_mates to prevent the rest of the function from running.
+        simulator._run_evolution_phase(generation=1)
+
+        # Assert
+        self.assertEqual(simulator.merge_strategy, 'fitness_weighted',
+                         "Merge strategy was not dynamically updated.")
+        self.assertEqual(simulator.mutation_rate, 0.99,
+                         "Mutation rate was not dynamically updated.")
+        mock_select_mates.assert_called_once()
 
 
 if __name__ == '__main__':

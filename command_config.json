@@ -1,0 +1,4 @@
+{
+    "merge_strategy": "fitness_weighted",
+    "mutation_rate": 0.75
+}

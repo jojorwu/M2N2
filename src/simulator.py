@@ -9,6 +9,7 @@ import re
 import yaml
 import numpy as np
 import logging
+import json
 from .logger_config import setup_logger
 from .model_wrapper import ModelWrapper
 from .evolution import specialize, evaluate, select_mates, merge, mutate, finetune, create_next_generation
@@ -227,8 +228,35 @@ class EvolutionSimulator:
         logger.info(f"\nGeneration {generation} Stats: Best Fitness = {best_fitness:.2f}%, Avg Fitness = {avg_fitness:.2f}%\n")
         self._log_fitness_to_csv(generation, best_fitness, avg_fitness)
 
+    def _load_dynamic_config(self) -> None:
+        """
+        Checks for and loads dynamic configuration from command_config.json,
+        allowing for real-time control over the simulation.
+        """
+        config_path = 'command_config.json'
+        if not os.path.exists(config_path):
+            return  # No command file found, continue with existing config
+
+        try:
+            with open(config_path, 'r') as f:
+                command_config = json.load(f)
+
+            new_strategy = command_config.get('merge_strategy')
+            if new_strategy and new_strategy != self.merge_strategy:
+                self.merge_strategy = new_strategy
+                logger.info(f"Dynamically updated Merge Strategy to: '{self.merge_strategy}'")
+
+            new_mutation_rate = command_config.get('mutation_rate')
+            if new_mutation_rate is not None and new_mutation_rate != self.mutation_rate:
+                self.mutation_rate = new_mutation_rate
+                logger.info(f"Dynamically updated Mutation Rate to: {self.mutation_rate:.2f}")
+
+        except (json.JSONDecodeError, FileNotFoundError) as e:
+            logger.warning(f"Could not load or parse command config file: {e}")
+
     def _run_evolution_phase(self, generation: int) -> None:
         """Handles the mating, mutation, and selection of models."""
+        self._load_dynamic_config()  # Check for real-time commands
         logger.info("--- Mating and Evolution ---")
         parent1, parent2 = select_mates(self.population, dataset_name=self.dataset_name, subset_percentage=self.subset_percentage, seed=self.seed)
 

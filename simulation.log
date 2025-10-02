@@ -1,34 +1,37 @@
-2025-10-02 09:16:28,464 - M2N2_SIMULATOR - INFO - --- M2N2 Simplified Implementation ---
-2025-10-02 09:16:28,464 - M2N2_SIMULATOR - INFO - Loaded configuration for model: ModelName.RESNET
-2025-10-02 09:16:28,464 - M2N2_SIMULATOR - INFO - Using device: cpu
-2025-10-02 09:16:28,464 - M2N2_SIMULATOR - INFO - Experiment seed: 279669
+2025-10-02 10:10:55,552 - M2N2_SIMULATOR - INFO - --- M2N2 Simplified Implementation ---
+2025-10-02 10:10:55,552 - M2N2_SIMULATOR - INFO - Loaded configuration for model: ModelName.RESNET
+2025-10-02 10:10:55,552 - M2N2_SIMULATOR - INFO - Using device: cpu
+2025-10-02 10:10:55,552 - M2N2_SIMULATOR - INFO - Experiment seed: 937664
 
-2025-10-02 09:16:28,464 - M2N2_SIMULATOR - INFO - --- Creating DataLoaders ---
-2025-10-02 09:16:30,387 - M2N2_SIMULATOR - INFO - --- STEP 1: Initializing or Loading Population ---
-2025-10-02 09:16:30,387 - M2N2_SIMULATOR - INFO - No pretrained models found. Initializing a new population from scratch.
-2025-10-02 09:16:30,758 - M2N2_SIMULATOR - INFO - --- Specializing Initial Models ---
-2025-10-02 09:16:30,758 - M2N2_SIMULATOR - INFO - Specializing model on niche [0] for 1 epoch(s) with 32-bit precision...
-2025-10-02 09:16:38,022 - M2N2_SIMULATOR - INFO -   - Epoch 1/1
-2025-10-02 09:17:05,783 - M2N2_SIMULATOR - INFO - Specialization complete.
-2025-10-02 09:17:05,784 - M2N2_SIMULATOR - INFO - Specializing model on niche [1] for 1 epoch(s) with 32-bit precision...
-2025-10-02 09:17:13,004 - M2N2_SIMULATOR - INFO -   - Epoch 1/1
-2025-10-02 09:17:43,940 - M2N2_SIMULATOR - INFO - Specialization complete.
-2025-10-02 09:17:43,941 - M2N2_SIMULATOR - INFO -
-2025-10-02 09:17:43,942 - M2N2_SIMULATOR - INFO -
+2025-10-02 10:10:55,552 - M2N2_SIMULATOR - INFO - --- Creating DataLoaders ---
+2025-10-02 10:11:00,593 - M2N2_SIMULATOR - INFO - --- STEP 1: Initializing or Loading Population ---
+2025-10-02 10:11:00,594 - M2N2_SIMULATOR - INFO - No pretrained models found. Initializing a new population from scratch.
+2025-10-02 10:11:01,324 - M2N2_SIMULATOR - INFO - --- Specializing Initial Models ---
+2025-10-02 10:11:01,324 - M2N2_SIMULATOR - INFO - Specializing model on niche [0] for 1 epoch(s) with 32-bit precision...
+2025-10-02 10:11:10,242 - M2N2_SIMULATOR - INFO -   - Epoch 1/1
+2025-10-02 10:11:48,552 - M2N2_SIMULATOR - INFO - Specialization complete.
+2025-10-02 10:11:48,554 - M2N2_SIMULATOR - INFO - Specializing model on niche [1] for 1 epoch(s) with 32-bit precision...
+2025-10-02 10:11:55,750 - M2N2_SIMULATOR - INFO -   - Epoch 1/1
+2025-10-02 10:12:25,890 - M2N2_SIMULATOR - INFO - Specialization complete.
+2025-10-02 10:12:25,892 - M2N2_SIMULATOR - INFO -
+2025-10-02 10:12:25,892 - M2N2_SIMULATOR - INFO -
 --- GENERATION 1/2 ---
-2025-10-02 09:17:43,942 - M2N2_SIMULATOR - INFO - --- Evaluating Population on Test Set ---
-2025-10-02 09:17:52,284 - M2N2_SIMULATOR - INFO -
-Generation 1 Stats: Best Fitness = 10.00%, Avg Fitness = 10.00%
+2025-10-02 10:12:25,892 - M2N2_SIMULATOR - INFO - --- Evaluating Population on Test Set ---
+2025-10-02 10:12:33,851 - M2N2_SIMULATOR - INFO -
+Generation 1 Stats: Best Fitness = 9.00%, Avg Fitness = 7.50%
 
-2025-10-02 09:17:52,285 - M2N2_SIMULATOR - INFO - --- Mating and Evolution ---
-2025-10-02 09:17:52,285 - M2N2_SIMULATOR - INFO - Selecting mates with advanced strategy...
-2025-10-02 09:17:52,285 - M2N2_SIMULATOR - INFO -   - Parent 1 is the population's best model (Fitness: 10.00%)
-2025-10-02 09:17:52,285 - M2N2_SIMULATOR - INFO -   - Analyzing Parent 1's performance by class...
-2025-10-02 09:17:56,439 - M2N2_SIMULATOR - INFO -   - Parent 1's weakest class is 8 (Accuracy: 0.00%)
-2025-10-02 09:17:56,439 - M2N2_SIMULATOR - INFO -   - No suitable specialist found. Using second-best model as fallback Parent 2.
-2025-10-02 09:17:56,439 - M2N2_SIMULATOR - INFO - Merging parent models to create child using 'average' strategy...
-2025-10-02 09:17:56,652 - M2N2_SIMULATOR - INFO - Merging complete.
-2025-10-02 09:17:56,652 - M2N2_SIMULATOR - INFO - Mutating child model (Gen: 0, Strength: 0.1000)...
-2025-10-02 09:17:56,806 - M2N2_SIMULATOR - INFO - Mutation complete.
-2025-10-02 09:17:56,807 - M2N2_SIMULATOR - INFO - Fine-tuning model for 1 epoch(s) with 32-bit precision and ReduceLROnPlateau scheduler...
-2025-10-02 09:17:58,637 - M2N2_SIMULATOR - INFO -   - Epoch 1/1
+2025-10-02 10:12:33,852 - M2N2_SIMULATOR - INFO - Dynamically updated Merge Strategy to: 'fitness_weighted'
+2025-10-02 10:12:33,852 - M2N2_SIMULATOR - INFO - Dynamically updated Mutation Rate to: 0.88
+2025-10-02 10:12:33,852 - M2N2_SIMULATOR - INFO - --- Mating and Evolution ---
+2025-10-02 10:12:33,852 - M2N2_SIMULATOR - INFO - Selecting mates with advanced strategy...
+2025-10-02 10:12:33,852 - M2N2_SIMULATOR - INFO -   - Parent 1 is the population's best model (Fitness: 9.00%)
+2025-10-02 10:12:33,852 - M2N2_SIMULATOR - INFO -   - Analyzing Parent 1's performance by class...
+2025-10-02 10:12:37,884 - M2N2_SIMULATOR - INFO -   - Parent 1's weakest class is 2 (Accuracy: 0.00%)
+2025-10-02 10:12:37,884 - M2N2_SIMULATOR - INFO -   - No suitable specialist found. Using second-best model as fallback Parent 2.
+2025-10-02 10:12:37,884 - M2N2_SIMULATOR - INFO - Merging parent models to create child using 'fitness_weighted' strategy...
+2025-10-02 10:12:37,896 - M2N2_SIMULATOR - INFO -   - Dampened weights: Parent 1 (0.52), Parent 2 (0.48)
+2025-10-02 10:12:38,107 - M2N2_SIMULATOR - INFO - Merging complete.
+2025-10-02 10:12:38,107 - M2N2_SIMULATOR - INFO - Mutating child model (Gen: 0, Strength: 0.1000)...
+2025-10-02 10:12:38,267 - M2N2_SIMULATOR - INFO - Mutation complete.
+2025-10-02 10:12:38,267 - M2N2_SIMULATOR - INFO - Fine-tuning model for 1 epoch(s) with 32-bit precision and ReduceLROnPlateau scheduler...
+2025-10-02 10:12:40,066 - M2N2_SIMULATOR - INFO -   - Epoch 1/1
