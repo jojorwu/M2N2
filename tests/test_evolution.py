@@ -276,5 +276,34 @@ class TestEvolution(unittest.TestCase):
         mock_scheduler_instance.step.assert_called_once_with(0.123)
 
 
+    @patch('src.evolution.get_dataloaders')
+    def test_evaluate_uses_subset_percentage(self, mock_get_dataloaders):
+        """
+        Tests that the `evaluate` function correctly passes the
+        `subset_percentage` argument to the `get_dataloaders` call.
+        """
+        # Arrange
+        mock_get_dataloaders.return_value = (None, None, "dummy_test_loader")
+        model_wrapper = ModelWrapper(model_name='CIFAR10', niche_classes=[0], device=self.device)
+        model_wrapper.fitness_is_current = False # Ensure evaluation is not skipped
+        test_subset_percentage = 0.5
+
+        # Act
+        from src.evolution import evaluate
+        with patch('src.evolution._calculate_accuracy', return_value=50.0):
+             evaluate(model_wrapper, 'CIFAR10', subset_percentage=test_subset_percentage)
+
+
+        # Assert
+        self.assertTrue(mock_get_dataloaders.called, "get_dataloaders was not called.")
+        call_args, call_kwargs = mock_get_dataloaders.call_args
+        self.assertEqual(
+            call_kwargs.get('subset_percentage'),
+            test_subset_percentage,
+            f"get_dataloaders was called with subset_percentage={call_kwargs.get('subset_percentage')}, "
+            f"but {test_subset_percentage} was expected."
+        )
+
+
 if __name__ == '__main__':
     unittest.main()

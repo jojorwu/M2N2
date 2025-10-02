@@ -202,7 +202,7 @@ class EvolutionSimulator:
         """Handles the evaluation of the population."""
         logger.info("--- Evaluating Population on Test Set ---")
         for model_wrapper in self.population:
-            evaluate(model_wrapper, dataset_name=self.dataset_name, seed=self.seed)
+            evaluate(model_wrapper, dataset_name=self.dataset_name, subset_percentage=self.subset_percentage, seed=self.seed)
 
         best_fitness = max([m.fitness for m in self.population])
         avg_fitness = sum([m.fitness for m in self.population]) / len(self.population)
@@ -213,7 +213,7 @@ class EvolutionSimulator:
     def _run_evolution_phase(self, generation: int) -> None:
         """Handles the mating, mutation, and selection of models."""
         logger.info("--- Mating and Evolution ---")
-        parent1, parent2 = select_mates(self.population, dataset_name=self.dataset_name, seed=self.seed)
+        parent1, parent2 = select_mates(self.population, dataset_name=self.dataset_name, subset_percentage=self.subset_percentage, seed=self.seed)
 
         if parent1 and parent2:
             # Crossover

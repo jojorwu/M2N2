@@ -111,7 +111,7 @@ def specialize(model_wrapper: ModelWrapper, dataset_name: str, epochs: int = 1, 
     logger.info("Specialization complete.")
 
 
-def _get_fitness_score(model_wrapper: ModelWrapper, dataset_name: str, seed: Optional[int] = None) -> float:
+def _get_fitness_score(model_wrapper: ModelWrapper, dataset_name: str, subset_percentage: float = 1.0, seed: Optional[int] = None) -> float:
     """Calculates and returns the fitness score for a model on the test set.
 
     This is a lightweight, side-effect-free version of the `evaluate`
@@ -122,6 +122,7 @@ def _get_fitness_score(model_wrapper: ModelWrapper, dataset_name: str, seed: Opt
     Args:
         model_wrapper (ModelWrapper): The model wrapper to evaluate.
         dataset_name (str): The name of the dataset to use for evaluation.
+        subset_percentage (float, optional): The fraction of the test set to use for evaluation. Defaults to 1.0.
         seed (int, optional): A seed for the random number generator to
             ensure deterministic data splitting. Defaults to None.
 
@@ -129,10 +130,10 @@ def _get_fitness_score(model_wrapper: ModelWrapper, dataset_name: str, seed: Opt
         float: The calculated accuracy (fitness) of the model as a percentage.
     """
     # We always evaluate on the full test set to measure general performance
-    _, _, test_loader = get_dataloaders(dataset_name=dataset_name, model_name=model_wrapper.model_name, subset_percentage=0.1, validation_split=0, seed=seed) # No validation split needed here
+    _, _, test_loader = get_dataloaders(dataset_name=dataset_name, model_name=model_wrapper.model_name, subset_percentage=subset_percentage, validation_split=0, seed=seed) # No validation split needed here
     return _calculate_accuracy(model_wrapper, test_loader)
 
-def evaluate(model_wrapper: ModelWrapper, dataset_name: str, seed: Optional[int] = None) -> float:
+def evaluate(model_wrapper: ModelWrapper, dataset_name: str, subset_percentage: float = 1.0, seed: Optional[int] = None) -> float:
     """Evaluates fitness on the full test set and updates the wrapper.
 
     This function skips evaluation if the model's fitness is already
@@ -142,6 +143,7 @@ def evaluate(model_wrapper: ModelWrapper, dataset_name: str, seed: Optional[int]
     Args:
         model_wrapper (ModelWrapper): The model wrapper to evaluate.
         dataset_name (str): The name of the dataset to use for evaluation.
+        subset_percentage (float, optional): The fraction of the test set to use for evaluation. Defaults to 1.0.
         seed (int, optional): A seed for the random number generator to
             ensure deterministic data splitting. Defaults to None.
 
@@ -152,12 +154,12 @@ def evaluate(model_wrapper: ModelWrapper, dataset_name: str, seed: Optional[int]
         logger.debug(f"  - Skipping evaluation for model with up-to-date fitness: {model_wrapper.fitness:.2f}%")
         return model_wrapper.fitness
 
-    accuracy = _get_fitness_score(model_wrapper, dataset_name=dataset_name, seed=seed)
+    accuracy = _get_fitness_score(model_wrapper, dataset_name=dataset_name, subset_percentage=subset_percentage, seed=seed)
     model_wrapper.fitness = accuracy
     model_wrapper.fitness_is_current = True
     return accuracy
 
-def evaluate_by_class(model_wrapper: ModelWrapper, dataset_name: str, seed: Optional[int] = None) -> List[float]:
+def evaluate_by_class(model_wrapper: ModelWrapper, dataset_name: str, subset_percentage: float = 1.0, seed: Optional[int] = None) -> List[float]:
     """Evaluates a model's accuracy on each individual class.
 
     This function is used to identify a model's strengths and weaknesses,
@@ -167,6 +169,7 @@ def evaluate_by_class(model_wrapper: ModelWrapper, dataset_name: str, seed: Opti
     Args:
         model_wrapper (ModelWrapper): The model wrapper to evaluate.
         dataset_name (str): The name of the dataset to use for evaluation.
+        subset_percentage (float, optional): The fraction of the test set to use for evaluation. Defaults to 1.0.
         seed (int, optional): A seed for the random number generator to
             ensure deterministic data splitting. Defaults to None.
 
@@ -175,7 +178,7 @@ def evaluate_by_class(model_wrapper: ModelWrapper, dataset_name: str, seed: Opti
             list corresponds to the class index.
     """
     # We always evaluate on the full test set to measure general performance
-    _, _, test_loader = get_dataloaders(dataset_name=dataset_name, model_name=model_wrapper.model_name, subset_percentage=0.1, validation_split=0, seed=seed) # No validation split needed here
+    _, _, test_loader = get_dataloaders(dataset_name=dataset_name, model_name=model_wrapper.model_name, subset_percentage=subset_percentage, validation_split=0, seed=seed) # No validation split needed here
     model_wrapper.model.eval()
 
     num_classes = model_wrapper.model.num_classes
@@ -212,7 +215,7 @@ def evaluate_by_class(model_wrapper: ModelWrapper, dataset_name: str, seed: Opti
 
     return class_accuracies
 
-def select_mates(population: List[ModelWrapper], dataset_name: str, seed: Optional[int] = None) -> Tuple[Optional[ModelWrapper], Optional[ModelWrapper]]:
+def select_mates(population: List[ModelWrapper], dataset_name: str, subset_percentage: float = 1.0, seed: Optional[int] = None) -> Tuple[Optional[ModelWrapper], Optional[ModelWrapper]]:
     """Selects a complementary pair of parents using an advanced strategy.
 
     This function promotes "healing" by pairing a strong model with a model
@@ -227,6 +230,7 @@ def select_mates(population: List[ModelWrapper], dataset_name: str, seed: Option
     Args:
         population (list[ModelWrapper]): The current population of models.
         dataset_name (str): The name of the dataset to use for evaluation.
+        subset_percentage (float, optional): The fraction of the test set to use for evaluation. Defaults to 1.0.
         seed (int, optional): A seed for the random number generator to
             ensure deterministic data splitting. Defaults to None.
 
@@ -245,7 +249,7 @@ def select_mates(population: List[ModelWrapper], dataset_name: str, seed: Option
 
     # 2. Analyze Parent 1 to find its weakest class.
     logger.info("  - Analyzing Parent 1's performance by class...")
-    class_accuracies = evaluate_by_class(parent1, dataset_name=dataset_name, seed=seed)
+    class_accuracies = evaluate_by_class(parent1, dataset_name=dataset_name, subset_percentage=subset_percentage, seed=seed)
     min_accuracy = min(class_accuracies)
     weakest_indices = [i for i, acc in enumerate(class_accuracies) if acc == min_accuracy]
     weakest_class_index = random.choice(weakest_indices)
