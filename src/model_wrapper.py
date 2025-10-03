@@ -3,7 +3,7 @@ from typing import List
 import torch
 from torch import nn
 
-from .model import CifarCNN, MnistCNN, LLMClassifier, ResNetClassifier
+from .model import CifarCNN, LLMClassifier, ResNetClassifier
 from .enums import ModelName
 
 
@@ -49,8 +49,6 @@ class ModelWrapper:
 
         if self.model_name == ModelName.CIFAR10:
             self.model = CifarCNN(num_classes=num_classes).to(device)
-        elif self.model_name == ModelName.MNIST:
-            self.model = MnistCNN().to(device)
         elif self.model_name == ModelName.LLM:
             self.model = LLMClassifier(num_labels=num_classes).to(device)
         elif self.model_name == ModelName.RESNET:

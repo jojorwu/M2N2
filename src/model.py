@@ -67,50 +67,6 @@ class CifarCNN(nn.Module):
         x = self.fc3(x)
         return x
 
-# Keep the old MNIST CNN for reference, but rename it.
-class MnistCNN(nn.Module):
-    """A simple Convolutional Neural Network for MNIST classification.
-
-    This model is designed for 1x28x28 grayscale images from the MNIST
-    dataset. It is included for reference and is not used in the main
-    CIFAR-10 experiment.
-
-    Attributes:
-        num_classes (int): The number of output classes.
-        conv1 (nn.Conv2d): First convolutional layer (1 -> 32 channels).
-        conv2 (nn.Conv2d): Second convolutional layer (32 -> 64 channels).
-        pool (nn.MaxPool2d): Max pooling layer with a 2x2 kernel.
-        fc1 (nn.Linear): First fully connected layer.
-        fc2 (nn.Linear): Output layer (10 classes).
-    """
-    def __init__(self):
-        """Initializes the layers of the MnistCNN model."""
-        super(MnistCNN, self).__init__()
-        self.num_classes = 10
-        self.conv1 = nn.Conv2d(1, 32, kernel_size=3, stride=1, padding=1)
-        self.conv2 = nn.Conv2d(32, 64, kernel_size=3, stride=1, padding=1)
-        self.pool = nn.MaxPool2d(kernel_size=2, stride=2)
-        # Flattened size is 64 channels * 7 * 7 = 3136
-        self.fc1 = nn.Linear(64 * 7 * 7, 128)
-        self.fc2 = nn.Linear(128, self.num_classes)
-
-    def forward(self, x):
-        """Defines the forward pass of the MnistCNN.
-
-        Args:
-            x (torch.Tensor): The input tensor of shape (N, 1, 28, 28),
-              where N is the batch size.
-
-        Returns:
-            torch.Tensor: The output tensor of raw logits, with shape
-                (N, 10).
-        """
-        x = self.pool(F.relu(self.conv1(x)))
-        x = self.pool(F.relu(self.conv2(x)))
-        x = x.view(-1, 64 * 7 * 7) # Flatten the tensor
-        x = F.relu(self.fc1(x))
-        x = self.fc2(x)
-        return x
 
 class LLMClassifier(nn.Module):
     """A Transformer-based model for sequence classification.

@@ -10,7 +10,7 @@ import torch
 import torch.optim as optim
 import torch.nn.functional as F
 import logging
-from .model import CifarCNN, MnistCNN, LLMClassifier, ResNetClassifier
+from .model import CifarCNN, LLMClassifier, ResNetClassifier
 from .data import get_dataloaders
 from .merge_strategies import (
     AverageMergeStrategy,
