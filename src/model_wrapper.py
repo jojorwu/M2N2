@@ -59,3 +59,35 @@ class ModelWrapper:
         self.fitness = 0.0
         # This flag prevents redundant evaluations.
         self.fitness_is_current = False
+
+    def __eq__(self, other: object) -> bool:
+        """Checks for equality between two ModelWrapper instances.
+
+        Two wrappers are considered equal if they have the same model name,
+        the same niche, and identical model state dictionaries.
+
+        Args:
+            other (object): The object to compare against.
+
+        Returns:
+            bool: True if the instances are equal, False otherwise.
+        """
+        if not isinstance(other, ModelWrapper):
+            return NotImplemented
+
+        # Check for basic attribute equality
+        if self.model_name != other.model_name or self.niche_classes != other.niche_classes:
+            return False
+
+        # Check for model state dictionary equality
+        self_state_dict = self.model.state_dict()
+        other_state_dict = other.model.state_dict()
+
+        if self_state_dict.keys() != other_state_dict.keys():
+            return False
+
+        for key in self_state_dict:
+            if not torch.equal(self_state_dict[key], other_state_dict[key]):
+                return False
+
+        return True

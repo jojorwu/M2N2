@@ -302,6 +302,38 @@ class TestEvolution(unittest.TestCase):
             f"but {test_subset_percentage} was expected."
         )
 
+    def test_create_next_generation_avoids_duplicates(self):
+        """
+        Tests that `create_next_generation` does not add a child if it's an
+        exact duplicate of a model already in the population.
+        """
+        # Arrange
+        from src.evolution import create_next_generation
+        import copy
+
+        population_size = 5
+        population = [ModelWrapper(model_name='CIFAR10', niche_classes=[i], device=self.device) for i in range(population_size)]
+        for i, p in enumerate(population):
+            p.fitness = 70.0 - i * 10 # Assign descending fitness
+
+        # Create a child that is a perfect duplicate of the second-best model
+        duplicate_child = copy.deepcopy(population[1])
+        duplicate_child.fitness = population[1].fitness # Ensure fitness is also identical
+        # Mark fitness as current to prevent evaluate() from running and changing the fitness
+        duplicate_child.fitness_is_current = True
+
+
+        # Act
+        next_gen = create_next_generation(population, duplicate_child, population_size, 'CIFAR10')
+
+        # Assert
+        # The population size should not have grown
+        self.assertEqual(len(next_gen), population_size)
+
+        # Count how many times the duplicate appears in the next generation
+        duplicate_count = sum(1 for model in next_gen if model == duplicate_child)
+        self.assertEqual(duplicate_count, 1, "A duplicate model was added to the new generation.")
+
 
 if __name__ == '__main__':
     unittest.main()

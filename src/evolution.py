@@ -393,8 +393,12 @@ def create_next_generation(current_population: List[ModelWrapper], new_child: Mo
     # Evaluate the new child to make sure its fitness is calculated
     evaluate(new_child, dataset_name=dataset_name, seed=seed)
 
-    # Combine the old population with the new child
-    full_pool = current_population + [new_child]
+    # Combine the old population with the new child, avoiding duplicates
+    if new_child in current_population:
+        logger.info("  - New child is a duplicate of an existing model. Not adding to the pool.")
+        full_pool = current_population
+    else:
+        full_pool = current_population + [new_child]
 
     # Sort the entire pool by fitness in descending order
     full_pool.sort(key=lambda x: x.fitness, reverse=True)
