@@ -51,9 +51,9 @@ class AverageMergeStrategy(MergeStrategy):
 class SequentialConstructiveMergeStrategy(MergeStrategy):
     """
     Merges models by intelligently building a child layer by layer,
-    keeping changes only if they improve validation fitness.
+    keeping changes only if they improve validation fitness. This implementation
+    is optimized to reduce memory overhead by avoiding redundant state copies.
     """
-
     def merge(self, parent1: ModelWrapper, parent2: ModelWrapper, validation_loader: Optional[DataLoader] = None) -> Dict[str, torch.Tensor]:
         if validation_loader is None:
             raise ValueError("The 'sequential_constructive' strategy requires a 'validation_loader'.")
@@ -62,12 +62,13 @@ class SequentialConstructiveMergeStrategy(MergeStrategy):
         weaker_parent = parent2 if parent1.fitness >= parent2.fitness else parent1
         logger.info(f"  - Using fitter parent (Fitness: {fitter_parent.fitness:.2f}) as base.")
 
-        best_child_state_dict = copy.deepcopy(fitter_parent.model.state_dict())
+        # Initialize a temporary model with the fitter parent's state.
+        # This model's state will be modified in-place.
         num_classes = fitter_parent.model.num_classes
         temp_model_wrapper = ModelWrapper(model_name=fitter_parent.model_name, niche_classes=list(range(num_classes)), device=fitter_parent.device, num_classes=num_classes)
-        temp_model_wrapper.model.load_state_dict(best_child_state_dict)
+        temp_model_wrapper.model.load_state_dict(copy.deepcopy(fitter_parent.model.state_dict()))
 
-        # --- Optimization: Use a single batch for quick validation ---
+        # Use a single batch for quick validation to reduce overhead.
         try:
             validation_batch = next(iter(validation_loader))
         except StopIteration:
@@ -76,6 +77,7 @@ class SequentialConstructiveMergeStrategy(MergeStrategy):
         best_fitness = _get_validation_fitness(temp_model_wrapper, validation_loader, batch=validation_batch)
         logger.info(f"  - Initial child validation fitness (on one batch): {best_fitness:.2f}%")
 
+        # Determine the correct layer prefixes based on the model architecture.
         if fitter_parent.model_name == 'LLM':
             layer_prefixes = ['bert.distilbert.embeddings']
             num_transformer_layers = fitter_parent.model.bert.config.num_hidden_layers
@@ -84,42 +86,57 @@ class SequentialConstructiveMergeStrategy(MergeStrategy):
             layer_prefixes.extend(['bert.pre_classifier', 'bert.classifier'])
         elif fitter_parent.model_name == 'RESNET':
             layer_prefixes = [name for name, _ in fitter_parent.model.resnet.named_children()]
-        else:
+        else: # Default for simple models like CifarCNN
             layer_prefixes = sorted(list(set([k.split('.')[0] for k in fitter_parent.model.state_dict().keys()])))
 
         current_state_dict = temp_model_wrapper.model.state_dict()
         for prefix in layer_prefixes:
+            # Skip layers without learnable parameters (e.g., ReLU, MaxPool in ResNet).
             if fitter_parent.model_name == 'RESNET':
                 module_to_check = dict(fitter_parent.model.resnet.named_children()).get(prefix)
                 if module_to_check and not list(module_to_check.parameters()):
                     logger.info(f"  - Skipping layer '{prefix}' as it has no learnable parameters.")
                     continue
 
-            # --- Optimization: Avoid deepcopying the entire state dict ---
-            # 1. Store the original layers from the best model
-            original_layers = {key: current_state_dict[key].clone() for key in current_state_dict if key.startswith(prefix)}
+            # Find all state_dict keys that belong to this prefix.
+            keys_for_prefix = []
+            for key in current_state_dict:
+                if fitter_parent.model_name == 'RESNET':
+                    # ResNet keys are like 'resnet.layer1.0.conv1.weight'
+                    if key.startswith(f"resnet.{prefix}"):
+                        keys_for_prefix.append(key)
+                else:
+                    # CifarCNN/LLM keys start directly with the prefix
+                    if key.startswith(prefix):
+                        keys_for_prefix.append(key)
 
-            # 2. Swap in the layers from the weaker parent
+            if not keys_for_prefix:
+                continue
+
+            # Store the original layers from the current best model state.
+            original_layers = {key: current_state_dict[key].clone() for key in keys_for_prefix}
+
+            # Temporarily swap in the layers from the weaker parent to test them.
             for key in original_layers:
-                current_state_dict[key].copy_(weaker_parent.model.state_dict()[key])
+                if key in weaker_parent.model.state_dict():
+                    current_state_dict[key].copy_(weaker_parent.model.state_dict()[key])
 
-            # 3. Evaluate the new configuration
+            # Evaluate the new configuration.
             current_fitness = _get_validation_fitness(temp_model_wrapper, validation_loader, batch=validation_batch)
 
-            # 4. Decide whether to keep or revert the change
+            # Decide whether to keep or revert the change.
             if current_fitness > best_fitness:
+                # If the change was beneficial, keep it and update the best fitness.
                 logger.info(f"  - Swapping layer '{prefix}' improved validation fitness to {current_fitness:.2f}%. Keeping it.")
                 best_fitness = current_fitness
-                # The change is already in current_state_dict, so we just update best_child_state_dict
-                for key in original_layers:
-                    best_child_state_dict[key].copy_(current_state_dict[key])
             else:
+                # If not beneficial, revert the temporary model's state for this layer.
                 logger.info(f"  - Swapping layer '{prefix}' did not improve validation fitness ({current_fitness:.2f}%). Reverting.")
-                # Revert the change by copying the original layers back
-                for key in original_layers:
-                    current_state_dict[key].copy_(original_layers[key])
+                for key, original_tensor in original_layers.items():
+                    current_state_dict[key].copy_(original_tensor)
 
-        return best_child_state_dict
+        # The final state of the temporary model is the best combination found.
+        return temp_model_wrapper.model.state_dict()
 
 
 class FitnessWeightedMergeStrategy(MergeStrategy):

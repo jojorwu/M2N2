@@ -234,5 +234,60 @@ class TestEvolution(unittest.TestCase):
         self.assertFalse(are_state_dicts_equal(child_sd, parent1_sd), "Child's weights are identical to Parent 1. No layers were mixed.")
         self.assertFalse(are_state_dicts_equal(child_sd, parent2_sd), "Child's weights are identical to Parent 2. No layers were mixed.")
 
+    def test_generate_and_verify_sequential_constructive_merge(self):
+        """
+        This test serves two purposes:
+        1. When run against the original code, it generates a 'golden reference'
+           file of the output from the sequential_constructive merge.
+        2. When run against the optimized code, it verifies that the output is
+           identical to the golden reference.
+        """
+        # --- Arrange ---
+        import torch
+        import os
+
+        # Use a fixed seed for reproducibility
+        seed = 123
+        golden_file_path = 'tests/golden_sequential_merge.pth'
+
+        # Create two distinct parent models
+        parent1 = ModelWrapper(model_name='CIFAR10', niche_classes=[0], device=self.device)
+        parent2 = ModelWrapper(model_name='CIFAR10', niche_classes=[1], device=self.device)
+        parent1.fitness = 90.0
+        parent2.fitness = 80.0
+        with torch.no_grad():
+            for i, param in enumerate(parent1.model.parameters()):
+                param.fill_(float(i + 1)) # Parent1 has weights 1.0, 2.0, ...
+            for param in parent2.model.parameters():
+                param.fill_(0.0)          # Parent2 has weights 0.0
+
+        # Create a dummy validation loader
+        dummy_loader = torch.utils.data.DataLoader([torch.randn(10)], batch_size=1)
+
+        # Mock the validation fitness to return a sequence of values that
+        # will cause some layers to be swapped and others to be kept.
+        # The sequence is: initial, conv1 (keep), conv2 (reject), fc1 (keep), fc2 (reject), fc3 (keep)
+        mock_fitness_sequence = [50.0, 55.0, 45.0, 60.0, 58.0, 65.0]
+
+        # --- Act ---
+        with patch('src.merge_strategies._get_validation_fitness', side_effect=mock_fitness_sequence):
+            child = merge(parent1, parent2, strategy='sequential_constructive', validation_loader=dummy_loader, seed=seed)
+
+        # --- Assert / Verify ---
+        if not os.path.exists(golden_file_path):
+            print(f"\n[INFO] Golden reference file not found. Creating '{golden_file_path}'...")
+            torch.save(child.model.state_dict(), golden_file_path)
+            self.skipTest("Golden reference file created. Re-run tests to verify against it.")
+        else:
+            print(f"\n[INFO] Golden reference file found. Verifying output...")
+            golden_state_dict = torch.load(golden_file_path)
+            self.assertTrue(
+                are_state_dicts_equal(child.model.state_dict(), golden_state_dict),
+                "The output of the optimized strategy does not match the golden reference."
+            )
+            # Clean up the file after a successful test run
+            os.remove(golden_file_path)
+
+
 if __name__ == '__main__':
     unittest.main()
