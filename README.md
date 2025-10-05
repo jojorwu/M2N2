@@ -1,26 +1,26 @@
-# M2N2: A Simplified Implementation (CIFAR-10 Version)
+# M2N2: A Simplified Implementation
 
 ## 1. Purpose
 
 This project provides a simplified, educational implementation of the concepts from Sakana AI's research paper on **M2N2 (Model Merging of Natural Niches)**. It offers a clear, runnable example of how a population of neural networks can evolve through specialization, intelligent mating, and merging to produce a more capable, generalist model.
 
-This implementation is designed as a learning tool to understand the core principles of the M2N2 paper. It uses the CIFAR-10 dataset and a specific, advanced mating strategy to demonstrate the evolutionary process in a transparent and accessible way.
+This implementation is designed as a learning tool to understand the core principles of the M2N2 paper. It supports multiple model architectures (CNN, ResNet, LLM) and datasets (CIFAR-10, MNIST, banking77) and features several different model merging strategies to demonstrate the evolutionary process in a transparent and accessible way.
 
 ## 2. How It Works: The Evolutionary Algorithm
 
 The simulation follows a generational loop, where each step is designed to mimic principles of natural evolution to improve the overall fitness of the model population.
 
-1.  **Initialization (Niche Adaptation):** The simulation begins by creating a population of 10 specialist Convolutional Neural Networks (CNNs). Each model is trained exclusively on a single class from the CIFAR-10 dataset (e.g., one model sees only 'airplane' images, another sees only 'cat' images). This forces each model to become an expert in its narrow "niche."
+1.  **Initialization (Niche Adaptation):** The simulation begins by creating a population of specialist neural networks. Each model is trained exclusively on a single class from the chosen dataset (e.g., for CIFAR-10, one model sees only 'airplane' images, another sees only 'cat' images). This forces each model to become an expert in its narrow "niche."
 
-2.  **Evaluation (Measuring Fitness):** In every generation, all models in the population are evaluated against the **full, general CIFAR-10 test set**. The resulting accuracy score represents the model's "fitness." A specialist model will perform well on its own class but poorly on others, while a merged model is expected to have more balanced, general-purpose performance.
+2.  **Evaluation (Measuring Fitness):** In every generation, all models in the population are evaluated against the **full, general test set** for the chosen dataset. The resulting accuracy score represents the model's "fitness." A specialist model will perform well on its own class but poorly on others, while a merged model is expected to have more balanced, general-purpose performance.
 
-3.  **Intelligent Mating (Parent Selection):** To create a new "child" model, a sophisticated mating strategy is used to select two parents:
+3.  **Intelligent Mating (Parent Selection):** The default strategy for creating a new "child" model is to select two complementary parents:
     *   **Parent 1** is chosen as the model with the highest overall fitness in the current population.
     *   The algorithm then analyzes Parent 1 to find its "weakest" class (the class it classifies with the lowest accuracy).
     *   **Parent 2** is chosen as the specialist model for that weakest class.
-    This strategy ensures that merging is targeted at improving a model's specific weaknesses, promoting the creation of a more robust child.
+    This "healing" strategy ensures that merging is targeted at improving a model's specific weaknesses. Other strategies can be selected in the dashboard.
 
-4.  **Crossover (Fitness-Weighted Merging):** The two parent models are merged into a new child model. Their weights are combined using a 'fitness_weighted' average, where the parent with the higher fitness score contributes more to the child's final parameters.
+4.  **Crossover (Model Merging):** The two parent models are merged into a new child model using one of several available strategies (e.g., `average`, `fitness_weighted`, `layer-wise`). The `fitness_weighted` strategy, for example, combines the parents' weights where the parent with the higher fitness score contributes more to the child's final parameters.
 
 5.  **Mutation & Fine-tuning:** To introduce genetic diversity, the child's weights are randomly mutated with a small probability. It is then fine-tuned on the full, general dataset to help it learn how to integrate the knowledge from its two distinct parents into a single, cohesive network.
 
@@ -82,19 +82,25 @@ The dashboard provides a real-time view of the best and average fitness per gene
 The dashboard sidebar contains controls that allow you to modify the simulation **in real-time**. Any changes made to these controls are sent to the simulator and will take effect at the start of the next generation.
 
 You can dynamically adjust:
-- **Merge Strategy:** Change the algorithm used to create the next child model (e.g., switch from `average` to `fitness_weighted`).
-- **Mutation Rate:** Increase or decrease the probability of mutation for the next child model.
+- **Evolutionary Settings:**
+  - Number of Generations & Population Size
+  - Merge Strategy (e.g., switch from `average` to `fitness_weighted`)
+  - Mutation Rate, Initial Strength, and Decay Factor
+- **Optimizer and Scheduler:**
+  - Learning Rate
+  - Scheduler Patience and Factor
 
 ## 4. Configuration
 
 All experiment parameters are managed in the **`config.yaml`** file. This centralized approach allows you to easily modify the simulation without changing the source code.
 
 Key parameters you can change include:
-- `model_config`: The neural network architecture to use (e.g., 'RESNET').
-- `dataset_name`: The dataset for the experiment (e.g., 'CIFAR10').
-- `num_generations`: The number of evolutionary cycles to run.
-- `population_size`: The number of models in the population.
+- `model_config`: The neural network architecture to use (e.g., 'RESNET', 'LLM').
+- `dataset_name`: The dataset for the experiment (e.g., 'CIFAR10', 'MNIST').
+- `num_generations` & `population_size`: Core evolutionary parameters.
 - `merge_strategy`: The algorithm used to merge parent models.
+- `mutation_rate`, `initial_mutation_strength`, `mutation_decay_factor`: Control genetic diversity.
+- `optimizer_config` & `scheduler_config`: Control the fine-tuning process.
 - `subset_percentage`: The fraction of the dataset to use. A value of `0.1` (10%) is used by default for quick tests, while `1.0` uses the full dataset for robust results.
 - `specialize_epochs` / `finetune_epochs`: The number of training epochs for different phases of the simulation.
 
@@ -122,6 +128,7 @@ The `if __name__ == '__main__':` blocks in `data.py` and `model.py` contain exam
 ├── config.yaml               # Central configuration file for the simulation.
 ├── fitness_log.csv           # Log file generated by the simulation, read by the dashboard.
 └── src/
+    ├── pretrained_models/    # Directory where final models are saved.
     ├── main.py               # Main script to run the evolutionary experiment.
     ├── dashboard.py          # Streamlit dashboard for monitoring results.
     ├── simulator.py          # Main EvolutionSimulator class.
