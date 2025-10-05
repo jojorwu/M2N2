@@ -360,5 +360,47 @@ class TestEvolution(unittest.TestCase):
         self.assertEqual(len(model_set), 2, "A set should be able to contain different ModelWrappers.")
 
 
+    @patch('src.evolution.evaluate_by_class')
+    def test_select_mates_fallback_avoids_clones(self, mock_evaluate_by_class):
+        """
+        Tests that the fallback mate selection logic (choosing the second-best
+        model) correctly skips over a model that is a perfect clone of Parent 1,
+        even if it's a different instance in memory.
+        """
+        # Arrange
+        import copy
+
+        # Mock the class evaluation to trigger the fallback logic.
+        # We return a list where class 5 is weakest, but we won't provide a
+        # specialist for class 5, forcing the fallback.
+        mock_evaluate_by_class.return_value = [90, 80, 70, 60, 50, 0, 85, 95, 88, 75]
+
+        # Create a population where the top two models are identical clones.
+        parent1 = ModelWrapper(model_name='CIFAR10', niche_classes=[0], device=self.device)
+        parent1.fitness = 90.0
+
+        clone_of_parent1 = copy.deepcopy(parent1)
+        clone_of_parent1.fitness = 90.0 # Same fitness
+
+        distinct_model = ModelWrapper(model_name='CIFAR10', niche_classes=[1], device=self.device)
+        distinct_model.fitness = 80.0 # Lower fitness
+
+        population = [parent1, clone_of_parent1, distinct_model]
+
+        # Act
+        # The selection process should identify parent1 as the best, then look
+        # for a second parent. The fallback logic should be triggered.
+        _, selected_parent2 = select_mates(population, dataset_name='CIFAR10')
+
+        # Assert
+        # The buggy implementation (`is not`) will pick `clone_of_parent1`.
+        # The correct implementation (`!=`) will skip the clone and pick `distinct_model`.
+        self.assertEqual(
+            selected_parent2,
+            distinct_model,
+            "The fallback mate selection chose a clone of Parent 1 instead of the next distinct model."
+        )
+
+
 if __name__ == '__main__':
     unittest.main()

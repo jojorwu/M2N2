@@ -274,8 +274,8 @@ def select_mates(population: List[ModelWrapper], dataset_name: str, subset_perce
         logger.info("  - No suitable specialist found. Using second-best model as fallback Parent 2.")
         sorted_population = sorted(population, key=lambda m: m.fitness, reverse=True)
 
-        # Find the first model in the sorted list that is not Parent 1.
-        parent2 = next((model for model in sorted_population if model is not parent1), None)
+        # Find the first model in the sorted list that is not a clone of Parent 1.
+        parent2 = next((model for model in sorted_population if model != parent1), None)
 
         if parent2 is None:
             # This happens if all models in the population are the same instance
