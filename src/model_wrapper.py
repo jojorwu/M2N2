@@ -59,3 +59,53 @@ class ModelWrapper:
         self.fitness = 0.0
         # This flag prevents redundant evaluations.
         self.fitness_is_current = False
+
+    def __eq__(self, other: object) -> bool:
+        """Checks for equality between two ModelWrapper instances.
+
+        Two wrappers are considered equal if they have the same model name,
+        the same niche, and identical model state dictionaries.
+
+        Args:
+            other (object): The object to compare against.
+
+        Returns:
+            bool: True if the instances are equal, False otherwise.
+        """
+        if not isinstance(other, ModelWrapper):
+            return NotImplemented
+
+        # Check for basic attribute equality
+        if self.model_name != other.model_name or self.niche_classes != other.niche_classes:
+            return False
+
+        # Check for model state dictionary equality
+        self_state_dict = self.model.state_dict()
+        other_state_dict = other.model.state_dict()
+
+        if self_state_dict.keys() != other_state_dict.keys():
+            return False
+
+        for key in self_state_dict:
+            if not torch.equal(self_state_dict[key], other_state_dict[key]):
+                return False
+
+        return True
+
+    def __hash__(self) -> int:
+        """Computes a hash for the ModelWrapper instance.
+
+        The hash is based on the model name, its niche, and the model's
+        state dictionary. This allows ModelWrapper instances to be used in
+        hash-based collections like sets.
+
+        Returns:
+            int: The computed hash value.
+        """
+        # Hashing a tuple of tensor data is a reliable way to do this.
+        # Note: This can be slow for very large models, but it is correct.
+        state_dict_tuple = tuple(
+            (k, tuple(v.view(-1).tolist()))
+            for k, v in sorted(self.model.state_dict().items())
+        )
+        return hash((self.model_name, tuple(self.niche_classes), state_dict_tuple))

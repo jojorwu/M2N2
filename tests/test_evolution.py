@@ -302,6 +302,63 @@ class TestEvolution(unittest.TestCase):
             f"but {test_subset_percentage} was expected."
         )
 
+    def test_create_next_generation_avoids_duplicates(self):
+        """
+        Tests that `create_next_generation` does not add a child if it's an
+        exact duplicate of a model already in the population.
+        """
+        # Arrange
+        from src.evolution import create_next_generation
+        import copy
+
+        population_size = 5
+        population = [ModelWrapper(model_name='CIFAR10', niche_classes=[i], device=self.device) for i in range(population_size)]
+        for i, p in enumerate(population):
+            p.fitness = 70.0 - i * 10 # Assign descending fitness
+
+        # Create a child that is a perfect duplicate of the second-best model
+        duplicate_child = copy.deepcopy(population[1])
+        duplicate_child.fitness = population[1].fitness # Ensure fitness is also identical
+        # Mark fitness as current to prevent evaluate() from running and changing the fitness
+        duplicate_child.fitness_is_current = True
+
+
+        # Act
+        next_gen = create_next_generation(population, duplicate_child, population_size, 'CIFAR10')
+
+        # Assert
+        # The population size should not have grown
+        self.assertEqual(len(next_gen), population_size)
+
+        # Count how many times the duplicate appears in the next generation
+        duplicate_count = sum(1 for model in next_gen if model == duplicate_child)
+        self.assertEqual(duplicate_count, 1, "A duplicate model was added to the new generation.")
+
+    def test_model_wrapper_hashing(self):
+        """
+        Tests that the ModelWrapper's __hash__ function is consistent with __eq__.
+        """
+        # Arrange
+        import copy
+        wrapper1 = ModelWrapper(model_name='CIFAR10', niche_classes=[0], device=self.device)
+        wrapper2 = copy.deepcopy(wrapper1)
+        wrapper3 = ModelWrapper(model_name='CIFAR10', niche_classes=[1], device=self.device)
+
+        # Act & Assert
+        # 1. Equal objects should have equal hashes
+        self.assertEqual(wrapper1, wrapper2, "Deepcopied wrappers should be equal.")
+        self.assertEqual(hash(wrapper1), hash(wrapper2), "Hashes of equal wrappers should be equal.")
+
+        # 2. Unequal objects should ideally have unequal hashes
+        self.assertNotEqual(wrapper1, wrapper3, "Wrappers with different niches should not be equal.")
+        self.assertNotEqual(hash(wrapper1), hash(wrapper3), "Hashes of unequal wrappers should not be equal.")
+
+        # 3. Test usage in a set
+        model_set = {wrapper1, wrapper2}
+        self.assertEqual(len(model_set), 1, "A set should not contain duplicate ModelWrappers.")
+        model_set.add(wrapper3)
+        self.assertEqual(len(model_set), 2, "A set should be able to contain different ModelWrappers.")
+
 
 if __name__ == '__main__':
     unittest.main()
