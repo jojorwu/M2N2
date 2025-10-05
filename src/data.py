@@ -121,6 +121,13 @@ def get_dataloaders(dataset_name: DatasetName = DatasetName.CIFAR10, model_name:
 
     full_train_dataset, full_test_dataset, num_classes = _load_full_datasets(dataset_name, model_name)
 
+    if niche_classes is not None:
+        if dataset_name == DatasetName.LLM:
+            niche_indices = [i for i, item in enumerate(full_train_dataset) if item['labels'].item() in niche_classes]
+        else:
+            niche_indices = [i for i, (_, label) in enumerate(full_train_dataset) if label in niche_classes]
+        full_train_dataset = Subset(full_train_dataset, niche_indices)
+
     if subset_percentage < 1.0:
         num_train = int(len(full_train_dataset) * subset_percentage)
         train_indices = np.random.permutation(len(full_train_dataset))[:num_train]
@@ -129,13 +136,6 @@ def get_dataloaders(dataset_name: DatasetName = DatasetName.CIFAR10, model_name:
         num_test = int(len(full_test_dataset) * subset_percentage)
         test_indices = np.random.permutation(len(full_test_dataset))[:num_test]
         full_test_dataset = Subset(full_test_dataset, test_indices)
-
-    if niche_classes is not None:
-        if dataset_name == DatasetName.LLM:
-            niche_indices = [i for i, item in enumerate(full_train_dataset) if item['labels'].item() in niche_classes]
-        else:
-            niche_indices = [i for i, (_, label) in enumerate(full_train_dataset) if label in niche_classes]
-        full_train_dataset = Subset(full_train_dataset, niche_indices)
 
     # Split training data into training and validation using torch's random_split
     num_train = len(full_train_dataset)

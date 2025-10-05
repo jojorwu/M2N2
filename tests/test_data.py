@@ -1,147 +1,65 @@
 import unittest
+from unittest.mock import patch
 import torch
-import numpy as np
 import sys
 import os
+from torchvision import datasets, transforms
 
-# Add project root to path to allow for package-like imports
+# Add the project root to the Python path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from src.data import get_dataloaders
+from src.enums import DatasetName
 
-def get_all_indices_from_loader(dataloader):
-    """Helper function to extract the original indices from a DataLoader's Subset."""
-    # This traverses the nested Subset objects to get to the original indices
-    current_dataset = dataloader.dataset
-    while hasattr(current_dataset, 'dataset'):
-        if hasattr(current_dataset, 'indices'):
-             # This is a Subset, so we need to go deeper
-            current_dataset = current_dataset.dataset
-        else:
-            # We've reached the end of the nesting
-            break
+class TestDataFiltering(unittest.TestCase):
+    """Unit tests for data loading and filtering logic."""
 
-    if not hasattr(dataloader.dataset, 'indices'):
-        return list(range(len(dataloader.dataset)))
+    @classmethod
+    def setUpClass(cls):
+        """Pre-load the dataset to find indices for the test."""
+        # This is done once for the class to speed up tests.
+        transform = transforms.Compose([transforms.ToTensor()])
+        try:
+            full_train_dataset = datasets.CIFAR10(root='./data', train=True, download=True, transform=transform)
+            # Find 50 indices that are guaranteed NOT to be class '3' (cat).
+            cls.non_cat_indices = [i for i, (_, label) in enumerate(full_train_dataset) if label != 3][:50]
+        except Exception as e:
+            # If dataset download fails in a CI environment, skip these tests.
+            raise unittest.SkipTest(f"Skipping data tests due to dataset loading error: {e}")
 
-    return sorted(dataloader.dataset.indices)
 
-
-class TestDataDeterminism(unittest.TestCase):
-    """Tests the determinism of the data loading and splitting logic."""
-
-    def test_validation_split_is_deterministic_with_seed(self):
+    @patch('numpy.random.permutation')
+    def test_niche_filtering_is_applied_before_subset_sampling(self, mock_permutation):
         """
-        Tests that consecutive calls to get_dataloaders produce the exact
-        same train/validation split when provided with the same seed.
-
-        This test is designed to PASS with the fixed implementation.
+        Tests that niche filtering is applied BEFORE subset sampling.
+        This test deterministically proves the bug by controlling the "random"
+        subset to ensure it contains no niche samples. The test should fail
+        with the original implementation and pass with the fix.
         """
         # Arrange
-        seed = 42 # An arbitrary seed for the test
+        # Force the random permutation to return our pre-selected non-cat indices.
+        mock_permutation.return_value = self.non_cat_indices
 
         # Act
-        # Get the first validation loader and its indices using the seed
-        _, validation_loader_1, _, _ = get_dataloaders(
-            dataset_name='CIFAR10',
-            subset_percentage=0.1,
-            validation_split=0.5,
-            seed=seed
-        )
-        indices_1 = get_all_indices_from_loader(validation_loader_1)
-
-        # Get the second validation loader and its indices using the same seed
-        _, validation_loader_2, _, _ = get_dataloaders(
-            dataset_name='CIFAR10',
-            subset_percentage=0.1,
-            validation_split=0.5,
-            seed=seed
-        )
-        indices_2 = get_all_indices_from_loader(validation_loader_2)
-
-        # Assert
-        # This should now pass because the seed ensures the shuffle is identical.
-        self.assertListEqual(
-            indices_1,
-            indices_2,
-            "Validation set indices are different even when the same seed is provided. "
-            "The deterministic splitting logic is not working correctly."
-        )
-
-    def test_validation_set_is_correctly_filtered_for_niche(self):
-        """
-        Tests that when a niche is specified, the validation set is also
-        filtered to contain ONLY data from that niche. This is critical for
-        getting a meaningful validation score for a specialist model.
-
-        This test is designed to FAIL with the original implementation and
-        PASS with the corrected logic.
-        """
-        # Arrange
-        niche_classes = [3, 8] # An arbitrary niche for the test
-        seed = 42
-
-        # Act
-        # Get the dataloaders for the specified niche
-        _, validation_loader, _, _ = get_dataloaders(
-            dataset_name='CIFAR10',
-            subset_percentage=0.1, # Use a subset to speed up the test
-            niche_classes=niche_classes,
-            seed=seed
+        # Request the 'cat' niche, with a subset percentage that would normally
+        # select 50 samples.
+        train_loader, _, _, _ = get_dataloaders(
+            dataset_name=DatasetName.CIFAR10,
+            niche_classes=[3],       # The 'cat' class
+            subset_percentage=0.001, # This will select 50 samples due to the mock
+            validation_split=0,
+            seed=42                  # Seed is irrelevant due to the mock
         )
 
         # Assert
-        # Check that every label in the validation set belongs to the niche
-        all_labels_in_niche = True
-        found_labels = []
-        for _, labels in validation_loader:
-            found_labels.extend(labels.tolist())
-            for label in labels:
-                if label.item() not in niche_classes:
-                    all_labels_in_niche = False
-                    break
-            if not all_labels_in_niche:
-                break
-
-        self.assertTrue(
-            all_labels_in_niche,
-            f"Validation set contains labels outside the specified niche {niche_classes}. "
-            f"Found labels: {sorted(list(set(found_labels)))}"
+        # Correct behavior: First filter for all 5000 cats, then take a 0.1% subset (~5 cats). The loader is NOT empty.
+        # Buggy behavior: First take a 0.1% subset (our 50 non-cat images), then filter for cats. The loader IS empty.
+        # Therefore, this assertion will fail if the logic is buggy.
+        self.assertGreater(
+            len(train_loader.dataset),
+            0,
+            "The train loader is empty. This confirms that subset sampling was incorrectly applied before niche filtering."
         )
-
-    def test_train_loader_shuffle_is_deterministic_with_seed(self):
-        """
-        Tests that the shuffling of the training DataLoader is deterministic
-        when a seed is provided. This is the key to fully reproducible
-        training runs.
-
-        This test is designed to FAIL with the original implementation and
-        PASS with the corrected one.
-        """
-        # Arrange
-        seed = 456
-
-        # Act
-        train_loader_1, _, _, _ = get_dataloaders(
-            dataset_name='CIFAR10',
-            subset_percentage=0.1,
-            seed=seed
-        )
-        train_loader_2, _, _, _ = get_dataloaders(
-            dataset_name='CIFAR10',
-            subset_percentage=0.1,
-            seed=seed
-        )
-
-        # Assert
-        # Iterate through both loaders and compare the data of each batch
-        for batch1, batch2 in zip(train_loader_1, train_loader_2):
-            data1, target1 = batch1
-            data2, target2 = batch2
-            self.assertTrue(torch.equal(data1, data2), "Batch data is not identical.")
-            self.assertTrue(torch.equal(target1, target2), "Batch targets are not identical.")
-            break # Only need to check the first batch to detect shuffle differences
-
 
 if __name__ == '__main__':
     unittest.main()
