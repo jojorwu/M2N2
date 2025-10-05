@@ -1,0 +1,17 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.pyc
+
+# Log files
+*.log
+
+# Data files
+*.csv
+fitness_history.png
+
+# Downloaded data
+data/
+src/cache/
+
+# Saved models
+src/pretrained_models/

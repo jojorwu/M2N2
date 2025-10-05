@@ -1,0 +1,45 @@
+# --- Experiment Configuration ---
+
+# General settings
+model_config: 'RESNET'      # Options are defined in the ModelName Enum in src/enums.py
+dataset_name: 'CIFAR10' # The dataset to use (options are defined in the DatasetName Enum in src/enums.py)
+log_file: 'simulation.log' # Path for the log file. Set to null or remove to disable file logging.
+precision_config: '32'    # Options: '16' (mixed), '32' (standard), '64' (double)
+num_generations: 2        # Number of evolutionary cycles to run
+population_size: 10       # Number of models in the population
+
+# --- Evolutionary Algorithm Settings ---
+merge_strategy: 'sequential_constructive' # Options: 'average', 'fitness_weighted', 'layer-wise', 'sequential_constructive'
+fitness_weighted_merge_dampening_factor: 25.0 # Dampening factor for fitness_weighted merge
+mutation_rate: 0.05                       # Probability of a weight being mutated
+initial_mutation_strength: 0.1            # Initial strength of mutations
+mutation_decay_factor: 0.9                # Factor by which mutation strength decays each generation
+
+# --- Optimizer Settings ---
+optimizer_config:
+  learning_rate: 0.001
+
+# --- Scheduler Settings ---
+scheduler_config:
+  patience: 2
+  factor: 0.5
+
+# --- Data Settings ---
+subset_percentage: 0.1    # Percentage of the dataset to use (1.0 for full dataset)
+validation_split: 0.1     # Proportion of training data to use for validation
+batch_size: 64
+
+# --- Training Epochs ---
+# Default epochs used for most models.
+default_epochs:
+  specialize: 2
+  finetune: 3
+
+# Epochs for specific models that require different training times.
+model_specific_epochs:
+  LLM:
+    specialize: 1
+    finetune: 1
+  RESNET:
+    specialize: 1
+    finetune: 2
