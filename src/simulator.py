@@ -130,6 +130,10 @@ class EvolutionSimulator:
         # Use seed from config if provided, otherwise generate a random one.
         self.seed = self.config.get('seed') or np.random.randint(0, 1_000_000)
 
+        # --- Configuration Validation ---
+        if self.merge_strategy == 'sequential_constructive' and self.validation_split <= 0:
+            raise ValueError("The 'sequential_constructive' merge strategy requires a validation_split > 0")
+
     def _initialize_dataloaders(self) -> None:
         """Creates the necessary DataLoaders for the experiment."""
         logger.info("--- Creating DataLoaders ---")

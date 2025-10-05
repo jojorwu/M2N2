@@ -246,5 +246,28 @@ class TestSimulatorInitialization(unittest.TestCase):
         mock_specialize.assert_not_called()
 
 
+    def test_sequential_constructive_merge_with_zero_validation_split_raises_error(self):
+        """
+        Tests that the simulator raises a ValueError at initialization if the
+        'sequential_constructive' merge strategy is selected with a
+        validation_split of 0.
+        """
+        # Arrange
+        self.base_config['merge_strategy'] = 'sequential_constructive'
+        self.base_config['validation_split'] = 0.0
+        with open(self.config_path, 'w') as f:
+            yaml.dump(self.base_config, f)
+
+        # Act & Assert
+        with self.assertRaises(ValueError) as cm:
+            EvolutionSimulator(config_path=self.config_path)
+
+        self.assertIn(
+            "The 'sequential_constructive' merge strategy requires a validation_split > 0",
+            str(cm.exception),
+            "The simulator did not raise the expected ValueError for an invalid configuration."
+        )
+
+
 if __name__ == '__main__':
     unittest.main()
