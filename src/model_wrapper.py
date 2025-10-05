@@ -1,5 +1,6 @@
 from __future__ import annotations
 from typing import List
+import io
 import torch
 from torch import nn
 
@@ -99,13 +100,17 @@ class ModelWrapper:
         state dictionary. This allows ModelWrapper instances to be used in
         hash-based collections like sets.
 
+        This implementation is optimized for performance by serializing the
+        state dictionary to a byte stream and hashing the bytes, which is
+        significantly faster than converting tensors to tuples.
+
         Returns:
             int: The computed hash value.
         """
-        # Hashing a tuple of tensor data is a reliable way to do this.
-        # Note: This can be slow for very large models, but it is correct.
-        state_dict_tuple = tuple(
-            (k, tuple(v.view(-1).tolist()))
-            for k, v in sorted(self.model.state_dict().items())
-        )
-        return hash((self.model_name, tuple(self.niche_classes), state_dict_tuple))
+        # Using an in-memory binary buffer
+        with io.BytesIO() as buffer:
+            torch.save(self.model.state_dict(), buffer)
+            buffer.seek(0)
+            state_dict_bytes = buffer.read()
+
+        return hash((self.model_name, tuple(self.niche_classes), state_dict_bytes))
