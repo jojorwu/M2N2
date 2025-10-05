@@ -29,6 +29,9 @@ subset_percentage: 0.1    # Percentage of the dataset to use (1.0 for full datas
 validation_split: 0.1     # Proportion of training data to use for validation
 batch_size: 64
 
+# --- UI Settings ---
+show_progress_bar: True # Whether to display the tqdm progress bar during training epochs.
+
 # --- Training Epochs ---
 # Default epochs used for most models.
 default_epochs:

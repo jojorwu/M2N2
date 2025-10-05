@@ -117,6 +117,9 @@ class EvolutionSimulator:
         self.validation_split = self.config['validation_split']
         self.batch_size = self.config['batch_size']
 
+        # --- UI settings ---
+        self.show_progress_bar = self.config.get('show_progress_bar', True)
+
         # --- Training epochs ---
         if self.model_config in self.config.get('model_specific_epochs', {}):
             self.specialize_epochs = self.config['model_specific_epochs'][self.model_config]['specialize']
@@ -190,7 +193,8 @@ class EvolutionSimulator:
                 precision=self.precision_config,
                 seed=self.seed,
                 learning_rate=self.learning_rate,
-                subset_percentage=self.subset_percentage
+                subset_percentage=self.subset_percentage,
+                show_progress_bar=self.show_progress_bar
             )
         logger.info("")
 
@@ -359,7 +363,8 @@ class EvolutionSimulator:
                 learning_rate=self.learning_rate,
                 scheduler_patience=self.scheduler_patience,
                 scheduler_factor=self.scheduler_factor,
-                subset_percentage=self.subset_percentage
+                subset_percentage=self.subset_percentage,
+                show_progress_bar=self.show_progress_bar
             )
             # Selection
             self.population = create_next_generation(

@@ -289,5 +289,40 @@ class TestEvolution(unittest.TestCase):
             os.remove(golden_file_path)
 
 
+    @patch('src.evolution.tqdm')
+    @patch('src.evolution.get_dataloaders')
+    @patch('src.evolution.optim.Adam')
+    def test_specialize_handles_progress_bar_toggle(self, mock_adam, mock_get_dataloaders, mock_tqdm):
+        """
+        Tests that the specialize function correctly shows or hides the
+        tqdm progress bar based on the 'show_progress_bar' flag.
+        """
+        # --- Arrange ---
+        # Mock the dataloader to return a single dummy batch to ensure the loop runs
+        dummy_batch = (torch.randn(1, 3, 32, 32), torch.randint(0, 10, (1,)))
+        mock_get_dataloaders.return_value = ([dummy_batch], None, None, 10)
+
+        # Configure the mock tqdm object to be iterable so the training loop runs
+        mock_tqdm.return_value.__iter__.return_value = iter([dummy_batch])
+
+        model_wrapper = ModelWrapper(model_name='CIFAR10', niche_classes=[0], device=self.device)
+
+        # --- Act & Assert (Case 1: Progress bar enabled) ---
+        from src.evolution import specialize
+        specialize(
+            model_wrapper, dataset_name='CIFAR10', epochs=1, show_progress_bar=True
+        )
+        mock_tqdm.assert_called_once()
+        # Check that the progress bar's postfix was updated
+        self.assertTrue(mock_tqdm.return_value.set_postfix.called)
+
+        # --- Act & Assert (Case 2: Progress bar disabled) ---
+        mock_tqdm.reset_mock()
+        specialize(
+            model_wrapper, dataset_name='CIFAR10', epochs=1, show_progress_bar=False
+        )
+        mock_tqdm.assert_not_called()
+
+
 if __name__ == '__main__':
     unittest.main()

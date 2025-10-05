@@ -29,12 +29,14 @@ import copy
 import random
 from tqdm import tqdm
 
-def _run_training_epoch(model_wrapper: ModelWrapper, optimizer: optim.Optimizer, train_loader: DataLoader, scaler: torch.cuda.amp.GradScaler, precision: str, description: str) -> float:
+def _run_training_epoch(model_wrapper: ModelWrapper, optimizer: optim.Optimizer, train_loader: DataLoader, scaler: torch.cuda.amp.GradScaler, precision: str, description: str, show_progress_bar: bool = True) -> float:
     """Runs a single training epoch for a given model and returns the average loss."""
     model_wrapper.model.train()
     total_train_loss = 0.0
-    pbar = tqdm(train_loader, desc=description)
-    for batch in pbar:
+
+    data_iterator = tqdm(train_loader, desc=description) if show_progress_bar else train_loader
+
+    for batch in data_iterator:
         optimizer.zero_grad()
 
         with torch.cuda.amp.autocast(enabled=(precision == '16' and 'cuda' in model_wrapper.device)):
@@ -57,11 +59,12 @@ def _run_training_epoch(model_wrapper: ModelWrapper, optimizer: optim.Optimizer,
         scaler.step(optimizer)
         scaler.update()
         total_train_loss += loss.item()
-        pbar.set_postfix({'train_loss': f"{loss.item():.4f}"})
+        if show_progress_bar:
+            data_iterator.set_postfix({'train_loss': f"{loss.item():.4f}"})
 
     return total_train_loss / len(train_loader) if len(train_loader) > 0 else 0.0
 
-def specialize(model_wrapper: ModelWrapper, dataset_name: str, epochs: int = 1, precision: str = '32', seed: Optional[int] = None, learning_rate: float = 0.001, subset_percentage: float = 0.1) -> None:
+def specialize(model_wrapper: ModelWrapper, dataset_name: str, epochs: int = 1, precision: str = '32', seed: Optional[int] = None, learning_rate: float = 0.001, subset_percentage: float = 0.1, show_progress_bar: bool = True) -> None:
     """Trains a model in-place on its specialized data niche.
 
     This simulates the "resource competition" phase where a model becomes an
@@ -105,7 +108,8 @@ def specialize(model_wrapper: ModelWrapper, dataset_name: str, epochs: int = 1, 
             train_loader,
             scaler,
             precision,
-            f"Specializing Niche {model_wrapper.niche_classes}"
+            f"Specializing Niche {model_wrapper.niche_classes}",
+            show_progress_bar=show_progress_bar
         )
 
     # Mark fitness as not current, as the model has been modified.
@@ -438,7 +442,7 @@ def _calculate_loss(model_wrapper: ModelWrapper, data_loader: DataLoader) -> flo
     return total_loss / len(data_loader)
 
 
-def finetune(model_wrapper: ModelWrapper, dataset_name: str, validation_loader: DataLoader, epochs: int = 3, precision: str = '32', seed: Optional[int] = None, learning_rate: float = 0.001, scheduler_patience: int = 2, scheduler_factor: float = 0.5, subset_percentage: float = 0.1) -> None:
+def finetune(model_wrapper: ModelWrapper, dataset_name: str, validation_loader: DataLoader, epochs: int = 3, precision: str = '32', seed: Optional[int] = None, learning_rate: float = 0.001, scheduler_patience: int = 2, scheduler_factor: float = 0.5, subset_percentage: float = 0.1, show_progress_bar: bool = True) -> None:
     """Fine-tunes a model in-place on the full dataset with a scheduler.
 
     This step is crucial for a newly merged child model. It uses an Adam
@@ -491,7 +495,8 @@ def finetune(model_wrapper: ModelWrapper, dataset_name: str, validation_loader: 
             train_loader,
             scaler,
             precision,
-            "Fine-tuning Child"
+            "Fine-tuning Child",
+            show_progress_bar=show_progress_bar
         )
 
         # Calculate validation loss for the scheduler
