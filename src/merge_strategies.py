@@ -163,12 +163,41 @@ class LayerWiseMergeStrategy(MergeStrategy):
         child_model_state_dict = copy.deepcopy(parent1_state_dict)
 
         rng = random.Random(self.seed)
-        layer_prefixes = sorted(list(set([k.split('.')[0] for k in parent1_state_dict.keys()])))
+
+        # Use the same advanced layer prefix detection as SequentialConstructiveMergeStrategy
+        if parent1.model_name == 'LLM':
+            layer_prefixes = ['bert.distilbert.embeddings']
+            num_transformer_layers = parent1.model.bert.config.num_hidden_layers
+            for i in range(num_transformer_layers):
+                layer_prefixes.append(f'bert.distilbert.transformer.layer.{i}')
+            layer_prefixes.extend(['bert.pre_classifier', 'bert.classifier'])
+        elif parent1.model_name == 'RESNET':
+            layer_prefixes = [name for name, module in parent1.model.resnet.named_children() if list(module.parameters())]
+        else: # Default for simple models like CifarCNN
+            layer_prefixes = sorted(list(set([k.split('.')[0] for k in parent1_state_dict.keys()])))
+
         parent_choices = {p: rng.choice([1, 2]) for p in layer_prefixes}
 
-        for key in child_model_state_dict:
-            prefix = key.split('.')[0]
-            if parent_choices[prefix] == 2:
-                child_model_state_dict[key] = parent2_state_dict[key]
+        # Iterate through the generated prefixes and apply choices
+        for prefix, choice in parent_choices.items():
+            if choice == 2:  # Take this layer from parent 2
+                for key in parent2_state_dict:
+                    # Determine if the key belongs to the current prefix
+                    key_belongs_to_prefix = False
+                    if parent1.model_name == 'RESNET':
+                        # For ResNet, keys are like 'resnet.layer1.0.conv1.weight'
+                        # and prefixes are like 'layer1'.
+                        if key.startswith(f"resnet.{prefix}"):
+                            key_belongs_to_prefix = True
+                    elif parent1.model_name == 'LLM':
+                        # For LLM, prefixes are full paths like 'bert.distilbert.transformer.layer.0'
+                        if key.startswith(prefix):
+                            key_belongs_to_prefix = True
+                    else: # For simple models like CifarCNN
+                        if key.startswith(prefix):
+                            key_belongs_to_prefix = True
+
+                    if key_belongs_to_prefix:
+                        child_model_state_dict[key] = parent2_state_dict[key]
 
         return child_model_state_dict
