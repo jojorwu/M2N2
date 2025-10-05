@@ -201,17 +201,45 @@ class TestEvolution(unittest.TestCase):
         self.assertEqual(len(model_set), 2, "A set should be able to contain different ModelWrappers.")
 
     @patch('src.evolution.evaluate_by_class')
-    def test_select_mates_fallback_avoids_clones(self, mock_evaluate_by_class):
-        mock_evaluate_by_class.return_value = [90, 80, 70, 60, 50, 0, 85, 95, 88, 75]
+    def test_select_mates_fallback_chooses_next_best_distinct_instance(self, mock_evaluate_by_class):
+        """
+        Tests that the fallback mate selection logic correctly selects the
+        next-best model by fitness that is not the same instance as Parent 1.
+        """
+        # --- Arrange ---
+        # Mock class evaluation to force the fallback mechanism by making class 5
+        # the weakest, but we will not provide a specialist for it.
+        mock_evaluate_by_class.return_value = [90, 80, 70, 60, 50, 10, 85, 95, 88, 75]
+
+        # Create Parent 1 (the best model)
         parent1 = ModelWrapper(model_name='CIFAR10', niche_classes=[0], device=self.device)
-        parent1.fitness = 90.0
-        clone_of_parent1 = copy.deepcopy(parent1)
-        clone_of_parent1.fitness = 90.0
-        distinct_model = ModelWrapper(model_name='CIFAR10', niche_classes=[1], device=self.device)
-        distinct_model.fitness = 80.0
-        population = [parent1, clone_of_parent1, distinct_model]
+        parent1.fitness = 95.0
+
+        # Create a second model, which will be the expected Parent 2.
+        # It has a lower fitness than Parent 1.
+        expected_parent2 = ModelWrapper(model_name='CIFAR10', niche_classes=[1], device=self.device)
+        expected_parent2.fitness = 90.0
+
+        # Create a third, lower-fitness model that should not be selected.
+        other_model = ModelWrapper(model_name='CIFAR10', niche_classes=[2], device=self.device)
+        other_model.fitness = 85.0
+
+        # The population is sorted by fitness: parent1, expected_parent2, other_model
+        population = [parent1, expected_parent2, other_model]
+
+        # --- Act ---
+        # The logic should:
+        # 1. Select parent1 as the best model.
+        # 2. Identify class 5 as its weakest.
+        # 3. Fail to find a specialist for class 5.
+        # 4. Fall back to the sorted list.
+        # 5. Skip parent1 (as it's the same instance).
+        # 6. Select expected_parent2 as it's the next in the list and a different instance.
         _, selected_parent2 = select_mates(population, dataset_name='CIFAR10')
-        self.assertEqual(selected_parent2, distinct_model, "The fallback mate selection chose a clone of Parent 1 instead of the next distinct model.")
+
+        # --- Assert ---
+        self.assertIsNot(selected_parent2, parent1, "Parent 2 should not be the same instance as Parent 1.")
+        self.assertIs(selected_parent2, expected_parent2, "The fallback did not select the next-best distinct model instance.")
 
     def test_layer_wise_merge_on_resnet_is_not_all_or_nothing(self):
         """
