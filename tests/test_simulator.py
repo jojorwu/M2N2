@@ -194,6 +194,57 @@ class TestSimulatorInitialization(unittest.TestCase):
                          "Mutation rate was not dynamically updated.")
         mock_select_mates.assert_called_once()
 
+    @patch('src.simulator.specialize')
+    @patch('src.simulator.get_dataloaders')
+    @patch('src.simulator.glob.glob')
+    def test_specialization_is_skipped_for_generalist_with_custom_num_classes(self, mock_glob, mock_get_dataloaders, mock_specialize):
+        """
+        Tests that the specialization phase correctly identifies a generalist
+        model and skips specializing it, even when the number of classes is
+        not the default of 10. This test is expected to FAIL until the
+        hardcoded '10' is fixed.
+        """
+        # Arrange
+        # 0. Prevent loading of incompatible pretrained models from other tests
+        mock_glob.return_value = []
+
+        # 1. Mock get_dataloaders to return a custom number of classes (e.g., 5)
+        custom_num_classes = 5
+        mock_get_dataloaders.return_value = (None, None, None, custom_num_classes)
+
+        # 2. Write a standard config file
+        with open(self.config_path, 'w') as f:
+            yaml.dump(self.base_config, f)
+
+        # 3. Initialize the simulator. This will set self.num_classes to 5
+        # and will call `specialize` on its newly created population.
+        simulator = EvolutionSimulator(config_path=self.config_path)
+        self.assertEqual(simulator.num_classes, custom_num_classes)
+
+        # 3a. Reset the mock to ignore the calls from the initialization phase.
+        mock_specialize.reset_mock()
+
+        # 4. Create a "generalist" model wrapper for this custom configuration.
+        # Its niche covers all classes from 0 to 4.
+        from src.model_wrapper import ModelWrapper
+        from src.enums import ModelName
+        generalist_wrapper = ModelWrapper(
+            model_name=ModelName.CIFAR10,
+            niche_classes=list(range(custom_num_classes)),
+            device='cpu',
+            num_classes=custom_num_classes
+        )
+        simulator.population = [generalist_wrapper]
+
+        # Act
+        # Run the specialization phase for a generation > 0
+        simulator._run_specialization_phase(generation=1)
+
+        # Assert
+        # The `specialize` function should NOT have been called, because the model
+        # is a generalist. This will fail if the check is hardcoded to `range(10)`.
+        mock_specialize.assert_not_called()
+
 
 if __name__ == '__main__':
     unittest.main()

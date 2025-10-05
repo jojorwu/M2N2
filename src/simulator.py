@@ -195,7 +195,7 @@ class EvolutionSimulator:
         if generation > 0:
             logger.info("--- Specializing Models ---")
             for model_wrapper in self.population:
-                if model_wrapper.niche_classes != list(range(10)):
+                if model_wrapper.niche_classes != list(range(self.num_classes)):
                     specialize(
                         model_wrapper,
                         dataset_name=self.dataset_name,
