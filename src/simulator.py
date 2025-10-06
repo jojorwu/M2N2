@@ -203,10 +203,6 @@ class EvolutionSimulator:
         if generation > 0:
             logger.info("--- Specializing Models ---")
             for model_wrapper in self.population:
-                # A model is a "generalist" if its niche covers all available classes.
-                # The original code had a hardcoded `range(10)`, which fails for
-                # datasets that don't have exactly 10 classes. This fix uses
-                # `self.num_classes` to create the correct range dynamically.
                 if model_wrapper.niche_classes != list(range(self.num_classes)):
                     specialize(
                         model_wrapper,
