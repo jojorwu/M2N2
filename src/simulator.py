@@ -53,6 +53,7 @@ class EvolutionSimulator:
     validation_loader: DataLoader
     current_generation: int
     num_classes: int
+    loaded_model_files: List[str]
 
     def __init__(self, config_path: str = 'config.yaml') -> None:
         """
@@ -75,6 +76,7 @@ class EvolutionSimulator:
         self.population = []
         self.fitness_history = []
         self.current_generation = 0
+        self.loaded_model_files = []
         self._initialize_dataloaders()
         self._initialize_population()
         self._initialize_fitness_log()
@@ -163,8 +165,11 @@ class EvolutionSimulator:
             self._initialize_new_population()
 
     def _load_population_from_files(self, model_files: List[str]) -> None:
-        """Loads a population of models from saved .pth files."""
-        logger.info(f"Found {len(model_files)} models in 'src/pretrained_models'. Loading them.")
+        """
+        Loads a population of models from saved .pth files, preserving
+        unrelated files.
+        """
+        logger.info(f"Found {len(model_files)} models in 'src/pretrained_models'. Attempting to load them.")
         for f in model_files:
             match = re.search(r'model_niche_([\d_]+)_fitness_([\d\.]+)\.pth', os.path.basename(f))
             if match:
@@ -173,9 +178,10 @@ class EvolutionSimulator:
                 wrapper = ModelWrapper(model_name=self.model_config, niche_classes=niche_classes, device=self.device, num_classes=self.num_classes)
                 wrapper.model.load_state_dict(torch.load(f, map_location=self.device))
                 wrapper.fitness = fitness
-                # Ensure that loaded models are re-evaluated.
                 wrapper.fitness_is_current = False
                 self.population.append(wrapper)
+                # Only track files that are successfully loaded.
+                self.loaded_model_files.append(f)
 
     def _initialize_new_population(self) -> None:
         """Initializes a new population from scratch and specializes them."""
@@ -430,10 +436,11 @@ class EvolutionSimulator:
         if not os.path.exists(model_dir):
             os.makedirs(model_dir)
         else:
-            # Clear out old models from previous runs to prevent confusion.
-            files = glob.glob(os.path.join(model_dir, "*.pth"))
-            for f in files:
-                os.remove(f)
+            # Clear out only the models that were loaded at the start of this run.
+            # This prevents deleting user-saved models or models from other experiments.
+            for f in self.loaded_model_files:
+                if os.path.exists(f):
+                    os.remove(f)
 
         for i, model_wrapper in enumerate(self.population):
             niche_str = "_".join(map(str, model_wrapper.niche_classes))

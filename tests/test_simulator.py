@@ -51,6 +51,58 @@ class TestSimulatorInitialization(unittest.TestCase):
         shutil.rmtree(self.test_dir)
         if os.path.exists("command_config.json"):
             os.remove("command_config.json")
+        # Clean up model dir if it was created by a test
+        model_dir = "src/pretrained_models"
+        if os.path.exists(model_dir):
+            shutil.rmtree(model_dir)
+
+    def test_save_final_population_preserves_unrelated_files(self):
+        """
+        Tests that _save_final_population only deletes the models loaded at the
+        start of the run and preserves any other user-created files in the
+        pretrained_models directory.
+        """
+        # Arrange
+        # 1. Create the pretrained_models directory and dummy files
+        model_dir = "src/pretrained_models"
+        os.makedirs(model_dir, exist_ok=True)
+
+        loaded_model_path = os.path.join(model_dir, "model_niche_0_fitness_10.00.pth")
+        user_file_path = os.path.join(model_dir, "user_backup_model.pth")
+
+        # Create a dummy model state dict to save
+        dummy_model = CifarCNN()
+        torch.save(dummy_model.state_dict(), loaded_model_path)
+        # Create a simple user file
+        with open(user_file_path, "w") as f:
+            f.write("This is a user backup, do not delete.")
+
+        # 2. Configure the simulator to run for one generation
+        config = self.base_config.copy()
+        config['num_generations'] = 1
+        config['population_size'] = 1
+        with open(self.config_path, 'w') as f:
+            yaml.dump(config, f)
+
+        # Act
+        # Instantiate the simulator. It will load the dummy model.
+        simulator = EvolutionSimulator(config_path=self.config_path)
+        # Run the simulation. This will trigger _save_final_population at the end.
+        simulator.run()
+
+        # Assert
+        # 3. Check that the user's file is still there
+        self.assertTrue(os.path.exists(user_file_path),
+                        "The user's unrelated file was deleted.")
+
+        # 4. Check that the original loaded model file is gone
+        self.assertFalse(os.path.exists(loaded_model_path),
+                         "The original loaded model file was not deleted.")
+
+        # 5. Check that at least one new model was saved
+        new_model_files = [f for f in os.listdir(model_dir) if f.startswith('model_niche_')]
+        self.assertGreater(len(new_model_files), 0,
+                           "No new model was saved to the directory.")
 
     @patch('src.simulator.glob.glob')
     def test_loaded_model_fitness_is_marked_as_stale(self, mock_glob):
