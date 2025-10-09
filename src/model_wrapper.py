@@ -76,9 +76,8 @@ class ModelWrapper:
         if not isinstance(other, ModelWrapper):
             return NotImplemented
 
-        # Check for basic attribute equality. The niche comparison is sorted
-        # to ensure that the order of classes does not affect equality.
-        if self.model_name != other.model_name or sorted(self.niche_classes) != sorted(other.niche_classes):
+        # Check for basic attribute equality
+        if self.model_name != other.model_name or self.niche_classes != other.niche_classes:
             return False
 
         # Check for model state dictionary equality
@@ -114,6 +113,4 @@ class ModelWrapper:
             buffer.seek(0)
             state_dict_bytes = buffer.read()
 
-        # The niche_classes are converted to a sorted tuple to ensure the hash
-        # is order-independent, matching the behavior of the __eq__ method.
-        return hash((self.model_name, tuple(sorted(self.niche_classes)), state_dict_bytes))
+        return hash((self.model_name, tuple(self.niche_classes), state_dict_bytes))

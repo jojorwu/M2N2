@@ -352,5 +352,50 @@ class TestEvolution(unittest.TestCase):
         mock_tqdm.assert_not_called()
 
 
+    @patch('src.evolution.evaluate_by_class')
+    def test_select_mates_fallback_skips_identical_clone(self, mock_evaluate_by_class):
+        """
+        Tests that the fallback logic in `select_mates` correctly skips a
+        model that is a genetically identical (but different instance) clone
+        of Parent 1, selecting the next non-identical model instead.
+        """
+        # --- Arrange ---
+        # Mock the class evaluation to force the fallback mechanism. We'll make
+        # class 5 the weakest, but we won't provide a specialist for it.
+        mock_evaluate_by_class.return_value = [90, 80, 70, 60, 50, 10, 85, 95, 88, 75]
+
+        # Create Parent 1 (the best model)
+        parent1 = ModelWrapper(model_name='CIFAR10', niche_classes=[0], device=self.device)
+        parent1.fitness = 95.0
+
+        # Create a clone of Parent 1. It's a different instance but genetically
+        # identical.
+        clone_of_parent1 = copy.deepcopy(parent1)
+        clone_of_parent1.fitness = 95.0 # Same high fitness
+
+        # Create a third, distinct model with a slightly lower fitness. This is
+        # the model we expect to be chosen as Parent 2.
+        expected_parent2 = ModelWrapper(model_name='CIFAR10', niche_classes=[1], device=self.device)
+        expected_parent2.fitness = 90.0
+
+        # The population is sorted by fitness: parent1 and its clone are at the top.
+        population = [parent1, clone_of_parent1, expected_parent2]
+
+        # --- Act ---
+        # The logic should:
+        # 1. Select parent1 (or its clone) as the best model.
+        # 2. Fail to find a specialist for the weakest class.
+        # 3. Fall back to the sorted list.
+        # 4. Skip the identical clone (because `model != parent1` will be false).
+        # 5. Select the next genetically distinct model.
+        selected_parent1, selected_parent2 = select_mates(population, dataset_name='CIFAR10')
+
+        # --- Assert ---
+        # Ensure the selected parents are not genetically identical.
+        self.assertNotEqual(selected_parent1, selected_parent2, "Selected parents should be genetically different.")
+        # Verify that the correct fallback parent was chosen.
+        self.assertEqual(selected_parent2, expected_parent2, "The fallback did not select the next-best genetically distinct model.")
+
+
 if __name__ == '__main__':
     unittest.main()
