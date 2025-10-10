@@ -320,6 +320,68 @@ class TestSimulatorInitialization(unittest.TestCase):
             "The simulator did not raise the expected ValueError for an invalid configuration."
         )
 
+    @patch('src.simulator.EvolutionSimulator._initialize_population')
+    def test_cleanup_deletes_old_models_when_flag_is_true(self, mock_initialize_population):
+        """
+        Tests that cleanup removes old models when `delete_old_models` is true.
+        """
+        # Arrange
+        mock_initialize_population.return_value = None
+        model_dir = "src/pretrained_models"
+        os.makedirs(model_dir, exist_ok=True)
+
+        stale_model_path = os.path.join(model_dir, "model_niche_stale_fitness_0.00.pth")
+        torch.save(CifarCNN().state_dict(), stale_model_path)
+
+        config = self.base_config.copy()
+        config['delete_old_models'] = True
+        with open(self.config_path, 'w') as f:
+            yaml.dump(config, f)
+
+        simulator = EvolutionSimulator(config_path=self.config_path)
+        from src.model_wrapper import ModelWrapper
+        simulator.population = [ModelWrapper(model_name=simulator.model_config, niche_classes=[0], device=simulator.device, num_classes=simulator.num_classes)]
+        simulator.population[0].fitness = 99.0
+
+        # Act
+        simulator._save_final_population()
+
+        # Assert
+        self.assertFalse(os.path.exists(stale_model_path), "Stale model was not deleted when flag was true.")
+        new_model_files = [f for f in os.listdir(model_dir) if f.startswith('model_niche_')]
+        self.assertGreater(len(new_model_files), 0, "No new model was saved.")
+
+    @patch('src.simulator.EvolutionSimulator._initialize_population')
+    def test_cleanup_preserves_old_models_when_flag_is_false(self, mock_initialize_population):
+        """
+        Tests that cleanup preserves old models when `delete_old_models` is false.
+        """
+        # Arrange
+        mock_initialize_population.return_value = None
+        model_dir = "src/pretrained_models"
+        os.makedirs(model_dir, exist_ok=True)
+
+        stale_model_path = os.path.join(model_dir, "model_niche_stale_fitness_0.00.pth")
+        torch.save(CifarCNN().state_dict(), stale_model_path)
+
+        config = self.base_config.copy()
+        config['delete_old_models'] = False
+        with open(self.config_path, 'w') as f:
+            yaml.dump(config, f)
+
+        simulator = EvolutionSimulator(config_path=self.config_path)
+        from src.model_wrapper import ModelWrapper
+        simulator.population = [ModelWrapper(model_name=simulator.model_config, niche_classes=[0], device=simulator.device, num_classes=simulator.num_classes)]
+        simulator.population[0].fitness = 99.0
+
+        # Act
+        simulator._save_final_population()
+
+        # Assert
+        self.assertTrue(os.path.exists(stale_model_path), "Stale model was deleted when flag was false.")
+        new_model_files = [f for f in os.listdir(model_dir) if f.startswith('model_niche_')]
+        self.assertGreater(len(new_model_files), 1, "New model was not saved alongside the old one.")
+
 
 if __name__ == '__main__':
     unittest.main()

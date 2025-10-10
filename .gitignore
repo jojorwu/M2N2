@@ -15,3 +15,6 @@ src/cache/
 
 # Saved models
 src/pretrained_models/
+
+# Test-related artifacts
+tests/golden_sequential_merge.pth

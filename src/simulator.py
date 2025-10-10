@@ -33,6 +33,7 @@ class EvolutionSimulator:
     precision_config: str
     num_generations: int
     population_size: int
+    delete_old_models: bool
     merge_strategy: str
     dampening_factor: float
     mutation_rate: float
@@ -99,6 +100,7 @@ class EvolutionSimulator:
         self.precision_config = str(self.config['precision_config'])
         self.num_generations = self.config['num_generations']
         self.population_size = self.config['population_size']
+        self.delete_old_models = self.config.get('delete_old_models', True)
 
         # --- Evolutionary settings ---
         self.merge_strategy = self.config['merge_strategy']
@@ -435,12 +437,20 @@ class EvolutionSimulator:
         model_dir = "src/pretrained_models"
         if not os.path.exists(model_dir):
             os.makedirs(model_dir)
-        else:
-            # Clear out only the models that were loaded at the start of this run.
-            # This prevents deleting user-saved models or models from other experiments.
-            for f in self.loaded_model_files:
-                if os.path.exists(f):
+        if self.delete_old_models:
+            logger.info(f"Clearing old, pattern-matching models from {model_dir}...")
+            pattern = os.path.join(model_dir, "model_niche_*.pth")
+            old_model_files = glob.glob(pattern)
+            if not old_model_files:
+                logger.info("No old models found to clear.")
+            for f in old_model_files:
+                try:
                     os.remove(f)
+                    logger.info(f"  - Removed old model: {os.path.basename(f)}")
+                except OSError as e:
+                    logger.error(f"Error removing file {f}: {e}")
+        else:
+            logger.info("`delete_old_models` is false. Skipping cleanup of old models.")
 
         for i, model_wrapper in enumerate(self.population):
             niche_str = "_".join(map(str, model_wrapper.niche_classes))
