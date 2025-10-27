@@ -221,81 +221,34 @@ def evaluate_by_class(model_wrapper: ModelWrapper, dataset_name: str, subset_per
 
     return class_accuracies
 
-def select_mates(population: List[ModelWrapper], dataset_name: str, subset_percentage: float = 1.0, seed: Optional[int] = None) -> Tuple[Optional[ModelWrapper], Optional[ModelWrapper]]:
-    """Selects a complementary pair of parents using an advanced strategy.
+from .selection_strategies import HealingMateSelectionStrategy
 
-    This function promotes "healing" by pairing a strong model with a model
-    that is an expert in the first model's weakest area. The strategy is:
-    1.  Parent 1 is chosen as the model with the highest overall fitness.
-    2.  Parent 1's performance is analyzed to find its weakest class.
-    3.  Parent 2 is chosen as the specialist model for that weakest class.
-    4.  A fallback is used if a suitable specialist is not found.
-
-    This function prints its selection logic to the console.
-
-    Args:
-        population (list[ModelWrapper]): The current population of models.
-        dataset_name (str): The name of the dataset to use for evaluation.
-        subset_percentage (float, optional): The fraction of the test set to use for evaluation. Defaults to 1.0.
-        seed (int, optional): A seed for the random number generator to
-            ensure deterministic data splitting. Defaults to None.
-
-    Returns:
-        tuple[ModelWrapper | None, ModelWrapper | None]: A tuple containing
-            the two selected parents. If a suitable pair cannot be found
-            (e.g., population is too small), elements can be `None`.
+def select_mates(
+    population: List[ModelWrapper],
+    strategy: str,
+    dataset_name: str,
+    subset_percentage: float = 1.0,
+    seed: Optional[int] = None
+) -> Tuple[Optional[ModelWrapper], Optional[ModelWrapper]]:
     """
-    logger.info("Selecting mates with advanced strategy...")
-    if not population:
-        return None, None
+    Selects a pair of parents from the population using a specified strategy.
+    """
+    logger.info(f"Selecting mates using '{strategy}' strategy...")
 
-    # 1. Find the best overall model in the population to be Parent 1.
-    parent1 = max(population, key=lambda m: m.fitness)
-    logger.info(f"  - Parent 1 is the population's best model (Fitness: {parent1.fitness:.2f}%)")
+    strategy_map = {
+        'healing': HealingMateSelectionStrategy,
+    }
 
-    # 2. Analyze Parent 1 to find its weakest class.
-    logger.info("  - Analyzing Parent 1's performance by class...")
-    class_accuracies = evaluate_by_class(parent1, dataset_name=dataset_name, subset_percentage=subset_percentage, seed=seed)
-    min_accuracy = min(class_accuracies)
-    weakest_indices = [i for i, acc in enumerate(class_accuracies) if acc == min_accuracy]
-    weakest_class_index = random.choice(weakest_indices)
-    logger.info(f"  - Parent 1's weakest class is {weakest_class_index} (Accuracy: {class_accuracies[weakest_class_index]:.2f}%)")
+    if strategy not in strategy_map:
+        raise ValueError(f"Unknown mate selection strategy: {strategy}")
 
-    # 3. Find the specialist for that weakest class to be Parent 2.
-    parent2 = None
-    # Ensure Parent 2 is not the same model as Parent 1.
-    specialist_candidates = [
-        m for m in population if m.niche_classes == [weakest_class_index] and m is not parent1
-    ]
-
-    if specialist_candidates:
-        # From the candidates, pick the one with the highest fitness.
-        parent2 = max(specialist_candidates, key=lambda m: m.fitness)
-        logger.info(f"  - Found specialist for class {weakest_class_index} as Parent 2 (Fitness: {parent2.fitness:.2f}%)")
-    else:
-        # Fallback: if no suitable specialist is found, pick the second-best model overall,
-        # ensuring it's not the same instance as Parent 1.
-        logger.info("  - No suitable specialist found. Using second-best model as fallback Parent 2.")
-        sorted_population = sorted(population, key=lambda m: m.fitness, reverse=True)
-
-        # Find the first model in the sorted list that is not a deep copy of Parent 1.
-        for model in sorted_population:
-            if model != parent1:
-                parent2 = model
-                break
-
-        if parent2 is None:
-            # This happens if all models in the population are the same instance
-            # or if there's only one model.
-            logger.info("  - Not enough distinct models in population to select a second parent.")
-            return parent1, None
-
-    if parent1 and parent2:
-        return parent1, parent2
-    else:
-        # This case should be rare given the fallbacks, but is here for safety.
-        logger.info("  - Could not select a pair of parents.")
-        return None, None
+    selection_strategy = strategy_map[strategy]()
+    return selection_strategy.select_mates(
+        population,
+        dataset_name=dataset_name,
+        subset_percentage=subset_percentage,
+        seed=seed
+    )
 
 def merge(parent1: ModelWrapper, parent2: ModelWrapper, strategy: str = 'average', validation_loader: Optional[DataLoader] = None, seed: Optional[int] = None, dampening_factor: float = 25.0) -> ModelWrapper:
     """

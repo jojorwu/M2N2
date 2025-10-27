@@ -42,6 +42,7 @@ class ConfigManager:
         self.delete_old_models = self.config.get('delete_old_models', True)
 
         # --- Evolutionary settings ---
+        self.mate_selection_strategy = self.config['mate_selection_strategy']
         self.merge_strategy = self.config['merge_strategy']
         self.dampening_factor = self.config['fitness_weighted_merge_dampening_factor']
         self.mutation_rate = self.config['mutation_rate']

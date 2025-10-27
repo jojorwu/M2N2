@@ -186,11 +186,14 @@ class EvolutionSimulator:
 
         model_dir = "src/pretrained_models"
         if os.path.exists(model_dir):
-            files = glob.glob(os.path.join(model_dir, "*.pth"))
+            pattern = os.path.join(model_dir, "model_niche_*.pth")
+            files = glob.glob(pattern)
             if files:
+                cleared_count = 0
                 for f in files:
                     os.remove(f)
-                logger.info(f"Cleared {len(files)} models from {model_dir}")
+                    cleared_count += 1
+                logger.info(f"Cleared {cleared_count} models from {model_dir}")
 
         if os.path.exists("command_config.json"):
             os.remove("command_config.json")
@@ -212,6 +215,7 @@ class EvolutionSimulator:
         logger.info("--- Mating and Evolution ---")
         parent1, parent2 = select_mates(
             self.population,
+            strategy=self.config_manager.mate_selection_strategy,
             dataset_name=self.config_manager.dataset_name,
             subset_percentage=self.config_manager.subset_percentage,
             seed=self.config_manager.seed

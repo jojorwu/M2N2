@@ -10,6 +10,7 @@ population_size: 10       # Number of models in the population
 delete_old_models: true   # Whether to delete models from previous runs in the pretrained_models directory
 
 # --- Evolutionary Algorithm Settings ---
+mate_selection_strategy: 'healing' # Options: 'healing'
 merge_strategy: 'sequential_constructive' # Options: 'average', 'fitness_weighted', 'layer-wise', 'sequential_constructive'
 fitness_weighted_merge_dampening_factor: 25.0 # Dampening factor for fitness_weighted merge
 mutation_rate: 0.05                       # Probability of a weight being mutated
