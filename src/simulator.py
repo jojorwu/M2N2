@@ -182,7 +182,6 @@ class EvolutionSimulator:
                 wrapper.fitness = fitness
                 wrapper.fitness_is_current = False
                 self.population.append(wrapper)
-                # Only track files that are successfully loaded.
                 self.loaded_model_files.append(f)
 
     def _initialize_new_population(self) -> None:
@@ -438,17 +437,19 @@ class EvolutionSimulator:
         if not os.path.exists(model_dir):
             os.makedirs(model_dir)
         if self.delete_old_models:
-            logger.info(f"Clearing old, pattern-matching models from {model_dir}...")
-            pattern = os.path.join(model_dir, "model_niche_*.pth")
-            old_model_files = glob.glob(pattern)
-            if not old_model_files:
-                logger.info("No old models found to clear.")
-            for f in old_model_files:
-                try:
-                    os.remove(f)
-                    logger.info(f"  - Removed old model: {os.path.basename(f)}")
-                except OSError as e:
-                    logger.error(f"Error removing file {f}: {e}")
+            logger.info(f"Clearing old models loaded at the start of the run from {model_dir}...")
+            if not self.loaded_model_files:
+                logger.info("No loaded models were tracked, so none were cleared.")
+            else:
+                for f in self.loaded_model_files:
+                    try:
+                        if os.path.exists(f):
+                            os.remove(f)
+                            logger.info(f"  - Removed old model: {os.path.basename(f)}")
+                        else:
+                            logger.warning(f"  - Could not find loaded model to remove: {os.path.basename(f)}")
+                    except OSError as e:
+                        logger.error(f"Error removing file {f}: {e}")
         else:
             logger.info("`delete_old_models` is false. Skipping cleanup of old models.")
 

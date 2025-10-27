@@ -321,17 +321,22 @@ class TestSimulatorInitialization(unittest.TestCase):
         )
 
     @patch('src.simulator.EvolutionSimulator._initialize_population')
-    def test_cleanup_deletes_old_models_when_flag_is_true(self, mock_initialize_population):
+    def test_cleanup_deletes_loaded_models_when_flag_is_true(self, mock_initialize_population):
         """
-        Tests that cleanup removes old models when `delete_old_models` is true.
+        Tests that cleanup removes only the models that were loaded at the
+        start of the simulation, not other files.
         """
         # Arrange
         mock_initialize_population.return_value = None
         model_dir = "src/pretrained_models"
         os.makedirs(model_dir, exist_ok=True)
 
-        stale_model_path = os.path.join(model_dir, "model_niche_stale_fitness_0.00.pth")
-        torch.save(CifarCNN().state_dict(), stale_model_path)
+        loaded_model_to_delete = os.path.join(model_dir, "model_niche_0_fitness_10.0.pth")
+        user_file_to_preserve = os.path.join(model_dir, "user_backup.pth")
+
+        torch.save(CifarCNN().state_dict(), loaded_model_to_delete)
+        with open(user_file_to_preserve, "w") as f:
+            f.write("preserve this file")
 
         config = self.base_config.copy()
         config['delete_old_models'] = True
@@ -339,6 +344,7 @@ class TestSimulatorInitialization(unittest.TestCase):
             yaml.dump(config, f)
 
         simulator = EvolutionSimulator(config_path=self.config_path)
+        simulator.loaded_model_files = [loaded_model_to_delete]
         from src.model_wrapper import ModelWrapper
         simulator.population = [ModelWrapper(model_name=simulator.model_config, niche_classes=[0], device=simulator.device, num_classes=simulator.num_classes)]
         simulator.population[0].fitness = 99.0
@@ -347,9 +353,8 @@ class TestSimulatorInitialization(unittest.TestCase):
         simulator._save_final_population()
 
         # Assert
-        self.assertFalse(os.path.exists(stale_model_path), "Stale model was not deleted when flag was true.")
-        new_model_files = [f for f in os.listdir(model_dir) if f.startswith('model_niche_')]
-        self.assertGreater(len(new_model_files), 0, "No new model was saved.")
+        self.assertFalse(os.path.exists(loaded_model_to_delete), "Loaded model was not deleted.")
+        self.assertTrue(os.path.exists(user_file_to_preserve), "User backup file was incorrectly deleted.")
 
     @patch('src.simulator.EvolutionSimulator._initialize_population')
     def test_cleanup_preserves_old_models_when_flag_is_false(self, mock_initialize_population):
@@ -381,6 +386,7 @@ class TestSimulatorInitialization(unittest.TestCase):
         self.assertTrue(os.path.exists(stale_model_path), "Stale model was deleted when flag was false.")
         new_model_files = [f for f in os.listdir(model_dir) if f.startswith('model_niche_')]
         self.assertGreater(len(new_model_files), 1, "New model was not saved alongside the old one.")
+
 
 
 if __name__ == '__main__':
