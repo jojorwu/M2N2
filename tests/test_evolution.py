@@ -396,6 +396,37 @@ class TestEvolution(unittest.TestCase):
         # Verify that the correct fallback parent was chosen.
         self.assertEqual(selected_parent2, expected_parent2, "The fallback did not select the next-best genetically distinct model.")
 
+    @patch('src.evolution.evaluate_by_class')
+    def test_select_mates_fallback_skips_identical_clone_with_tied_fitness(self, mock_evaluate_by_class):
+        """
+        Tests that the fallback logic correctly handles fitness ties by finding
+        the first model in the sorted list that is not a deep copy of Parent 1.
+        """
+        # --- Arrange ---
+        mock_evaluate_by_class.return_value = [10] * 10
+
+        parent1 = ModelWrapper(model_name='CIFAR10', niche_classes=[0], device=self.device)
+        parent1.fitness = 90.0
+
+        # Create a clone with the same fitness
+        clone = copy.deepcopy(parent1)
+        clone.fitness = 90.0
+
+        # Create a distinct model with a lower fitness
+        distinct_model = ModelWrapper(model_name='CIFAR10', niche_classes=[1], device=self.device)
+        distinct_model.fitness = 85.0
+
+        population = [parent1, clone, distinct_model]
+        random.shuffle(population) # Ensure order isn't guaranteed
+
+        # --- Act ---
+        _, selected_parent2 = select_mates(population, dataset_name='CIFAR10')
+
+        # --- Assert ---
+        self.assertIsNot(selected_parent2, parent1, "Parent 2 should not be the same instance as Parent 1.")
+        self.assertNotEqual(selected_parent2, parent1, "Parent 2 should not be a deep copy of Parent 1.")
+        self.assertEqual(selected_parent2, distinct_model, "The fallback did not select the correct distinct model.")
+
 
 if __name__ == '__main__':
     unittest.main()

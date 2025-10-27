@@ -278,11 +278,11 @@ def select_mates(population: List[ModelWrapper], dataset_name: str, subset_perce
         logger.info("  - No suitable specialist found. Using second-best model as fallback Parent 2.")
         sorted_population = sorted(population, key=lambda m: m.fitness, reverse=True)
 
-        # Find the first model in the sorted list that is not a clone of Parent 1.
-        # The original code used `is not`, which only checks for object identity.
-        # This has been changed to `!=` to use the deep equality check in
-        # ModelWrapper, preventing genetically identical parents from being selected.
-        parent2 = next((model for model in sorted_population if model != parent1), None)
+        # Find the first model in the sorted list that is not a deep copy of Parent 1.
+        for model in sorted_population:
+            if model != parent1:
+                parent2 = model
+                break
 
         if parent2 is None:
             # This happens if all models in the population are the same instance
