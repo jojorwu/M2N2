@@ -267,17 +267,30 @@ class EvolutionSimulator:
         self._run_evolution_phase(self.current_generation)
         self.current_generation += 1
 
+    def _handle_commands(self) -> str | None:
+        """
+        Checks for and handles dynamic commands from command_config.json,
+        returning a string command if action is needed.
+        """
+        command_config = self.config_manager.load_dynamic_config()
+
+        if command_config.get('restart_simulation'):
+            self._restart()
+            return "restart"
+
+        if command_config.get('stop_simulation'):
+            logger.info("Stop command received. Shutting down gracefully.")
+            return "stop"
+
+        return None
+
     def run(self) -> None:
         """Runs the main evolutionary loop, checking for commands each generation."""
         while self.current_generation < self.config_manager.num_generations:
-            command_config = self.config_manager.load_dynamic_config()
-
-            if command_config.get('restart_simulation'):
-                self._restart()
+            command = self._handle_commands()
+            if command == "restart":
                 continue
-
-            if command_config.get('stop_simulation'):
-                logger.info("Stop command received. Shutting down gracefully.")
+            if command == "stop":
                 break
 
             self.run_one_generation()
