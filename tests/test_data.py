@@ -61,5 +61,40 @@ class TestDataFiltering(unittest.TestCase):
             "The train loader is empty. This confirms that subset sampling was incorrectly applied before niche filtering."
         )
 
+    def test_subset_sampling_is_reproducible_with_seed(self):
+        """
+        Tests that subset sampling is reproducible when a seed is provided.
+        """
+        # Arrange
+        subset_percentage = 0.1
+        seed = 42
+
+        # Act
+        train_loader1, _, _, _ = get_dataloaders(
+            dataset_name=DatasetName.CIFAR10,
+            subset_percentage=subset_percentage,
+            validation_split=0,
+            seed=seed
+        )
+
+        # In a real-world scenario, other code might run here and affect the
+        # global numpy random state. We simulate this by calling another
+        # function that uses numpy.random.
+        import numpy
+        numpy.random.rand(10)
+
+        train_loader2, _, _, _ = get_dataloaders(
+            dataset_name=DatasetName.CIFAR10,
+            subset_percentage=subset_percentage,
+            validation_split=0,
+            seed=seed
+        )
+
+        # Assert
+        indices1 = train_loader1.dataset.indices
+        indices2 = train_loader2.dataset.indices
+        self.assertEqual(list(indices1), list(indices2),
+                         "The data subsets are not identical, indicating a reproducibility issue.")
+
 if __name__ == '__main__':
     unittest.main()

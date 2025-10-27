@@ -129,12 +129,16 @@ def get_dataloaders(dataset_name: DatasetName = DatasetName.CIFAR10, model_name:
         full_train_dataset = Subset(full_train_dataset, niche_indices)
 
     if subset_percentage < 1.0:
+        g = torch.Generator()
+        if seed is not None:
+            g.manual_seed(seed)
+
         num_train = int(len(full_train_dataset) * subset_percentage)
-        train_indices = np.random.permutation(len(full_train_dataset))[:num_train]
+        train_indices = torch.randperm(len(full_train_dataset), generator=g)[:num_train].tolist()
         full_train_dataset = Subset(full_train_dataset, train_indices)
 
         num_test = int(len(full_test_dataset) * subset_percentage)
-        test_indices = np.random.permutation(len(full_test_dataset))[:num_test]
+        test_indices = torch.randperm(len(full_test_dataset), generator=g)[:num_test].tolist()
         full_test_dataset = Subset(full_test_dataset, test_indices)
 
     # Split training data into training and validation using torch's random_split
