@@ -104,6 +104,30 @@ class TestSimulatorInitialization(unittest.TestCase):
         self.assertGreater(len(new_model_files), 0,
                            "No new model was saved to the directory.")
 
+    def test_clear_simulation_artifacts_deletes_log_file(self):
+        """
+        Tests that the _clear_simulation_artifacts method correctly deletes the
+        fitness_log.csv file.
+        """
+        # Arrange
+        log_file_path = "fitness_log.csv"
+        with open(log_file_path, "w") as f:
+            f.write("generation,best_fitness,average_fitness\n")
+            f.write("1,10.0,5.0\n")
+
+        config = self.base_config.copy()
+        with open(self.config_path, 'w') as f:
+            yaml.dump(config, f)
+
+        simulator = EvolutionSimulator(config_path=self.config_path)
+
+        # Act
+        simulator._clear_simulation_artifacts()
+
+        # Assert
+        self.assertFalse(os.path.exists(log_file_path),
+                         "The fitness_log.csv file was not deleted.")
+
     @patch('src.simulator.glob.glob')
     def test_loaded_model_fitness_is_marked_as_stale(self, mock_glob):
         """

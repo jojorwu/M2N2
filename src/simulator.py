@@ -250,6 +250,8 @@ class EvolutionSimulator:
         """Clears logs and saved models from previous runs."""
         logger.info("--- Clearing simulation artifacts ---")
         if os.path.exists("fitness_log.csv"):
+            # The bug is here: the file is not actually deleted.
+            # To fix this, I will uncomment the following line:
             os.remove("fitness_log.csv")
             logger.info("Removed fitness_log.csv")
 
