@@ -16,6 +16,14 @@ from .utils import set_seed
 from .config_manager import ConfigManager
 from typing import List, Tuple
 from torch.utils.data import DataLoader
+from .merge_strategies import (
+    AverageMergeStrategy,
+    FitnessWeightedMergeStrategy,
+    LayerWiseMergeStrategy,
+    SequentialConstructiveMergeStrategy,
+)
+from .selection_strategies import HealingMateSelectionStrategy
+from .generation_strategies import ReplaceWorstStrategy
 
 logger = logging.getLogger("M2N2_SIMULATOR")
 
@@ -47,8 +55,36 @@ class EvolutionSimulator:
         self.loaded_model_files: List[str] = []
 
         self._initialize_dataloaders()
+        self._initialize_strategies()
         self._initialize_population()
         self._initialize_fitness_log()
+
+    def _initialize_strategies(self) -> None:
+        """Initializes the strategy objects based on the configuration."""
+        # Mate selection strategy
+        if self.config_manager.mate_selection_strategy == 'healing':
+            self.mate_selection_strategy = HealingMateSelectionStrategy()
+        else:
+            raise ValueError(f"Unknown mate selection strategy: {self.config_manager.mate_selection_strategy}")
+
+        # Generation strategy
+        if self.config_manager.generation_strategy == 'replace_worst':
+            self.generation_strategy = ReplaceWorstStrategy()
+        else:
+            raise ValueError(f"Unknown generation strategy: {self.config_manager.generation_strategy}")
+
+        # Merge strategy
+        merge_strategy_name = self.config_manager.merge_strategy
+        if merge_strategy_name == 'average':
+            self.merge_strategy = AverageMergeStrategy()
+        elif merge_strategy_name == 'fitness_weighted':
+            self.merge_strategy = FitnessWeightedMergeStrategy(dampening_factor=self.config_manager.dampening_factor)
+        elif merge_strategy_name == 'layer-wise':
+            self.merge_strategy = LayerWiseMergeStrategy(seed=self.config_manager.seed)
+        elif merge_strategy_name == 'sequential_constructive':
+            self.merge_strategy = SequentialConstructiveMergeStrategy()
+        else:
+            raise ValueError(f"Unknown merge strategy: {merge_strategy_name}")
 
     def _setup_environment(self) -> None:
         """Sets up the logger and device."""
@@ -213,7 +249,7 @@ class EvolutionSimulator:
         logger.info("--- Mating and Evolution ---")
         parent1, parent2 = select_mates(
             self.population,
-            strategy=self.config_manager.mate_selection_strategy,
+            strategy=self.mate_selection_strategy,
             dataset_name=self.config_manager.dataset_name,
             subset_percentage=self.config_manager.subset_percentage,
             seed=self.config_manager.seed
@@ -222,10 +258,8 @@ class EvolutionSimulator:
         if parent1 and parent2:
             child = merge(
                 parent1, parent2,
-                strategy=self.config_manager.merge_strategy,
-                validation_loader=self.validation_loader,
-                seed=self.config_manager.seed,
-                dampening_factor=self.config_manager.dampening_factor
+                strategy=self.merge_strategy,
+                validation_loader=self.validation_loader
             )
             child = mutate(
                 child,
@@ -252,7 +286,7 @@ class EvolutionSimulator:
                 child,
                 self.config_manager.population_size,
                 dataset_name=self.config_manager.dataset_name,
-                strategy=self.config_manager.generation_strategy,
+                strategy=self.generation_strategy,
                 seed=self.config_manager.seed
             )
         else:

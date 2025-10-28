@@ -61,7 +61,7 @@ class HealingMateSelectionStrategy(MateSelectionStrategy):
 
         for class_index in weakest_indices:
             specialist_candidates = [
-                m for m in population if m.niche_classes == [class_index] and m is not parent1
+                m for m in population if m.niche_classes == [class_index] and m != parent1
             ]
             if specialist_candidates:
                 parent2 = max(specialist_candidates, key=lambda m: m.fitness)

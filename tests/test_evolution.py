@@ -8,9 +8,16 @@ import copy
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from src.evolution import ModelWrapper, merge, select_mates
+from src.evolution import ModelWrapper, merge, select_mates, create_next_generation
 from src.model import CifarCNN
 from src.selection_strategies import HealingMateSelectionStrategy
+from src.merge_strategies import (
+    FitnessWeightedMergeStrategy,
+    LayerWiseMergeStrategy,
+    SequentialConstructiveMergeStrategy
+)
+from src.generation_strategies import ReplaceWorstStrategy
+from src.utils import set_seed
 import src.selection_strategies
 
 def are_state_dicts_equal(dict1, dict2):
@@ -39,7 +46,7 @@ class TestEvolution(unittest.TestCase):
                 param.fill_(1.0)
             for param in parent2.model.parameters():
                 param.fill_(0.0)
-        child = merge(parent1, parent2, strategy='fitness_weighted')
+        child = merge(parent1, parent2, strategy=FitnessWeightedMergeStrategy())
         dampening_factor = 25.0
         dampened_fitness1 = parent1.fitness + dampening_factor
         dampened_fitness2 = parent2.fitness + dampening_factor
@@ -71,7 +78,7 @@ class TestEvolution(unittest.TestCase):
         parent2.fitness = 20.0
         mock_calculate_accuracy.return_value = 50.0
         dummy_loader = torch.utils.data.DataLoader([torch.randn(10)], batch_size=1)
-        merge(parent1, parent2, strategy='sequential_constructive', validation_loader=dummy_loader)
+        merge(parent1, parent2, strategy=SequentialConstructiveMergeStrategy(), validation_loader=dummy_loader)
         expected_calls = 4
         self.assertEqual(
             mock_calculate_accuracy.call_count,
@@ -89,9 +96,9 @@ class TestEvolution(unittest.TestCase):
                 param.fill_(1.0)
             for param in parent2.model.parameters():
                 param.fill_(0.0)
-        child1 = merge(parent1, parent2, strategy='layer-wise', seed=seed1)
-        child2 = merge(parent1, parent2, strategy='layer-wise', seed=seed1)
-        child3 = merge(parent1, parent2, strategy='layer-wise', seed=seed2)
+        child1 = merge(parent1, parent2, strategy=LayerWiseMergeStrategy(seed=seed1))
+        child2 = merge(parent1, parent2, strategy=LayerWiseMergeStrategy(seed=seed1))
+        child3 = merge(parent1, parent2, strategy=LayerWiseMergeStrategy(seed=seed2))
         child1_params = list(child1.model.parameters())
         child2_params = list(child2.model.parameters())
         self.assertEqual(len(child1_params), len(child2_params))
@@ -137,7 +144,7 @@ class TestEvolution(unittest.TestCase):
         parent1.fitness = 80.0
         parent2 = ModelWrapper(model_name='CIFAR10', niche_classes=[1], device=self.device, num_classes=num_classes)
         parent2.fitness = 70.0
-        child = merge(parent1, parent2, strategy='sequential_constructive', validation_loader=dummy_loader)
+        child = merge(parent1, parent2, strategy=SequentialConstructiveMergeStrategy(), validation_loader=dummy_loader)
         self.assertEqual(child.niche_classes, list(range(num_classes)), f"Child's niche classes should be a range up to {num_classes}, but got {child.niche_classes}.")
 
     @patch('src.data.get_dataloaders')
@@ -176,7 +183,7 @@ class TestEvolution(unittest.TestCase):
         duplicate_child = copy.deepcopy(population[1])
         duplicate_child.fitness = population[1].fitness
         duplicate_child.fitness_is_current = True
-        next_gen = create_next_generation(population, duplicate_child, population_size, 'CIFAR10')
+        next_gen = create_next_generation(population, duplicate_child, population_size, 'CIFAR10', strategy=ReplaceWorstStrategy())
         self.assertEqual(len(next_gen), population_size)
         duplicate_count = sum(1 for model in next_gen if model == duplicate_child)
         self.assertEqual(duplicate_count, 1, "A duplicate model was added to the new generation.")
@@ -218,7 +225,7 @@ class TestEvolution(unittest.TestCase):
                 param.fill_(1.0)
             for param in parent2.model.parameters():
                 param.fill_(0.0)
-        child = merge(parent1, parent2, strategy='layer-wise', seed=seed)
+        child = merge(parent1, parent2, strategy=LayerWiseMergeStrategy(seed=seed))
         child_sd = child.model.state_dict()
         parent1_sd = parent1.model.state_dict()
         parent2_sd = parent2.model.state_dict()
@@ -242,7 +249,8 @@ class TestEvolution(unittest.TestCase):
         dummy_loader = torch.utils.data.DataLoader([torch.randn(10)], batch_size=1)
         mock_fitness_sequence = [50.0, 55.0, 45.0, 60.0, 58.0, 65.0]
         with patch('src.model_wrapper.ModelWrapper._calculate_accuracy', side_effect=mock_fitness_sequence):
-            child = merge(parent1, parent2, strategy='sequential_constructive', validation_loader=dummy_loader, seed=seed)
+            set_seed(seed)
+            child = merge(parent1, parent2, strategy=SequentialConstructiveMergeStrategy(), validation_loader=dummy_loader)
         if not os.path.exists(golden_file_path):
             torch.save(child.model.state_dict(), golden_file_path)
             self.skipTest("Golden reference file created. Re-run tests to verify against it.")
@@ -310,7 +318,7 @@ class TestEvolution(unittest.TestCase):
         dummy_batch = (torch.randn(1, 3, 32, 32), torch.randint(0, 10, (1,)))
         dummy_loader = torch.utils.data.DataLoader([dummy_batch, "dummy_batch_2"], batch_size=1)
         with patch('src.model_wrapper.ModelWrapper._calculate_accuracy', return_value=50.0) as mock_calculate_accuracy:
-            merge(parent1, parent2, strategy='sequential_constructive', validation_loader=dummy_loader)
+            merge(parent1, parent2, strategy=SequentialConstructiveMergeStrategy(), validation_loader=dummy_loader)
         self.assertGreater(mock_calculate_accuracy.call_count, 1, "Validation was not performed for sequential merge.")
         for call in mock_calculate_accuracy.call_args_list:
             _, kwargs = call

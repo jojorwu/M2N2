@@ -189,6 +189,7 @@ class LayerWiseMergeStrategy(MergeStrategy):
             layer_prefixes.extend(['bert.pre_classifier', 'bert.classifier'])
         elif parent1.model_name == 'RESNET':
             layer_prefixes = [name for name, module in parent1.model.resnet.named_children() if list(module.parameters())]
+            layer_prefixes.sort()
         else: # Default for simple models like CifarCNN
             layer_prefixes = sorted(list(set([k.split('.')[0] for k in parent1_state_dict.keys()])))
 

@@ -13,6 +13,7 @@ import logging
 from .model import CifarCNN, LLMClassifier, ResNetClassifier
 from .data import get_dataloaders
 from .merge_strategies import (
+    MergeStrategy,
     AverageMergeStrategy,
     FitnessWeightedMergeStrategy,
     LayerWiseMergeStrategy,
@@ -128,12 +129,12 @@ def specialize(model_wrapper: ModelWrapper, dataset_name: "DatasetName", epochs:
 
 
 
-from .selection_strategies import HealingMateSelectionStrategy
-from .generation_strategies import ReplaceWorstStrategy
+from .selection_strategies import MateSelectionStrategy, HealingMateSelectionStrategy
+from .generation_strategies import GenerationStrategy, ReplaceWorstStrategy
 
 def select_mates(
     population: List[ModelWrapper],
-    strategy: str,
+    strategy: "MateSelectionStrategy",
     dataset_name: "DatasetName",
     subset_percentage: float = 1.0,
     seed: Optional[int] = None
@@ -141,49 +142,20 @@ def select_mates(
     """
     Selects a pair of parents from the population using a specified strategy.
     """
-    logger.info(f"Selecting mates using '{strategy}' strategy...")
-
-    strategy_map = {
-        'healing': HealingMateSelectionStrategy,
-    }
-
-    if strategy not in strategy_map:
-        raise ValueError(f"Unknown mate selection strategy: {strategy}")
-
-    selection_strategy = strategy_map[strategy]()
-    return selection_strategy.select_mates(
+    return strategy.select_mates(
         population,
         dataset_name=dataset_name,
         subset_percentage=subset_percentage,
         seed=seed
     )
 
-def merge(parent1: ModelWrapper, parent2: ModelWrapper, strategy: str = 'average', validation_loader: Optional[DataLoader] = None, seed: Optional[int] = None, dampening_factor: float = 25.0) -> ModelWrapper:
+def merge(parent1: ModelWrapper, parent2: ModelWrapper, strategy: "MergeStrategy", validation_loader: Optional[DataLoader] = None) -> ModelWrapper:
     """
     Merges two parent models into a new child model using a specified strategy.
     """
-    logger.info(f"Merging parent models to create child using '{strategy}' strategy...")
+    logger.info(f"Merging parent models to create child using '{strategy.__class__.__name__}' strategy...")
 
-    strategy_map: Dict[str, Any] = {
-        'average': AverageMergeStrategy,
-        'fitness_weighted': FitnessWeightedMergeStrategy,
-        'layer-wise': LayerWiseMergeStrategy,
-        'sequential_constructive': SequentialConstructiveMergeStrategy,
-    }
-
-    if strategy not in strategy_map:
-        raise ValueError(f"Unknown merge strategy: {strategy}")
-
-    # Prepare arguments for the strategy constructor
-    strategy_args = {}
-    if strategy == 'fitness_weighted':
-        strategy_args['dampening_factor'] = dampening_factor
-    elif strategy == 'layer-wise':
-        strategy_args['seed'] = seed
-
-    # Instantiate the strategy and merge
-    merge_strategy = strategy_map[strategy](**strategy_args)
-    child_model_state_dict = merge_strategy.merge(parent1, parent2, validation_loader)
+    child_model_state_dict = strategy.merge(parent1, parent2, validation_loader)
 
     # Create and return the new child model
     num_classes = parent1.model.num_classes
@@ -240,21 +212,13 @@ def create_next_generation(
     new_child: ModelWrapper,
     population_size: int,
     dataset_name: "DatasetName",
-    strategy: str = "replace_worst",
+    strategy: "GenerationStrategy",
     seed: Optional[int] = None
 ) -> List[ModelWrapper]:
     """
     Creates the next generation's population using a specified strategy.
     """
-    strategy_map = {
-        "replace_worst": ReplaceWorstStrategy,
-    }
-
-    if strategy not in strategy_map:
-        raise ValueError(f"Unknown generation strategy: {strategy}")
-
-    generation_strategy = strategy_map[strategy]()
-    return generation_strategy.create_next_generation(
+    return strategy.create_next_generation(
         current_population,
         new_child,
         population_size,
