@@ -73,7 +73,7 @@ class SequentialConstructiveMergeStrategy(MergeStrategy):
         except StopIteration:
             raise ValueError("Validation loader is empty. Cannot use 'sequential_constructive' strategy.")
 
-        best_fitness = temp_model_wrapper._calculate_accuracy(validation_loader)
+        best_fitness = temp_model_wrapper._calculate_accuracy(validation_loader, batch=validation_batch)
         logger.info(f"  - Initial child validation fitness (on one batch): {best_fitness:.2f}%")
 
         # Determine the correct layer prefixes based on the model architecture.
@@ -121,7 +121,7 @@ class SequentialConstructiveMergeStrategy(MergeStrategy):
                     current_state_dict[key].copy_(weaker_parent.model.state_dict()[key])
 
             # Evaluate the new configuration.
-            current_fitness = temp_model_wrapper._calculate_accuracy(validation_loader)
+            current_fitness = temp_model_wrapper._calculate_accuracy(validation_loader, batch=validation_batch)
 
             # Decide whether to keep or revert the change.
             if current_fitness > best_fitness:

@@ -90,15 +90,19 @@ class ModelWrapper:
         self.fitness_is_current = True
         return accuracy
 
-    def _calculate_accuracy(self, data_loader) -> float:
-        """A generic helper to calculate accuracy on a given data loader."""
+    def _calculate_accuracy(self, data_loader, batch=None) -> float:
+        """
+        A generic helper to calculate accuracy on a given data loader or a single
+        batch.
+        """
         self.model.eval()
         correct = 0
         total = 0
         with torch.no_grad():
-            for batch in data_loader:
+            data_source = [batch] if batch else data_loader
+            for b in data_source:
                 if self.model_name == 'LLM':
-                    input_ids = batch['input_ids'].to(self.device)
+                    input_ids = b['input_ids'].to(self.device)
                     attention_mask = batch['attention_mask'].to(self.device)
                     labels = batch['labels'].to(self.device)
                     outputs = self.model(input_ids=input_ids, attention_mask=attention_mask)
@@ -106,7 +110,7 @@ class ModelWrapper:
                     total += labels.size(0)
                     correct += (predicted == labels).sum().item()
                 else:
-                    data, target = batch
+                    data, target = b
                     data, target = data.to(self.device), target.to(self.device)
                     if next(self.model.parameters()).dtype == torch.float64:
                         data = data.double()

@@ -301,5 +301,20 @@ class TestEvolution(unittest.TestCase):
         self.assertNotEqual(selected_parent2, parent1, "Parent 2 should not be a deep copy of Parent 1.")
         self.assertEqual(selected_parent2, distinct_model, "The fallback did not select the correct distinct model.")
 
+    def test_sequential_constructive_merge_uses_single_batch_optimization(self):
+        parent1 = ModelWrapper(model_name='CIFAR10', niche_classes=[0], device=self.device)
+        parent1.fitness = 90.0
+        parent2 = ModelWrapper(model_name='CIFAR10', niche_classes=[1], device=self.device)
+        parent2.fitness = 80.0
+        dummy_batch = (torch.randn(1, 3, 32, 32), torch.randint(0, 10, (1,)))
+        dummy_loader = torch.utils.data.DataLoader([dummy_batch, "dummy_batch_2"], batch_size=1)
+        with patch('src.model_wrapper.ModelWrapper._calculate_accuracy', return_value=50.0) as mock_calculate_accuracy:
+            merge(parent1, parent2, strategy='sequential_constructive', validation_loader=dummy_loader)
+        self.assertGreater(mock_calculate_accuracy.call_count, 1, "Validation was not performed for sequential merge.")
+        for call in mock_calculate_accuracy.call_args_list:
+            _, kwargs = call
+            self.assertIn('batch', kwargs, "The 'batch' argument was not provided to _calculate_accuracy.")
+            self.assertIsNotNone(kwargs['batch'], "The provided 'batch' argument was None.")
+
 if __name__ == '__main__':
     unittest.main()

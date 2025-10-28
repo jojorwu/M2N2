@@ -1,0 +1,24 @@
+batch_size: 64
+dataset_name: CIFAR10
+default_epochs:
+  finetune: 0
+  specialize: 0
+fitness_weighted_merge_dampening_factor: 25.0
+generation_strategy: replace_worst
+initial_mutation_strength: 0.0
+mate_selection_strategy: healing
+merge_strategy: average
+model_config: CIFAR10
+mutation_decay_factor: 1.0
+mutation_rate: 0.0
+num_generations: 1
+optimizer_config:
+  learning_rate: 0.001
+population_size: 1
+precision_config: '32'
+scheduler_config:
+  factor: 0.5
+  patience: 2
+seed: 12345
+subset_percentage: 0.01
+validation_split: 0.1
