@@ -110,7 +110,23 @@ def show_settings_page():
 
     # The button now reads from the session state to send commands
     if st.button("Update Configuration"):
-        write_command_config(st.session_state.simulation_config)
+        # Construct a dictionary with only the dynamically updatable parameters
+        dynamic_config = {
+            'num_generations': config.get('num_generations'),
+            'population_size': config.get('population_size'),
+            'mutation_rate': config.get('mutation_rate'),
+            'merge_strategy': config.get('merge_strategy'),
+            'initial_mutation_strength': config.get('initial_mutation_strength'),
+            'mutation_decay_factor': config.get('mutation_decay_factor'),
+            'optimizer_config': {
+                'learning_rate': config.get('optimizer_config', {}).get('learning_rate')
+            },
+            'scheduler_config': {
+                'patience': config.get('scheduler_config', {}).get('patience'),
+                'factor': config.get('scheduler_config', {}).get('factor')
+            }
+        }
+        write_command_config(dynamic_config)
 
 def main():
     """
