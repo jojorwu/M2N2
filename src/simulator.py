@@ -60,31 +60,48 @@ class EvolutionSimulator:
         self._initialize_fitness_log()
 
     def _initialize_strategies(self) -> None:
-        """Initializes the strategy objects based on the configuration."""
-        # Mate selection strategy
-        if self.config_manager.mate_selection_strategy == 'healing':
-            self.mate_selection_strategy = HealingMateSelectionStrategy()
-        else:
-            raise ValueError(f"Unknown mate selection strategy: {self.config_manager.mate_selection_strategy}")
+        """Initializes the strategy objects based on the configuration using a factory pattern."""
 
-        # Generation strategy
-        if self.config_manager.generation_strategy == 'replace_worst':
-            self.generation_strategy = ReplaceWorstStrategy()
-        else:
-            raise ValueError(f"Unknown generation strategy: {self.config_manager.generation_strategy}")
+        # --- Mate Selection Strategy Factory ---
+        selection_strategy_map = {
+            'healing': HealingMateSelectionStrategy,
+        }
+        selection_strategy_name = self.config_manager.mate_selection_strategy
+        selection_strategy_class = selection_strategy_map.get(selection_strategy_name)
+        if not selection_strategy_class:
+            raise ValueError(f"Unknown mate selection strategy: {selection_strategy_name}")
+        self.mate_selection_strategy = selection_strategy_class()
 
-        # Merge strategy
+        # --- Generation Strategy Factory ---
+        generation_strategy_map = {
+            'replace_worst': ReplaceWorstStrategy,
+        }
+        generation_strategy_name = self.config_manager.generation_strategy
+        generation_strategy_class = generation_strategy_map.get(generation_strategy_name)
+        if not generation_strategy_class:
+            raise ValueError(f"Unknown generation strategy: {generation_strategy_name}")
+        self.generation_strategy = generation_strategy_class()
+
+        # --- Merge Strategy Factory ---
+        merge_strategy_map = {
+            'average': AverageMergeStrategy,
+            'fitness_weighted': FitnessWeightedMergeStrategy,
+            'layer-wise': LayerWiseMergeStrategy,
+            'sequential_constructive': SequentialConstructiveMergeStrategy,
+        }
         merge_strategy_name = self.config_manager.merge_strategy
-        if merge_strategy_name == 'average':
-            self.merge_strategy = AverageMergeStrategy()
-        elif merge_strategy_name == 'fitness_weighted':
-            self.merge_strategy = FitnessWeightedMergeStrategy(dampening_factor=self.config_manager.dampening_factor)
-        elif merge_strategy_name == 'layer-wise':
-            self.merge_strategy = LayerWiseMergeStrategy(seed=self.config_manager.seed)
-        elif merge_strategy_name == 'sequential_constructive':
-            self.merge_strategy = SequentialConstructiveMergeStrategy()
-        else:
+        merge_strategy_class = merge_strategy_map.get(merge_strategy_name)
+
+        if not merge_strategy_class:
             raise ValueError(f"Unknown merge strategy: {merge_strategy_name}")
+
+        # Handle strategies that require arguments
+        if merge_strategy_name == 'fitness_weighted':
+            self.merge_strategy = merge_strategy_class(dampening_factor=self.config_manager.dampening_factor)
+        elif merge_strategy_name == 'layer-wise':
+            self.merge_strategy = merge_strategy_class(seed=self.config_manager.seed)
+        else:
+            self.merge_strategy = merge_strategy_class()
 
     def _setup_environment(self) -> None:
         """Sets up the logger and device."""
