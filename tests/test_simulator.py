@@ -27,6 +27,7 @@ class TestSimulatorInitialization(unittest.TestCase):
             'num_generations': 1,
             'population_size': 1,
             'mate_selection_strategy': 'healing',
+            'generation_strategy': 'replace_worst',
             'merge_strategy': 'average',
             'fitness_weighted_merge_dampening_factor': 25.0,
             'optimizer_config': {'learning_rate': 0.001},

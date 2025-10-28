@@ -7,7 +7,6 @@ import copy
 import logging
 
 from .model_wrapper import ModelWrapper
-from .utils import _get_validation_fitness
 
 logger = logging.getLogger("M2N2_SIMULATOR")
 
@@ -74,7 +73,7 @@ class SequentialConstructiveMergeStrategy(MergeStrategy):
         except StopIteration:
             raise ValueError("Validation loader is empty. Cannot use 'sequential_constructive' strategy.")
 
-        best_fitness = _get_validation_fitness(temp_model_wrapper, validation_loader, batch=validation_batch)
+        best_fitness = temp_model_wrapper._calculate_accuracy(validation_loader)
         logger.info(f"  - Initial child validation fitness (on one batch): {best_fitness:.2f}%")
 
         # Determine the correct layer prefixes based on the model architecture.
@@ -122,7 +121,7 @@ class SequentialConstructiveMergeStrategy(MergeStrategy):
                     current_state_dict[key].copy_(weaker_parent.model.state_dict()[key])
 
             # Evaluate the new configuration.
-            current_fitness = _get_validation_fitness(temp_model_wrapper, validation_loader, batch=validation_batch)
+            current_fitness = temp_model_wrapper._calculate_accuracy(validation_loader)
 
             # Decide whether to keep or revert the change.
             if current_fitness > best_fitness:

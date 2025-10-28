@@ -9,7 +9,7 @@ import re
 import logging
 from .logger_config import setup_logger
 from .model_wrapper import ModelWrapper
-from .evolution import specialize, evaluate, select_mates, merge, mutate, finetune, create_next_generation
+from .evolution import specialize, select_mates, merge, mutate, finetune, create_next_generation
 from .data import get_dataloaders
 from .visualization import plot_fitness_history
 from .utils import set_seed
@@ -162,13 +162,11 @@ class EvolutionSimulator:
         """Handles the evaluation of the population."""
         logger.info("--- Evaluating Population on Test Set ---")
         for model_wrapper in self.population:
-            if not model_wrapper.fitness_is_current:
-                evaluate(
-                    model_wrapper,
-                    dataset_name=self.config_manager.dataset_name,
-                    subset_percentage=self.config_manager.subset_percentage,
-                    seed=self.config_manager.seed
-                )
+            model_wrapper.evaluate(
+                dataset_name=self.config_manager.dataset_name,
+                subset_percentage=self.config_manager.subset_percentage,
+                seed=self.config_manager.seed
+            )
 
         best_fitness = max([m.fitness for m in self.population])
         avg_fitness = sum([m.fitness for m in self.population]) / len(self.population)
@@ -254,6 +252,7 @@ class EvolutionSimulator:
                 child,
                 self.config_manager.population_size,
                 dataset_name=self.config_manager.dataset_name,
+                strategy=self.config_manager.generation_strategy,
                 seed=self.config_manager.seed
             )
         else:

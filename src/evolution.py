@@ -19,7 +19,6 @@ from .merge_strategies import (
     SequentialConstructiveMergeStrategy,
 )
 from .model_wrapper import ModelWrapper
-from .utils import _calculate_accuracy
 from typing import List, Optional, Tuple, Dict, Any
 from torch.utils.data import DataLoader
 from torch import nn
@@ -117,53 +116,6 @@ def specialize(model_wrapper: ModelWrapper, dataset_name: str, epochs: int = 1, 
     logger.info("Specialization complete.")
 
 
-def _get_fitness_score(model_wrapper: ModelWrapper, dataset_name: str, subset_percentage: float = 1.0, seed: Optional[int] = None) -> float:
-    """Calculates and returns the fitness score for a model on the test set.
-
-    This is a lightweight, side-effect-free version of the `evaluate`
-    function. It calculates the accuracy on the full test set but does *not*
-    update the `fitness` attribute of the model wrapper or print any
-    output. This makes it suitable for repeated internal use.
-
-    Args:
-        model_wrapper (ModelWrapper): The model wrapper to evaluate.
-        dataset_name (str): The name of the dataset to use for evaluation.
-        subset_percentage (float, optional): The fraction of the test set to use for evaluation. Defaults to 1.0.
-        seed (int, optional): A seed for the random number generator to
-            ensure deterministic data splitting. Defaults to None.
-
-    Returns:
-        float: The calculated accuracy (fitness) of the model as a percentage.
-    """
-    # We always evaluate on the full test set to measure general performance
-    _, _, test_loader, _ = get_dataloaders(dataset_name=dataset_name, model_name=model_wrapper.model_name, subset_percentage=subset_percentage, validation_split=0, seed=seed) # No validation split needed here
-    return _calculate_accuracy(model_wrapper, test_loader)
-
-def evaluate(model_wrapper: ModelWrapper, dataset_name: str, subset_percentage: float = 1.0, seed: Optional[int] = None) -> float:
-    """Evaluates fitness on the full test set and updates the wrapper.
-
-    This function skips evaluation if the model's fitness is already
-    marked as current. Otherwise, it calculates the accuracy on the test
-    set and updates the `fitness` and `fitness_is_current` attributes.
-
-    Args:
-        model_wrapper (ModelWrapper): The model wrapper to evaluate.
-        dataset_name (str): The name of the dataset to use for evaluation.
-        subset_percentage (float, optional): The fraction of the test set to use for evaluation. Defaults to 1.0.
-        seed (int, optional): A seed for the random number generator to
-            ensure deterministic data splitting. Defaults to None.
-
-    Returns:
-        float: The calculated accuracy (fitness) of the model as a percentage.
-    """
-    if model_wrapper.fitness_is_current:
-        logger.debug(f"  - Skipping evaluation for model with up-to-date fitness: {model_wrapper.fitness:.2f}%")
-        return model_wrapper.fitness
-
-    accuracy = _get_fitness_score(model_wrapper, dataset_name=dataset_name, subset_percentage=subset_percentage, seed=seed)
-    model_wrapper.fitness = accuracy
-    model_wrapper.fitness_is_current = True
-    return accuracy
 
 def evaluate_by_class(model_wrapper: ModelWrapper, dataset_name: str, subset_percentage: float = 1.0, seed: Optional[int] = None) -> List[float]:
     """Evaluates a model's accuracy on each individual class.
@@ -222,6 +174,7 @@ def evaluate_by_class(model_wrapper: ModelWrapper, dataset_name: str, subset_per
     return class_accuracies
 
 from .selection_strategies import HealingMateSelectionStrategy
+from .generation_strategies import ReplaceWorstStrategy
 
 def select_mates(
     population: List[ModelWrapper],
@@ -327,48 +280,32 @@ def mutate(model_wrapper: ModelWrapper, generation: int, mutation_rate: float = 
     logger.info("Mutation complete.")
     return model_wrapper
 
-def create_next_generation(current_population: List[ModelWrapper], new_child: ModelWrapper, population_size: int, dataset_name: str, seed: Optional[int] = None) -> List[ModelWrapper]:
-    """Creates the next generation's population using elitist selection.
-
-    This function implements the selection step of the algorithm. It combines
-    the existing population with the new child, evaluates the child's
-    fitness, and then selects the top individuals to form the next
-    generation's population. This function prints its progress to the console.
-
-    Args:
-        current_population (list[ModelWrapper]): The list of models in the
-            current generation.
-        new_child (ModelWrapper): The newly created child model to be
-            evaluated and included in the selection pool.
-        population_size (int): The maximum size of the population.
-        dataset_name (str): The name of the dataset to use for evaluation.
-        seed (int, optional): A seed for the random number generator to
-            ensure deterministic data splitting. Defaults to None.
-
-    Returns:
-        list[ModelWrapper]: A new list of models for the next generation,
-            sorted by fitness in descending order.
+def create_next_generation(
+    current_population: List[ModelWrapper],
+    new_child: ModelWrapper,
+    population_size: int,
+    dataset_name: str,
+    strategy: str = "replace_worst",
+    seed: Optional[int] = None
+) -> List[ModelWrapper]:
     """
-    logger.info("Creating the next generation...")
-    # Evaluate the new child to make sure its fitness is calculated
-    evaluate(new_child, dataset_name=dataset_name, seed=seed)
+    Creates the next generation's population using a specified strategy.
+    """
+    strategy_map = {
+        "replace_worst": ReplaceWorstStrategy,
+    }
 
-    # Combine the old population with the new child, avoiding duplicates
-    if new_child in current_population:
-        logger.info("  - New child is a duplicate of an existing model. Not adding to the pool.")
-        full_pool = current_population
-    else:
-        full_pool = current_population + [new_child]
+    if strategy not in strategy_map:
+        raise ValueError(f"Unknown generation strategy: {strategy}")
 
-    # Sort the entire pool by fitness in descending order
-    full_pool.sort(key=lambda x: x.fitness, reverse=True)
-
-    # The next generation consists of the top 'population_size' individuals
-    next_generation = full_pool[:population_size]
-
-    logger.info(f"Selected {len(next_generation)} fittest individuals for the next generation.")
-
-    return next_generation
+    generation_strategy = strategy_map[strategy]()
+    return generation_strategy.create_next_generation(
+        current_population,
+        new_child,
+        population_size,
+        dataset_name,
+        seed=seed
+    )
 
 def _calculate_loss(model_wrapper: ModelWrapper, data_loader: DataLoader) -> float:
     """A generic helper to calculate loss on a given data loader."""

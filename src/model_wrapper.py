@@ -1,12 +1,15 @@
 from __future__ import annotations
-from typing import List
+from typing import List, Optional
 import io
 import torch
+import logging
 from torch import nn
 
 from .model import CifarCNN, LLMClassifier, ResNetClassifier
 from .enums import ModelName
+from .data import get_dataloaders
 
+logger = logging.getLogger("M2N2_SIMULATOR")
 
 class ModelWrapper:
     """A wrapper to hold a model and its evolutionary metadata.
@@ -60,6 +63,58 @@ class ModelWrapper:
         self.fitness = 0.0
         # This flag prevents redundant evaluations.
         self.fitness_is_current = False
+
+    def evaluate(self, dataset_name: str, subset_percentage: float = 1.0, seed: Optional[int] = None) -> float:
+        """Evaluates fitness on the full test set and updates the wrapper.
+
+        This function skips evaluation if the model's fitness is already
+        marked as current. Otherwise, it calculates the accuracy on the test
+        set and updates the `fitness` and `fitness_is_current` attributes.
+
+        Args:
+            dataset_name (str): The name of the dataset to use for evaluation.
+            subset_percentage (float, optional): The fraction of the test set to use for evaluation. Defaults to 1.0.
+            seed (int, optional): A seed for the random number generator to
+                ensure deterministic data splitting. Defaults to None.
+
+        Returns:
+            float: The calculated accuracy (fitness) of the model as a percentage.
+        """
+        if self.fitness_is_current:
+            logger.debug(f"  - Skipping evaluation for model with up-to-date fitness: {self.fitness:.2f}%")
+            return self.fitness
+
+        _, _, test_loader, _ = get_dataloaders(dataset_name=dataset_name, model_name=self.model_name, subset_percentage=subset_percentage, validation_split=0, seed=seed) # No validation split needed here
+        accuracy = self._calculate_accuracy(test_loader)
+        self.fitness = accuracy
+        self.fitness_is_current = True
+        return accuracy
+
+    def _calculate_accuracy(self, data_loader) -> float:
+        """A generic helper to calculate accuracy on a given data loader."""
+        self.model.eval()
+        correct = 0
+        total = 0
+        with torch.no_grad():
+            for batch in data_loader:
+                if self.model_name == 'LLM':
+                    input_ids = batch['input_ids'].to(self.device)
+                    attention_mask = batch['attention_mask'].to(self.device)
+                    labels = batch['labels'].to(self.device)
+                    outputs = self.model(input_ids=input_ids, attention_mask=attention_mask)
+                    _, predicted = torch.max(outputs, 1)
+                    total += labels.size(0)
+                    correct += (predicted == labels).sum().item()
+                else:
+                    data, target = batch
+                    data, target = data.to(self.device), target.to(self.device)
+                    if next(self.model.parameters()).dtype == torch.float64:
+                        data = data.double()
+                    output = self.model(data)
+                    _, predicted = torch.max(output.data, 1)
+                    total += target.size(0)
+                    correct += (predicted == target).sum().item()
+        return 100 * correct / total if total > 0 else 0.0
 
     def __eq__(self, other: object) -> bool:
         """Checks for equality between two ModelWrapper instances.

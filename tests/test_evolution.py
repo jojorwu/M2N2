@@ -51,9 +51,9 @@ class TestEvolution(unittest.TestCase):
             f"Child weights are incorrect. Expected ~{expected_child_tensor_val:.4f}, but got {child_param.mean():.4f}."
         )
 
-    @patch('src.merge_strategies._get_validation_fitness')
+    @patch('src.model_wrapper.ModelWrapper._calculate_accuracy')
     @patch('src.model.models.resnet18')
-    def test_sequential_constructive_merge_skips_parameterless_resnet_layers(self, mock_resnet_constructor, mock_get_validation_fitness):
+    def test_sequential_constructive_merge_skips_parameterless_resnet_layers(self, mock_resnet_constructor, mock_calculate_accuracy):
         class MockResNetModule(torch.nn.Module):
             def __init__(self):
                 super().__init__()
@@ -68,14 +68,14 @@ class TestEvolution(unittest.TestCase):
         parent1.fitness = 80.0
         parent2 = ModelWrapper(model_name='RESNET', niche_classes=[1], device=self.device)
         parent2.fitness = 20.0
-        mock_get_validation_fitness.return_value = 50.0
+        mock_calculate_accuracy.return_value = 50.0
         dummy_loader = torch.utils.data.DataLoader([torch.randn(10)], batch_size=1)
         merge(parent1, parent2, strategy='sequential_constructive', validation_loader=dummy_loader)
         expected_calls = 4
         self.assertEqual(
-            mock_get_validation_fitness.call_count,
+            mock_calculate_accuracy.call_count,
             expected_calls,
-            f"The validation function was called {mock_get_validation_fitness.call_count} times, but {expected_calls} were expected."
+            f"The validation function was called {mock_calculate_accuracy.call_count} times, but {expected_calls} were expected."
         )
 
     def test_layer_wise_merge_is_deterministic_with_seed(self):
@@ -127,10 +127,10 @@ class TestEvolution(unittest.TestCase):
         self.assertTrue(len(unique_selected) > 1, "Mate selection appears biased.")
         self.assertEqual(unique_selected, expected_weakest_indices, "The selected weakest classes do not match the expected set.")
 
-    @patch('src.merge_strategies._get_validation_fitness')
-    def test_sequential_constructive_merge_handles_variable_num_classes(self, mock_get_validation_fitness):
+    @patch('src.model_wrapper.ModelWrapper._calculate_accuracy')
+    def test_sequential_constructive_merge_handles_variable_num_classes(self, mock_calculate_accuracy):
         num_classes = 5
-        mock_get_validation_fitness.return_value = 50.0
+        mock_calculate_accuracy.return_value = 50.0
         dummy_loader = torch.utils.data.DataLoader([torch.randn(10)], batch_size=1)
         parent1 = ModelWrapper(model_name='CIFAR10', niche_classes=[0], device=self.device, num_classes=num_classes)
         parent1.fitness = 80.0
@@ -154,15 +154,14 @@ class TestEvolution(unittest.TestCase):
         self.assertTrue(mock_scheduler_instance.step.called, "Scheduler's step() method was not called.")
         mock_scheduler_instance.step.assert_called_once_with(0.123)
 
-    @patch('src.evolution.get_dataloaders')
+    @patch('src.model_wrapper.get_dataloaders')
     def test_evaluate_uses_subset_percentage(self, mock_get_dataloaders):
         mock_get_dataloaders.return_value = (None, None, "dummy_test_loader", 10)
         model_wrapper = ModelWrapper(model_name='CIFAR10', niche_classes=[0], device=self.device)
         model_wrapper.fitness_is_current = False
         test_subset_percentage = 0.5
-        from src.evolution import evaluate
-        with patch('src.evolution._calculate_accuracy', return_value=50.0):
-             evaluate(model_wrapper, 'CIFAR10', subset_percentage=test_subset_percentage)
+        with patch('src.model_wrapper.ModelWrapper._calculate_accuracy', return_value=50.0):
+            model_wrapper.evaluate('CIFAR10', subset_percentage=test_subset_percentage)
         self.assertTrue(mock_get_dataloaders.called, "get_dataloaders was not called.")
         call_args, call_kwargs = mock_get_dataloaders.call_args
         self.assertEqual(call_kwargs.get('subset_percentage'), test_subset_percentage, f"get_dataloaders was called with subset_percentage={call_kwargs.get('subset_percentage')}, but {test_subset_percentage} was expected.")
@@ -241,7 +240,7 @@ class TestEvolution(unittest.TestCase):
                 param.fill_(0.0)
         dummy_loader = torch.utils.data.DataLoader([torch.randn(10)], batch_size=1)
         mock_fitness_sequence = [50.0, 55.0, 45.0, 60.0, 58.0, 65.0]
-        with patch('src.merge_strategies._get_validation_fitness', side_effect=mock_fitness_sequence):
+        with patch('src.model_wrapper.ModelWrapper._calculate_accuracy', side_effect=mock_fitness_sequence):
             child = merge(parent1, parent2, strategy='sequential_constructive', validation_loader=dummy_loader, seed=seed)
         if not os.path.exists(golden_file_path):
             torch.save(child.model.state_dict(), golden_file_path)

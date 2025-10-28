@@ -43,6 +43,7 @@ class ConfigManager:
 
         # --- Evolutionary settings ---
         self.mate_selection_strategy = self.config['mate_selection_strategy']
+        self.generation_strategy = self.config.get('generation_strategy', 'replace_worst')
         self.merge_strategy = self.config['merge_strategy']
         self.dampening_factor = self.config['fitness_weighted_merge_dampening_factor']
         self.mutation_rate = self.config['mutation_rate']
