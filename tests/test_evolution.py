@@ -1,5 +1,5 @@
 import unittest
-from unittest.mock import patch
+from unittest.mock import patch, MagicMock
 import torch
 import sys
 import os
@@ -315,6 +315,40 @@ class TestEvolution(unittest.TestCase):
             _, kwargs = call
             self.assertIn('batch', kwargs, "The 'batch' argument was not provided to _calculate_accuracy.")
             self.assertIsNotNone(kwargs['batch'], "The provided 'batch' argument was None.")
+
+    @patch('src.evolution.torch.cuda.amp.autocast')
+    @patch('torch.Tensor.to')
+    def test_autocast_is_correctly_enabled_for_mixed_precision(self, mock_tensor_to, mock_autocast):
+        from src.evolution import _run_training_epoch
+        # Mocking necessary components
+        model_wrapper_cuda = MagicMock()
+        model_wrapper_cuda.device = 'cuda'
+        model_wrapper_cuda.model.return_value = torch.randn(1, 10)
+
+        model_wrapper_cpu = MagicMock()
+        model_wrapper_cpu.device = 'cpu'
+        model_wrapper_cpu.model.return_value = torch.randn(1, 10)
+
+        mock_optimizer = MagicMock()
+        data_tensor = torch.randn(1, 3, 32, 32)
+        target_tensor = torch.randint(0, 10, (1,))
+        dummy_loader = [(data_tensor, target_tensor)]
+        mock_scaler = MagicMock()
+
+        # Define the side effect for the mock_tensor_to
+        mock_tensor_to.side_effect = [data_tensor, target_tensor] * 3
+
+        # Case 1: 16-bit precision on CUDA
+        _run_training_epoch(model_wrapper_cuda, mock_optimizer, dummy_loader, mock_scaler, '16', 'test')
+        mock_autocast.assert_called_with(enabled=True)
+
+        # Case 2: 32-bit precision on CUDA
+        _run_training_epoch(model_wrapper_cuda, mock_optimizer, dummy_loader, mock_scaler, '32', 'test')
+        mock_autocast.assert_called_with(enabled=False)
+
+        # Case 3: 16-bit precision on CPU
+        _run_training_epoch(model_wrapper_cpu, mock_optimizer, dummy_loader, mock_scaler, '16', 'test')
+        mock_autocast.assert_called_with(enabled=False)
 
 if __name__ == '__main__':
     unittest.main()

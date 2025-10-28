@@ -32,13 +32,14 @@ def _run_training_epoch(model_wrapper: ModelWrapper, optimizer: optim.Optimizer,
     """Runs a single training epoch for a given model and returns the average loss."""
     model_wrapper.model.train()
     total_train_loss = 0.0
+    use_amp = precision == '16' and 'cuda' in model_wrapper.device
 
     data_iterator = tqdm(train_loader, desc=description) if show_progress_bar else train_loader
 
     for batch in data_iterator:
         optimizer.zero_grad()
 
-        with torch.cuda.amp.autocast(enabled=(precision == '16' and 'cuda' in model_wrapper.device)):
+        with torch.cuda.amp.autocast(enabled=use_amp):
             if model_wrapper.model_name == 'LLM':
                 input_ids = batch['input_ids'].to(model_wrapper.device)
                 attention_mask = batch['attention_mask'].to(model_wrapper.device)
@@ -53,8 +54,7 @@ def _run_training_epoch(model_wrapper: ModelWrapper, optimizer: optim.Optimizer,
                     data = data.double()
                 output = model_wrapper.model(data)
                 loss = F.cross_entropy(output, target)
-
-        scaler.scale(loss).backward()
+            scaler.scale(loss).backward()
         scaler.step(optimizer)
         scaler.update()
         total_train_loss += loss.item()
