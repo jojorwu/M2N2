@@ -21,7 +21,7 @@ class MateSelectionStrategy(ABC):
     def select_mates(
         self,
         population: List[ModelWrapper],
-        dataset_name: str,
+        dataset_name: "DatasetName",
         subset_percentage: float = 1.0,
         seed: Optional[int] = None
     ) -> Tuple[Optional[ModelWrapper], Optional[ModelWrapper]]:
@@ -38,7 +38,7 @@ class HealingMateSelectionStrategy(MateSelectionStrategy):
     def select_mates(
         self,
         population: List[ModelWrapper],
-        dataset_name: str,
+        dataset_name: "DatasetName",
         subset_percentage: float = 1.0,
         seed: Optional[int] = None
     ) -> Tuple[Optional[ModelWrapper], Optional[ModelWrapper]]:

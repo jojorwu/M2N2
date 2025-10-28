@@ -9,7 +9,7 @@ from torchvision import datasets, transforms
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from src.data import get_dataloaders
-from src.enums import DatasetName
+from src.enums import DatasetName, ModelName
 
 class TestDataFiltering(unittest.TestCase):
     """Unit tests for data loading and filtering logic."""
@@ -45,6 +45,7 @@ class TestDataFiltering(unittest.TestCase):
         # select 50 samples.
         train_loader, _, _, _ = get_dataloaders(
             dataset_name=DatasetName.CIFAR10,
+            model_name=ModelName.CIFAR10,
             niche_classes=[3],       # The 'cat' class
             subset_percentage=0.001, # This will select 50 samples due to the mock
             validation_split=0,
@@ -72,6 +73,7 @@ class TestDataFiltering(unittest.TestCase):
         # Act
         train_loader1, _, _, _ = get_dataloaders(
             dataset_name=DatasetName.CIFAR10,
+            model_name=ModelName.CIFAR10,
             subset_percentage=subset_percentage,
             validation_split=0,
             seed=seed
@@ -85,6 +87,7 @@ class TestDataFiltering(unittest.TestCase):
 
         train_loader2, _, _, _ = get_dataloaders(
             dataset_name=DatasetName.CIFAR10,
+            model_name=ModelName.CIFAR10,
             subset_percentage=subset_percentage,
             validation_split=0,
             seed=seed

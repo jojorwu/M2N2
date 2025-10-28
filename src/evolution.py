@@ -100,7 +100,7 @@ def _run_training_session(
             scheduler.step(avg_val_loss)
             logger.info(f"  - Avg Train Loss: {avg_train_loss:.4f}, Avg Val Loss: {avg_val_loss:.4f}")
 
-def specialize(model_wrapper: ModelWrapper, dataset_name: str, epochs: int = 1, precision: str = '32', seed: Optional[int] = None, learning_rate: float = 0.001, subset_percentage: float = 0.1, show_progress_bar: bool = True) -> None:
+def specialize(model_wrapper: ModelWrapper, dataset_name: "DatasetName", epochs: int = 1, precision: str = '32', seed: Optional[int] = None, learning_rate: float = 0.001, subset_percentage: float = 0.1, show_progress_bar: bool = True) -> None:
     """Trains a model in-place on its specialized data niche."""
     logger.info(f"Specializing model on niche {model_wrapper.niche_classes} for {epochs} epoch(s) with {precision}-bit precision...")
 
@@ -134,7 +134,7 @@ from .generation_strategies import ReplaceWorstStrategy
 def select_mates(
     population: List[ModelWrapper],
     strategy: str,
-    dataset_name: str,
+    dataset_name: "DatasetName",
     subset_percentage: float = 1.0,
     seed: Optional[int] = None
 ) -> Tuple[Optional[ModelWrapper], Optional[ModelWrapper]]:
@@ -239,7 +239,7 @@ def create_next_generation(
     current_population: List[ModelWrapper],
     new_child: ModelWrapper,
     population_size: int,
-    dataset_name: str,
+    dataset_name: "DatasetName",
     strategy: str = "replace_worst",
     seed: Optional[int] = None
 ) -> List[ModelWrapper]:
@@ -290,7 +290,7 @@ def _calculate_loss(model_wrapper: ModelWrapper, data_loader: DataLoader) -> flo
     return total_loss / len(data_loader)
 
 
-def finetune(model_wrapper: ModelWrapper, dataset_name: str, validation_loader: DataLoader, epochs: int = 3, precision: str = '32', seed: Optional[int] = None, learning_rate: float = 0.001, scheduler_patience: int = 2, scheduler_factor: float = 0.5, subset_percentage: float = 0.1, show_progress_bar: bool = True) -> None:
+def finetune(model_wrapper: ModelWrapper, dataset_name: "DatasetName", validation_loader: DataLoader, epochs: int = 3, precision: str = '32', seed: Optional[int] = None, learning_rate: float = 0.001, scheduler_patience: int = 2, scheduler_factor: float = 0.5, subset_percentage: float = 0.1, show_progress_bar: bool = True) -> None:
     """Fine-tunes a model in-place on the full dataset with a scheduler."""
     logger.info(f"Fine-tuning model for {epochs} epoch(s) with {precision}-bit precision and ReduceLROnPlateau scheduler...")
 

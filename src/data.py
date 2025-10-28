@@ -84,7 +84,7 @@ def _load_full_datasets(dataset_name: DatasetName, model_name: ModelName):
         raise ValueError(f"Unsupported dataset: {dataset_name}. Please use 'CIFAR10', 'MNIST', or 'LLM'.")
     return full_train_dataset, full_test_dataset, num_classes
 
-def get_dataloaders(dataset_name: DatasetName = DatasetName.CIFAR10, model_name: Optional[ModelName] = None, batch_size: int = 64, niche_classes: Optional[List[int]] = None, subset_percentage: float = 1.0, validation_split: float = 0.1, seed: Optional[int] = None):
+def get_dataloaders(dataset_name: DatasetName, model_name: ModelName, batch_size: int = 64, niche_classes: Optional[List[int]] = None, subset_percentage: float = 1.0, validation_split: float = 0.1, seed: Optional[int] = None):
     """Creates and returns PyTorch DataLoaders for a specified dataset.
 
     This function prepares a dataset for training and testing. It can serve
@@ -93,12 +93,9 @@ def get_dataloaders(dataset_name: DatasetName = DatasetName.CIFAR10, model_name:
     a validation loader.
 
     Args:
-        dataset_name (str, optional): The name of the dataset to load.
-            Supported options are 'CIFAR10', 'MNIST', and 'LLM'.
-            Defaults to 'CIFAR10'.
-        model_name (str, optional): The name of the model architecture.
-            Used to apply model-specific transforms (e.g., resizing for
-            ResNet). Defaults to None.
+        dataset_name (DatasetName): The dataset to load.
+        model_name (ModelName): The name of the model architecture, used to
+            apply model-specific transforms.
         batch_size (int, optional): The number of samples per batch.
             Defaults to 64.
         niche_classes (list[int], optional): A list of class indices to

@@ -34,7 +34,7 @@ class ConfigManager:
     def _initialize_parameters(self) -> None:
         """Initializes all simulation parameters from the loaded config."""
         # --- General settings ---
-        self.model_config = ModelName(self.config['model_config'])
+        self.model_name = ModelName(self.config['model_name'])
         self.dataset_name = DatasetName(self.config['dataset_name'])
         self.precision_config = str(self.config['precision_config'])
         self.num_generations = self.config['num_generations']
@@ -66,9 +66,10 @@ class ConfigManager:
         self.show_progress_bar = self.config.get('show_progress_bar', True)
 
         # --- Training epochs ---
-        if self.model_config in self.config.get('model_specific_epochs', {}):
-            self.specialize_epochs = self.config['model_specific_epochs'][self.model_config]['specialize']
-            self.finetune_epochs = self.config['model_specific_epochs'][self.model_config]['finetune']
+        model_epochs = self.config.get('model_specific_epochs', {}).get(self.model_name.value)
+        if model_epochs:
+            self.specialize_epochs = model_epochs['specialize']
+            self.finetune_epochs = model_epochs['finetune']
         else:
             self.specialize_epochs = self.config['default_epochs']['specialize']
             self.finetune_epochs = self.config['default_epochs']['finetune']

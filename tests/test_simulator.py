@@ -21,7 +21,7 @@ class TestSimulatorInitialization(unittest.TestCase):
         self.config_path = os.path.join(self.test_dir, "temp_config.yaml")
         os.makedirs(self.test_dir, exist_ok=True)
         self.base_config = {
-            'model_config': 'CIFAR10',
+            'model_name': 'CIFAR10',
             'dataset_name': 'CIFAR10',
             'precision_config': '32',
             'num_generations': 1,
@@ -200,7 +200,7 @@ class TestSimulatorInitialization(unittest.TestCase):
         simulator = EvolutionSimulator(config_path=self.config_path)
         simulator.loaded_model_files = [loaded_model_to_delete]
         from src.model_wrapper import ModelWrapper
-        simulator.population = [ModelWrapper(model_name=simulator.config_manager.model_config, niche_classes=[0], device=simulator.device, num_classes=simulator.num_classes)]
+        simulator.population = [ModelWrapper(model_name=simulator.config_manager.model_name, niche_classes=[0], device=simulator.device, num_classes=simulator.num_classes)]
         simulator.population[0].fitness = 99.0
         simulator._save_final_population()
         self.assertFalse(os.path.exists(loaded_model_to_delete), "Loaded model was not deleted.")
@@ -218,7 +218,7 @@ class TestSimulatorInitialization(unittest.TestCase):
             yaml.dump(config, f)
         simulator = EvolutionSimulator(config_path=self.config_path)
         from src.model_wrapper import ModelWrapper
-        simulator.population = [ModelWrapper(model_name=simulator.config_manager.model_config, niche_classes=[0], device=simulator.device, num_classes=simulator.num_classes)]
+        simulator.population = [ModelWrapper(model_name=simulator.config_manager.model_name, niche_classes=[0], device=simulator.device, num_classes=simulator.num_classes)]
         simulator.population[0].fitness = 99.0
         simulator._save_final_population()
         self.assertTrue(os.path.exists(stale_model_path), "Stale model was deleted when flag was false.")

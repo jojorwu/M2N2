@@ -25,7 +25,7 @@ class TestResnetIntegration(unittest.TestCase):
 
         # Create a config file that uses the RESNET model with the CIFAR10 dataset
         self.config = {
-            'model_config': 'RESNET',
+            'model_name': 'RESNET',
             'dataset_name': 'CIFAR10',
             'precision_config': '32',
             'num_generations': 1,
@@ -106,7 +106,7 @@ class TestResnetIntegration(unittest.TestCase):
         # Modify the config to run for 2 generations and use a simple model
         self.config['num_generations'] = 2
         self.config['population_size'] = 2 # At least 2 for mate selection
-        self.config['model_config'] = 'CIFAR10'
+        self.config['model_name'] = 'CIFAR10'
         with open(self.config_path, 'w') as f:
             yaml.dump(self.config, f)
 

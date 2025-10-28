@@ -37,7 +37,7 @@ class EvolutionSimulator:
         self._setup_environment()
 
         logger.info("--- M2N2 Simplified Implementation ---")
-        logger.info(f"Loaded configuration for model: {self.config_manager.model_config}")
+        logger.info(f"Loaded configuration for model: {self.config_manager.model_name}")
         logger.info(f"Using device: {self.device}")
         logger.info(f"Experiment seed: {self.config_manager.seed}\n")
 
@@ -61,7 +61,7 @@ class EvolutionSimulator:
         logger.info("--- Creating DataLoaders ---")
         _, self.validation_loader, _, self.num_classes = get_dataloaders(
             dataset_name=self.config_manager.dataset_name,
-            model_name=self.config_manager.model_config,
+            model_name=self.config_manager.model_name,
             batch_size=self.config_manager.batch_size,
             subset_percentage=self.config_manager.subset_percentage,
             validation_split=self.config_manager.validation_split,
@@ -92,7 +92,7 @@ class EvolutionSimulator:
                 niche_classes = [int(n) for n in match.group(1).split('_')]
                 fitness = float(match.group(2))
                 wrapper = ModelWrapper(
-                    model_name=self.config_manager.model_config,
+                    model_name=self.config_manager.model_name,
                     niche_classes=niche_classes,
                     device=self.device,
                     num_classes=self.num_classes
@@ -110,7 +110,7 @@ class EvolutionSimulator:
         for i in range(self.config_manager.population_size):
             self.population.append(
                 ModelWrapper(
-                    model_name=self.config_manager.model_config,
+                    model_name=self.config_manager.model_name,
                     niche_classes=niches[i],
                     device=self.device,
                     num_classes=self.num_classes
