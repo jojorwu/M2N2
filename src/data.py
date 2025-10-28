@@ -154,9 +154,32 @@ def get_dataloaders(dataset_name: DatasetName = DatasetName.CIFAR10, model_name:
 
     train_subset, validation_subset = random_split(full_train_dataset, [train_size, val_size], generator=g)
 
-    train_loader = DataLoader(dataset=train_subset, batch_size=batch_size, shuffle=True, generator=g)
-    validation_loader = DataLoader(dataset=validation_subset, batch_size=batch_size, shuffle=False)
-    test_loader = DataLoader(dataset=full_test_dataset, batch_size=batch_size, shuffle=False)
+    # Performance optimizations for DataLoader
+    num_workers = 4 if torch.cuda.is_available() else 0
+    pin_memory = True if torch.cuda.is_available() else False
+
+    train_loader = DataLoader(
+        dataset=train_subset,
+        batch_size=batch_size,
+        shuffle=True,
+        generator=g,
+        num_workers=num_workers,
+        pin_memory=pin_memory
+    )
+    validation_loader = DataLoader(
+        dataset=validation_subset,
+        batch_size=batch_size,
+        shuffle=False,
+        num_workers=num_workers,
+        pin_memory=pin_memory
+    )
+    test_loader = DataLoader(
+        dataset=full_test_dataset,
+        batch_size=batch_size,
+        shuffle=False,
+        num_workers=num_workers,
+        pin_memory=pin_memory
+    )
 
     return train_loader, validation_loader, test_loader, num_classes
 
