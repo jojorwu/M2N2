@@ -63,25 +63,45 @@ def _run_training_epoch(model_wrapper: ModelWrapper, optimizer: optim.Optimizer,
 
     return total_train_loss / len(train_loader) if len(train_loader) > 0 else 0.0
 
+def _run_training_session(
+    model_wrapper: ModelWrapper,
+    train_loader: DataLoader,
+    epochs: int,
+    precision: str,
+    learning_rate: float,
+    description: str,
+    show_progress_bar: bool,
+    optimizer: Optional[optim.Optimizer] = None,
+    scheduler: Optional[optim.lr_scheduler.ReduceLROnPlateau] = None,
+    validation_loader: Optional[DataLoader] = None
+) -> None:
+    """A generalized helper to run a training session for a model."""
+    if optimizer is None:
+        optimizer = optim.Adam(model_wrapper.model.parameters(), lr=learning_rate)
+
+    if precision == '64':
+        model_wrapper.model.double()
+
+    scaler = torch.cuda.amp.GradScaler(enabled=(precision == '16' and 'cuda' in model_wrapper.device))
+
+    for epoch in range(epochs):
+        logger.info(f"  - Epoch {epoch + 1}/{epochs}")
+        avg_train_loss = _run_training_epoch(
+            model_wrapper,
+            optimizer,
+            train_loader,
+            scaler,
+            precision,
+            description,
+            show_progress_bar=show_progress_bar
+        )
+        if scheduler and validation_loader:
+            avg_val_loss = _calculate_loss(model_wrapper, validation_loader)
+            scheduler.step(avg_val_loss)
+            logger.info(f"  - Avg Train Loss: {avg_train_loss:.4f}, Avg Val Loss: {avg_val_loss:.4f}")
+
 def specialize(model_wrapper: ModelWrapper, dataset_name: str, epochs: int = 1, precision: str = '32', seed: Optional[int] = None, learning_rate: float = 0.001, subset_percentage: float = 0.1, show_progress_bar: bool = True) -> None:
-    """Trains a model in-place on its specialized data niche.
-
-    This simulates the "resource competition" phase where a model becomes an
-    expert in a specific area. It supports different training precisions.
-
-    Args:
-        model_wrapper (ModelWrapper): The model to be trained in-place.
-        dataset_name (str): The name of the dataset to use for training.
-        epochs (int, optional): The number of training epochs. Defaults to 1.
-        precision (str, optional): The training precision ('16', '32', '64').
-            Defaults to '32'.
-        seed (int, optional): A seed for the random number generator to
-            ensure deterministic data splitting. Defaults to None.
-        learning_rate (float, optional): The learning rate for the optimizer.
-            Defaults to 0.001.
-        subset_percentage (float, optional): The fraction of the training data
-            to use. Defaults to 0.1.
-    """
+    """Trains a model in-place on its specialized data niche."""
     logger.info(f"Specializing model on niche {model_wrapper.niche_classes} for {epochs} epoch(s) with {precision}-bit precision...")
 
     train_loader, _, _, _ = get_dataloaders(
@@ -91,27 +111,17 @@ def specialize(model_wrapper: ModelWrapper, dataset_name: str, epochs: int = 1, 
         subset_percentage=subset_percentage,
         seed=seed
     )
-    optimizer = optim.Adam(model_wrapper.model.parameters(), lr=learning_rate)
 
-    # Handle precision
-    if precision == '64':
-        model_wrapper.model.double()
+    _run_training_session(
+        model_wrapper=model_wrapper,
+        train_loader=train_loader,
+        epochs=epochs,
+        precision=precision,
+        learning_rate=learning_rate,
+        description=f"Specializing Niche {model_wrapper.niche_classes}",
+        show_progress_bar=show_progress_bar
+    )
 
-    scaler = torch.cuda.amp.GradScaler(enabled=(precision == '16' and 'cuda' in model_wrapper.device))
-
-    for epoch in range(epochs):
-        logger.info(f"  - Epoch {epoch + 1}/{epochs}")
-        _run_training_epoch(
-            model_wrapper,
-            optimizer,
-            train_loader,
-            scaler,
-            precision,
-            f"Specializing Niche {model_wrapper.niche_classes}",
-            show_progress_bar=show_progress_bar
-        )
-
-    # Mark fitness as not current, as the model has been modified.
     model_wrapper.fitness_is_current = False
     logger.info("Specialization complete.")
 
@@ -336,35 +346,9 @@ def _calculate_loss(model_wrapper: ModelWrapper, data_loader: DataLoader) -> flo
 
 
 def finetune(model_wrapper: ModelWrapper, dataset_name: str, validation_loader: DataLoader, epochs: int = 3, precision: str = '32', seed: Optional[int] = None, learning_rate: float = 0.001, scheduler_patience: int = 2, scheduler_factor: float = 0.5, subset_percentage: float = 0.1, show_progress_bar: bool = True) -> None:
-    """Fine-tunes a model in-place on the full dataset with a scheduler.
-
-    This step is crucial for a newly merged child model. It uses an Adam
-    optimizer and a `ReduceLROnPlateau` learning rate scheduler, and supports
-    different training precisions.
-
-    Args:
-        model_wrapper (ModelWrapper): The model to be fine-tuned in-place.
-        dataset_name (str): The name of the dataset to use for training.
-        validation_loader (DataLoader): A DataLoader for the validation set,
-            used to control the learning rate scheduler.
-        epochs (int, optional): The number of fine-tuning epochs.
-            Defaults to 3.
-        precision (str, optional): The training precision ('16', '32', '64').
-            Defaults to '32'.
-        seed (int, optional): A seed for the random number generator to
-            ensure deterministic data splitting. Defaults to None.
-        learning_rate (float, optional): The learning rate for the optimizer.
-            Defaults to 0.001.
-        scheduler_patience (int, optional): The patience for the learning rate
-            scheduler. Defaults to 2.
-        scheduler_factor (float, optional): The factor for the learning rate
-            scheduler. Defaults to 0.5.
-        subset_percentage (float, optional): The fraction of the training data
-            to use. Defaults to 0.1.
-    """
+    """Fine-tunes a model in-place on the full dataset with a scheduler."""
     logger.info(f"Fine-tuning model for {epochs} epoch(s) with {precision}-bit precision and ReduceLROnPlateau scheduler...")
 
-    # We get a train_loader with the full training data (no validation split here)
     train_loader, _, _, _ = get_dataloaders(
         dataset_name=dataset_name,
         model_name=model_wrapper.model_name,
@@ -372,32 +356,22 @@ def finetune(model_wrapper: ModelWrapper, dataset_name: str, validation_loader: 
         seed=seed,
         validation_split=0.0
     )
+
     optimizer = optim.Adam(model_wrapper.model.parameters(), lr=learning_rate)
     scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min', patience=scheduler_patience, factor=scheduler_factor)
 
-    if precision == '64':
-        model_wrapper.model.double()
+    _run_training_session(
+        model_wrapper=model_wrapper,
+        train_loader=train_loader,
+        epochs=epochs,
+        precision=precision,
+        learning_rate=learning_rate,
+        description="Fine-tuning Child",
+        show_progress_bar=show_progress_bar,
+        optimizer=optimizer,
+        scheduler=scheduler,
+        validation_loader=validation_loader
+    )
 
-    scaler = torch.cuda.amp.GradScaler(enabled=(precision == '16' and 'cuda' in model_wrapper.device))
-
-    for epoch in range(epochs):
-        logger.info(f"  - Epoch {epoch + 1}/{epochs}")
-        avg_train_loss = _run_training_epoch(
-            model_wrapper,
-            optimizer,
-            train_loader,
-            scaler,
-            precision,
-            "Fine-tuning Child",
-            show_progress_bar=show_progress_bar
-        )
-
-        # Calculate validation loss for the scheduler
-        avg_val_loss = _calculate_loss(model_wrapper, validation_loader)
-        scheduler.step(avg_val_loss)
-
-        logger.info(f"  - Avg Train Loss: {avg_train_loss:.4f}, Avg Val Loss: {avg_val_loss:.4f}")
-
-    # Mark fitness as not current, as the model has been modified.
     model_wrapper.fitness_is_current = False
     logger.info("Fine-tuning complete.")
