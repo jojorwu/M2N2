@@ -127,61 +127,6 @@ def specialize(model_wrapper: ModelWrapper, dataset_name: str, epochs: int = 1, 
 
 
 
-def evaluate_by_class(model_wrapper: ModelWrapper, dataset_name: str, subset_percentage: float = 1.0, seed: Optional[int] = None) -> List[float]:
-    """Evaluates a model's accuracy on each individual class.
-
-    This function is used to identify a model's strengths and weaknesses,
-    which is crucial for the advanced mate selection strategy. It does not
-    modify the model wrapper.
-
-    Args:
-        model_wrapper (ModelWrapper): The model wrapper to evaluate.
-        dataset_name (str): The name of the dataset to use for evaluation.
-        subset_percentage (float, optional): The fraction of the test set to use for evaluation. Defaults to 1.0.
-        seed (int, optional): A seed for the random number generator to
-            ensure deterministic data splitting. Defaults to None.
-
-    Returns:
-        list[float]: A list of accuracy percentages, where the index of the
-            list corresponds to the class index.
-    """
-    # We always evaluate on the full test set to measure general performance
-    _, _, test_loader, _ = get_dataloaders(dataset_name=dataset_name, model_name=model_wrapper.model_name, subset_percentage=subset_percentage, validation_split=0, seed=seed) # No validation split needed here
-    model_wrapper.model.eval()
-
-    num_classes = model_wrapper.model.num_classes
-    class_correct = list(0. for i in range(num_classes))
-    class_total = list(0. for i in range(num_classes))
-
-    with torch.no_grad():
-        for batch in test_loader:
-            if model_wrapper.model_name == 'LLM':
-                input_ids = batch['input_ids'].to(model_wrapper.device)
-                attention_mask = batch['attention_mask'].to(model_wrapper.device)
-                target = batch['labels'].to(model_wrapper.device)
-                output = model_wrapper.model(input_ids=input_ids, attention_mask=attention_mask)
-            else:
-                data, target = batch
-                data, target = data.to(model_wrapper.device), target.to(model_wrapper.device)
-                output = model_wrapper.model(data)
-
-            _, predicted = torch.max(output, 1)
-            c = (predicted == target).squeeze()
-
-            for i in range(len(target)):
-                label = target[i]
-                class_correct[label] += c[i].item()
-                class_total[label] += 1
-
-    class_accuracies = []
-    for i in range(num_classes):
-        if class_total[i] > 0:
-            accuracy = 100 * class_correct[i] / class_total[i]
-            class_accuracies.append(accuracy)
-        else:
-            class_accuracies.append(0)
-
-    return class_accuracies
 
 from .selection_strategies import HealingMateSelectionStrategy
 from .generation_strategies import ReplaceWorstStrategy

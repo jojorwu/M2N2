@@ -12,7 +12,6 @@ import random
 import logging
 
 from .model_wrapper import ModelWrapper
-from .evolution import evaluate_by_class
 
 logger = logging.getLogger("M2N2_SIMULATOR")
 
@@ -51,20 +50,23 @@ class HealingMateSelectionStrategy(MateSelectionStrategy):
         logger.info(f"  - Parent 1 is the population's best model (Fitness: {parent1.fitness:.2f}%)")
 
         logger.info("  - Analyzing Parent 1's performance by class...")
-        class_accuracies = evaluate_by_class(parent1, dataset_name=dataset_name, subset_percentage=subset_percentage, seed=seed)
+        class_accuracies = parent1.evaluate_by_class(dataset_name=dataset_name, subset_percentage=subset_percentage, seed=seed)
         min_accuracy = min(class_accuracies)
         weakest_indices = [i for i, acc in enumerate(class_accuracies) if acc == min_accuracy]
-        weakest_class_index = random.choice(weakest_indices)
-        logger.info(f"  - Parent 1's weakest class is {weakest_class_index} (Accuracy: {class_accuracies[weakest_class_index]:.2f}%)")
+        logger.info(f"  - Parent 1's weakest classes are {weakest_indices} (Accuracy: {min_accuracy:.2f}%)")
 
         parent2 = None
-        specialist_candidates = [
-            m for m in population if m.niche_classes == [weakest_class_index] and m is not parent1
-        ]
+        # Shuffle the weakest indices to randomize the search order.
+        random.shuffle(weakest_indices)
 
-        if specialist_candidates:
-            parent2 = max(specialist_candidates, key=lambda m: m.fitness)
-            logger.info(f"  - Found specialist for class {weakest_class_index} as Parent 2 (Fitness: {parent2.fitness:.2f}%)")
+        for class_index in weakest_indices:
+            specialist_candidates = [
+                m for m in population if m.niche_classes == [class_index] and m is not parent1
+            ]
+            if specialist_candidates:
+                parent2 = max(specialist_candidates, key=lambda m: m.fitness)
+                logger.info(f"  - Found specialist for class {class_index} as Parent 2 (Fitness: {parent2.fitness:.2f}%)")
+                break # Found the best available specialist, so we can stop.
         else:
             logger.info("  - No suitable specialist found. Using second-best model as fallback Parent 2.")
             sorted_population = sorted(population, key=lambda m: m.fitness, reverse=True)

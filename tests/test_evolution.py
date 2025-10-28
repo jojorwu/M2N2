@@ -11,6 +11,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')
 from src.evolution import ModelWrapper, merge, select_mates
 from src.model import CifarCNN
 from src.selection_strategies import HealingMateSelectionStrategy
+import src.selection_strategies
 
 def are_state_dicts_equal(dict1, dict2):
     """A helper function to compare two model state dictionaries."""
@@ -104,7 +105,7 @@ class TestEvolution(unittest.TestCase):
                 break
         self.assertTrue(is_different, "Model created with a different seed was not different.")
 
-    @patch('src.selection_strategies.evaluate_by_class')
+    @patch('src.model_wrapper.ModelWrapper.evaluate_by_class')
     def test_healing_selection_handles_multiple_weakest_classes(self, mock_evaluate_by_class):
         accuracies = [90, 80, 70, 50, 60, 85, 50, 95, 88, 75]
         mock_evaluate_by_class.return_value = accuracies
@@ -193,7 +194,7 @@ class TestEvolution(unittest.TestCase):
         model_set.add(wrapper3)
         self.assertEqual(len(model_set), 2, "A set should be able to contain different ModelWrappers.")
 
-    @patch('src.selection_strategies.evaluate_by_class')
+    @patch('src.model_wrapper.ModelWrapper.evaluate_by_class')
     def test_healing_selection_fallback_chooses_next_best_distinct_instance(self, mock_evaluate_by_class):
         mock_evaluate_by_class.return_value = [90, 80, 70, 60, 50, 10, 85, 95, 88, 75]
         parent1 = ModelWrapper(model_name='CIFAR10', niche_classes=[0], device=self.device)
@@ -269,7 +270,7 @@ class TestEvolution(unittest.TestCase):
         specialize(model_wrapper, dataset_name='CIFAR10', epochs=1, show_progress_bar=False)
         mock_tqdm.assert_not_called()
 
-    @patch('src.selection_strategies.evaluate_by_class')
+    @patch('src.model_wrapper.ModelWrapper.evaluate_by_class')
     def test_healing_selection_fallback_skips_identical_clone(self, mock_evaluate_by_class):
         mock_evaluate_by_class.return_value = [90, 80, 70, 60, 50, 10, 85, 95, 88, 75]
         parent1 = ModelWrapper(model_name='CIFAR10', niche_classes=[0], device=self.device)
@@ -284,7 +285,7 @@ class TestEvolution(unittest.TestCase):
         self.assertNotEqual(selected_parent1, selected_parent2, "Selected parents should be genetically different.")
         self.assertEqual(selected_parent2, expected_parent2, "The fallback did not select the next-best genetically distinct model.")
 
-    @patch('src.selection_strategies.evaluate_by_class')
+    @patch('src.model_wrapper.ModelWrapper.evaluate_by_class')
     def test_healing_selection_fallback_handles_fitness_ties(self, mock_evaluate_by_class):
         mock_evaluate_by_class.return_value = [10] * 10
         parent1 = ModelWrapper(model_name='CIFAR10', niche_classes=[0], device=self.device)

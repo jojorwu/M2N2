@@ -139,6 +139,61 @@ class ModelWrapper:
 
         return 100 * correct / total if total > 0 else 0.0
 
+    def evaluate_by_class(self, dataset_name: str, subset_percentage: float = 1.0, seed: Optional[int] = None) -> List[float]:
+        """Evaluates a model's accuracy on each individual class.
+
+        This function is used to identify a model's strengths and weaknesses,
+        which is crucial for the advanced mate selection strategy. It does not
+        modify the model wrapper.
+
+        Args:
+            dataset_name (str): The name of the dataset to use for evaluation.
+            subset_percentage (float, optional): The fraction of the test set to use for evaluation. Defaults to 1.0.
+            seed (int, optional): A seed for the random number generator to
+                ensure deterministic data splitting. Defaults to None.
+
+        Returns:
+            list[float]: A list of accuracy percentages, where the index of the
+                list corresponds to the class index.
+        """
+        # We always evaluate on the full test set to measure general performance
+        _, _, test_loader, _ = get_dataloaders(dataset_name=dataset_name, model_name=self.model_name, subset_percentage=subset_percentage, validation_split=0, seed=seed) # No validation split needed here
+        self.model.eval()
+
+        num_classes = self.model.num_classes
+        class_correct = list(0. for i in range(num_classes))
+        class_total = list(0. for i in range(num_classes))
+
+        with torch.no_grad():
+            for batch in test_loader:
+                if self.model_name == 'LLM':
+                    input_ids = batch['input_ids'].to(self.device)
+                    attention_mask = batch['attention_mask'].to(self.device)
+                    target = batch['labels'].to(self.device)
+                    output = self.model(input_ids=input_ids, attention_mask=attention_mask)
+                else:
+                    data, target = batch
+                    data, target = data.to(self.device), target.to(self.device)
+                    output = self.model(data)
+
+                _, predicted = torch.max(output, 1)
+                c = (predicted == target).squeeze()
+
+                for i in range(len(target)):
+                    label = target[i]
+                    class_correct[label] += c[i].item()
+                    class_total[label] += 1
+
+        class_accuracies = []
+        for i in range(num_classes):
+            if class_total[i] > 0:
+                accuracy = 100 * class_correct[i] / class_total[i]
+                class_accuracies.append(accuracy)
+            else:
+                class_accuracies.append(0)
+
+        return class_accuracies
+
     def __eq__(self, other: object) -> bool:
         """Checks for equality between two ModelWrapper instances.
 
