@@ -1,21 +1,33 @@
 import streamlit as st
 import pandas as pd
 import os
+import sys
 import time
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 import json
 import yaml
+from constants import COMMAND_FILE, FITNESS_LOG_FILE
 
-def write_command_config(config_data):
-    """Writes the given configuration data to command_config.json."""
-    with open('command_config.json', 'w') as f:
-        json.dump(config_data, f, indent=4)
+def _update_command_file(updates: dict):
+    """Helper to read, update, and write the command config file."""
+    config = {}
+    if os.path.exists(COMMAND_FILE):
+        with open(COMMAND_FILE, 'r') as f:
+            try:
+                config = json.load(f)
+            except json.JSONDecodeError:
+                st.warning("Could not parse command file, creating a new one.")
+
+    config.update(updates)
+
+    with open(COMMAND_FILE, 'w') as f:
+        json.dump(config, f, indent=4)
     st.toast("Commands sent to simulator!")
+
 
 def show_monitoring_page():
     # --- Main Content Area for Displaying Simulation State ---
-    log_file = 'fitness_log.csv'
-
-    if not os.path.exists(log_file):
+    if not os.path.exists(FITNESS_LOG_FILE):
         st.warning(
             "The 'fitness_log.csv' file was not found. "
             "Please start the simulation by running `python3 -m src.main` in your terminal. "
@@ -27,7 +39,7 @@ def show_monitoring_page():
 
     # Read and Display Data
     try:
-        df = pd.read_csv(log_file)
+        df = pd.read_csv(FITNESS_LOG_FILE)
 
         if not df.empty:
             st.header("Fitness History")
@@ -126,7 +138,7 @@ def show_settings_page():
                 'factor': config.get('scheduler_config', {}).get('factor')
             }
         }
-        write_command_config(dynamic_config)
+        _update_command_file(dynamic_config)
 
 def main():
     """
@@ -146,10 +158,10 @@ def main():
         st.header("Live Simulation Controls")
 
         if st.button("Stop Simulation Gracefully"):
-            write_command_config({"stop_simulation": True})
+            _update_command_file({"stop_simulation": True})
 
         if st.button("Restart Simulation"):
-            write_command_config({"restart_simulation": True})
+            _update_command_file({"restart_simulation": True, "stop_simulation": False})
 
     # --- Page Content ---
     if page == "Monitoring":

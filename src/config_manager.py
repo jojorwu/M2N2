@@ -13,6 +13,7 @@ import logging
 import numpy as np
 from typing import Dict, Any
 from .enums import ModelName, DatasetName
+from .constants import COMMAND_FILE
 
 logger = logging.getLogger("M2N2_SIMULATOR")
 
@@ -85,12 +86,11 @@ class ConfigManager:
         """
         Checks for and applies dynamic configuration from command_config.json.
         """
-        config_path = 'command_config.json'
-        if not os.path.exists(config_path):
+        if not os.path.exists(COMMAND_FILE):
             return {}
 
         try:
-            with open(config_path, 'r') as f:
+            with open(COMMAND_FILE, 'r') as f:
                 command_config = json.load(f)
 
             updates = {

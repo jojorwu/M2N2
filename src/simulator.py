@@ -14,6 +14,7 @@ from .data import get_dataloaders
 from .visualization import plot_fitness_history
 from .utils import set_seed
 from .config_manager import ConfigManager
+from .constants import COMMAND_FILE, FITNESS_LOG_FILE
 from typing import List, Tuple, Type, Dict, Any
 from torch.utils.data import DataLoader
 from .merge_strategies import (
@@ -201,12 +202,12 @@ class EvolutionSimulator:
 
     def _initialize_fitness_log(self) -> None:
         """Creates the fitness log file and writes the header."""
-        with open("fitness_log.csv", "w") as f:
+        with open(FITNESS_LOG_FILE, "w") as f:
             f.write("generation,best_fitness,average_fitness\n")
 
     def _log_fitness_to_csv(self, generation: int, best_fitness: float, avg_fitness: float) -> None:
         """Appends the current generation's fitness data to the CSV log."""
-        with open("fitness_log.csv", "a") as f:
+        with open(FITNESS_LOG_FILE, "a") as f:
             f.write(f"{generation},{best_fitness:.2f},{avg_fitness:.2f}\n")
 
     def _run_evaluation_phase(self) -> None:
@@ -229,9 +230,9 @@ class EvolutionSimulator:
     def _clear_simulation_artifacts(self) -> None:
         """Clears logs and saved models from previous runs."""
         logger.info("--- Clearing simulation artifacts ---")
-        if os.path.exists("fitness_log.csv"):
-            os.remove("fitness_log.csv")
-            logger.info("Removed fitness_log.csv")
+        if os.path.exists(FITNESS_LOG_FILE):
+            os.remove(FITNESS_LOG_FILE)
+            logger.info(f"Removed {FITNESS_LOG_FILE}")
 
         model_dir = "src/pretrained_models"
         if os.path.exists(model_dir):
@@ -244,9 +245,9 @@ class EvolutionSimulator:
                     cleared_count += 1
                 logger.info(f"Cleared {cleared_count} models from {model_dir}")
 
-        if os.path.exists("command_config.json"):
-            os.remove("command_config.json")
-            logger.info("Removed command_config.json")
+        if os.path.exists(COMMAND_FILE):
+            os.remove(COMMAND_FILE)
+            logger.info(f"Removed {COMMAND_FILE}")
 
     def _restart(self) -> None:
         """Resets the simulation to its initial state for a fresh run."""
