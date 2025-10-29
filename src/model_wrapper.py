@@ -1,11 +1,14 @@
 from __future__ import annotations
-from typing import List, Optional
+from typing import List, Optional, Any, Tuple
 import io
 import torch
 import logging
 from torch import nn
 
 from .model import CifarCNN, LLMClassifier, ResNetClassifier
+import os
+import re
+from .model_factory import create_model
 from .enums import ModelName
 from .data import get_dataloaders
 
@@ -52,6 +55,48 @@ class ModelWrapper:
         self.fitness = 0.0
         # This flag prevents redundant evaluations.
         self.fitness_is_current = False
+
+    @staticmethod
+    def from_file(filepath: str, model_name: ModelName, num_classes: int, device: str = 'cpu') -> Optional[ModelWrapper]:
+        """
+        Creates a ModelWrapper instance by loading a model from a file.
+
+        This factory method encapsulates the logic for parsing the model's
+        metadata (niche, fitness) from the filename, creating the model
+        architecture, and loading the saved state dictionary.
+
+        Args:
+            filepath (str): The path to the saved model file (.pth).
+            model_name (ModelName): The name of the model architecture.
+            num_classes (int): The number of output classes for the model.
+            device (str, optional): The device to load the model onto.
+                Defaults to 'cpu'.
+
+        Returns:
+            ModelWrapper | None: An initialized ModelWrapper instance if the
+            filename is parsed successfully, otherwise None.
+        """
+        match = re.search(r'model_niche_([\d_]+)_fitness_([\d\.]+)\.pth', os.path.basename(filepath))
+        if match:
+            niche_classes = [int(n) for n in match.group(1).split('_')]
+            fitness = float(match.group(2))
+            model = create_model(
+                model_name=model_name,
+                num_classes=num_classes,
+                device=device
+            )
+            model.load_state_dict(torch.load(filepath, map_location=device))
+
+            wrapper = ModelWrapper(
+                model_name=model_name,
+                model=model,
+                niche_classes=niche_classes,
+                device=device
+            )
+            wrapper.fitness = fitness
+            wrapper.fitness_is_current = False  # Fitness from filename might be stale
+            return wrapper
+        return None
 
     def evaluate(self, dataset_name: str, subset_percentage: float = 1.0, seed: Optional[int] = None) -> float:
         """Evaluates fitness on the full test set and updates the wrapper.
