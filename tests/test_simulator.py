@@ -229,5 +229,31 @@ class TestSimulatorInitialization(unittest.TestCase):
         new_model_files = [f for f in os.listdir(model_dir) if f.startswith('model_niche_')]
         self.assertGreater(len(new_model_files), 1, "New model was not saved alongside the old one.")
 
+    @patch('src.simulator.specialize')
+    @patch('src.simulator.glob.glob')
+    def test_specialization_runs_on_generation_zero_for_loaded_population(self, mock_glob, mock_specialize):
+        """
+        Tests that when a population is loaded, the specialization phase is
+        correctly run for the first generation (generation 0).
+        """
+        model_dir = "src/pretrained_models"
+        os.makedirs(model_dir, exist_ok=True)
+        dummy_model_path = os.path.join(model_dir, "model_niche_0_fitness_10.0.pth")
+        torch.save(CifarCNN().state_dict(), dummy_model_path)
+        mock_glob.return_value = [dummy_model_path]
+
+        with open(self.config_path, 'w') as f:
+            yaml.dump(self.base_config, f)
+
+        simulator = EvolutionSimulator(config_path=self.config_path)
+        # Ensure a model was actually loaded
+        self.assertGreater(len(simulator.population), 0, "Population should have been loaded.")
+
+        # Manually run the first generation
+        simulator.run_one_generation()
+
+        # The bug is that this is NOT called for generation 0. This assertion will fail.
+        mock_specialize.assert_called_once()
+
 if __name__ == '__main__':
     unittest.main()

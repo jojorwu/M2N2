@@ -197,20 +197,19 @@ class EvolutionSimulator:
 
     def _run_specialization_phase(self, generation: int) -> None:
         """Handles the specialization of models in the population."""
-        if generation > 0:
-            logger.info("--- Specializing Models ---")
-            for model_wrapper in self.population:
-                if model_wrapper.niche_classes != list(range(self.num_classes)):
-                    specialize(
-                        model_wrapper,
-                        dataset_name=self.config_manager.dataset_name,
-                        epochs=self.config_manager.specialize_epochs,
-                        precision=self.config_manager.precision_config,
-                        seed=self.config_manager.seed,
-                        learning_rate=self.config_manager.learning_rate,
-                        subset_percentage=self.config_manager.subset_percentage
-                    )
-            logger.info("")
+        logger.info("--- Specializing Models ---")
+        for model_wrapper in self.population:
+            if model_wrapper.niche_classes != list(range(self.num_classes)):
+                specialize(
+                    model_wrapper,
+                    dataset_name=self.config_manager.dataset_name,
+                    epochs=self.config_manager.specialize_epochs,
+                    precision=self.config_manager.precision_config,
+                    seed=self.config_manager.seed,
+                    learning_rate=self.config_manager.learning_rate,
+                    subset_percentage=self.config_manager.subset_percentage
+                )
+        logger.info("")
 
     def _initialize_fitness_log(self) -> None:
         """Creates the fitness log file and writes the header."""
