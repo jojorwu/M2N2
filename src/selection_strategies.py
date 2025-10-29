@@ -51,22 +51,22 @@ class HealingMateSelectionStrategy(MateSelectionStrategy):
 
         logger.info("  - Analyzing Parent 1's performance by class...")
         class_accuracies = parent1.evaluate_by_class(dataset_name=dataset_name, subset_percentage=subset_percentage, seed=seed)
-        min_accuracy = min(class_accuracies)
-        weakest_indices = [i for i, acc in enumerate(class_accuracies) if acc == min_accuracy]
-        logger.info(f"  - Parent 1's weakest classes are {weakest_indices} (Accuracy: {min_accuracy:.2f}%)")
+        # Get the top 3 weakest classes to search for a specialist mate
+        sorted_class_indices = sorted(range(len(class_accuracies)), key=lambda k: class_accuracies[k])
+        top_n_weakest_indices = sorted_class_indices[:3]
+        logger.info(f"  - Parent 1's top 3 weakest classes are {top_n_weakest_indices} with accuracies {[f'{class_accuracies[i]:.2f}%' for i in top_n_weakest_indices]}")
 
         parent2 = None
-        # Shuffle the weakest indices to randomize the search order.
-        random.shuffle(weakest_indices)
-
-        for class_index in weakest_indices:
+        for class_index in top_n_weakest_indices:
+            logger.info(f"  - Searching for a specialist in Parent 1's weak class: {class_index}")
             specialist_candidates = [
                 m for m in population if m.niche_classes == [class_index] and m != parent1
             ]
+
             if specialist_candidates:
                 parent2 = max(specialist_candidates, key=lambda m: m.fitness)
-                logger.info(f"  - Found specialist for class {class_index} as Parent 2 (Fitness: {parent2.fitness:.2f}%)")
-                break # Found the best available specialist, so we can stop.
+                logger.info(f"  - Found best specialist for class {class_index} as Parent 2 (Fitness: {parent2.fitness:.2f}%)")
+                break  # Found a suitable specialist, no need to search further.
         else:
             logger.info("  - No suitable specialist found. Using second-best model as fallback Parent 2.")
             sorted_population = sorted(population, key=lambda m: m.fitness, reverse=True)

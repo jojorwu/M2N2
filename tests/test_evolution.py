@@ -112,29 +112,6 @@ class TestEvolution(unittest.TestCase):
                 break
         self.assertTrue(is_different, "Model created with a different seed was not different.")
 
-    @patch('src.model_wrapper.ModelWrapper.evaluate_by_class')
-    def test_healing_selection_handles_multiple_weakest_classes(self, mock_evaluate_by_class):
-        accuracies = [90, 80, 70, 50, 60, 85, 50, 95, 88, 75]
-        mock_evaluate_by_class.return_value = accuracies
-        expected_weakest_indices = {3, 6}
-        population = []
-        parent1 = ModelWrapper(model_name='CIFAR10', niche_classes=[], device=self.device)
-        parent1.fitness = 90.0
-        population.append(parent1)
-        for i in range(10):
-            specialist = ModelWrapper(model_name='CIFAR10', niche_classes=[i], device=self.device)
-            specialist.fitness = 20.0
-            population.append(specialist)
-        random.seed(42)
-        selected_weakest_classes = []
-        strategy = HealingMateSelectionStrategy()
-        for _ in range(30):
-            _, parent2 = strategy.select_mates(population, dataset_name='CIFAR10')
-            selected_weakest_classes.append(parent2.niche_classes[0])
-        unique_selected = set(selected_weakest_classes)
-        self.assertTrue(len(unique_selected) > 1, "Mate selection appears biased.")
-        self.assertEqual(unique_selected, expected_weakest_indices, "The selected weakest classes do not match the expected set.")
-
     @patch('src.model_wrapper.ModelWrapper._calculate_accuracy')
     def test_sequential_constructive_merge_handles_variable_num_classes(self, mock_calculate_accuracy):
         num_classes = 5
