@@ -4,10 +4,6 @@ import io
 import torch
 import logging
 from torch import nn
-import os
-import re
-from .model_factory import create_model
-
 
 from .model import CifarCNN, LLMClassifier, ResNetClassifier
 from .enums import ModelName
@@ -84,12 +80,7 @@ class ModelWrapper:
         return accuracy
 
     def _process_batch(self, batch: Any) -> Tuple[torch.Tensor, torch.Tensor]:
-        """
-        Helper to process a batch and return model outputs and targets.
-
-        Returns:
-            A tuple containing the raw model outputs and the target tensor.
-        """
+        """Helper to process a batch and return predictions and targets."""
         if self.model_name == 'LLM':
             input_ids = batch['input_ids'].to(self.device)
             attention_mask = batch['attention_mask'].to(self.device)
@@ -102,7 +93,8 @@ class ModelWrapper:
                 data = data.double()
             output = self.model(data)
 
-        return output, target
+        _, predicted = torch.max(output.data, 1)
+        return predicted, target
 
     def _calculate_accuracy(self, data_loader: Optional[DataLoader] = None, batch: Optional[Any] = None) -> float:
         """A generic helper to calculate accuracy.
@@ -128,8 +120,7 @@ class ModelWrapper:
         with torch.no_grad():
             data_source = [batch] if batch is not None else data_loader
             for b in data_source:
-                output, target = self._process_batch(b)
-                _, predicted = torch.max(output.data, 1)
+                predicted, target = self._process_batch(b)
                 total += target.size(0)
                 correct += (predicted == target).sum().item()
 
@@ -162,8 +153,7 @@ class ModelWrapper:
 
         with torch.no_grad():
             for batch in test_loader:
-                output, target = self._process_batch(batch)
-                _, predicted = torch.max(output.data, 1)
+                predicted, target = self._process_batch(batch)
                 c = (predicted == target).squeeze()
 
                 for i in range(len(target)):
@@ -234,45 +224,3 @@ class ModelWrapper:
             state_dict_bytes = buffer.read()
 
         return hash((self.model_name, tuple(self.niche_classes), state_dict_bytes))
-
-    @staticmethod
-    def from_file(filepath: str, model_name: ModelName, num_classes: int, device: str) -> Optional[ModelWrapper]:
-        """
-        Creates a ModelWrapper instance by loading a model from a file.
-
-        This method parses the filename to extract niche and fitness metadata,
-        loads the model's state dictionary, and returns a fully initialized
-        ModelWrapper.
-
-        Args:
-            filepath (str): The path to the model file (.pth).
-            model_name (ModelName): The name of the model architecture.
-            num_classes (int): The number of output classes for the model.
-            device (str): The device to load the model onto.
-
-        Returns:
-            An optional ModelWrapper instance if the file is valid, otherwise None.
-        """
-        match = re.search(r'model_niche_([\d_]+)_fitness_([\d\.]+)\.pth', os.path.basename(filepath))
-        if not match:
-            return None
-
-        niche_classes = [int(n) for n in match.group(1).split('_')]
-        fitness = float(match.group(2))
-
-        model = create_model(
-            model_name=model_name,
-            num_classes=num_classes,
-            device=device
-        )
-        model.load_state_dict(torch.load(filepath, map_location=device))
-
-        wrapper = ModelWrapper(
-            model_name=model_name,
-            model=model,
-            niche_classes=niche_classes,
-            device=device
-        )
-        wrapper.fitness = fitness
-        wrapper.fitness_is_current = False
-        return wrapper
