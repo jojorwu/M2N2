@@ -137,7 +137,10 @@ class TestEvolution(unittest.TestCase):
         model_wrapper = create_mock_wrapper(ModelName.CIFAR10, [0], self.device)
         dummy_validation_loader = "dummy_loader"
         from src.evolution import finetune
-        finetune(model_wrapper, 'CIFAR10', dummy_validation_loader, epochs=1)
+        from src.config_manager import ConfigManager
+        config_manager = ConfigManager('config.yaml')
+        config_manager.finetune_epochs = 1
+        finetune(model_wrapper, dummy_validation_loader, config_manager)
         self.assertTrue(mock_scheduler_class.called, "ReduceLROnPlateau scheduler was not created.")
         self.assertTrue(mock_scheduler_instance.step.called, "Scheduler's step() method was not called.")
         mock_scheduler_instance.step.assert_called_once_with(0.123)
@@ -244,11 +247,16 @@ class TestEvolution(unittest.TestCase):
         mock_tqdm.return_value.__iter__.return_value = iter([dummy_batch])
         model_wrapper = create_mock_wrapper(ModelName.CIFAR10, [0], self.device)
         from src.evolution import specialize
-        specialize(model_wrapper, dataset_name='CIFAR10', epochs=1, show_progress_bar=True)
+        from src.config_manager import ConfigManager
+        config_manager = ConfigManager('config.yaml')
+        config_manager.specialize_epochs = 1
+        config_manager.show_progress_bar = True
+        specialize(model_wrapper, config_manager)
         mock_tqdm.assert_called_once()
         self.assertTrue(mock_tqdm.return_value.set_postfix.called)
         mock_tqdm.reset_mock()
-        specialize(model_wrapper, dataset_name='CIFAR10', epochs=1, show_progress_bar=False)
+        config_manager.show_progress_bar = False
+        specialize(model_wrapper, config_manager)
         mock_tqdm.assert_not_called()
 
     @patch('src.model_wrapper.ModelWrapper.evaluate_by_class')

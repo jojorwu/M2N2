@@ -183,16 +183,7 @@ class EvolutionSimulator:
 
         logger.info("--- Specializing Initial Models ---")
         for model_wrapper in self.population:
-            specialize(
-                model_wrapper,
-                dataset_name=self.config_manager.dataset_name,
-                epochs=self.config_manager.specialize_epochs,
-                precision=self.config_manager.precision_config,
-                seed=self.config_manager.seed,
-                learning_rate=self.config_manager.learning_rate,
-                subset_percentage=self.config_manager.subset_percentage,
-                show_progress_bar=self.config_manager.show_progress_bar
-            )
+            specialize(model_wrapper, self.config_manager)
         logger.info("")
 
     def _run_specialization_phase(self, generation: int) -> None:
@@ -200,15 +191,7 @@ class EvolutionSimulator:
         logger.info("--- Specializing Models ---")
         for model_wrapper in self.population:
             if model_wrapper.niche_classes != list(range(self.num_classes)):
-                specialize(
-                    model_wrapper,
-                    dataset_name=self.config_manager.dataset_name,
-                    epochs=self.config_manager.specialize_epochs,
-                    precision=self.config_manager.precision_config,
-                    seed=self.config_manager.seed,
-                    learning_rate=self.config_manager.learning_rate,
-                    subset_percentage=self.config_manager.subset_percentage
-                )
+                specialize(model_wrapper, self.config_manager)
         logger.info("")
 
     def _initialize_fitness_log(self) -> None:
@@ -291,22 +274,12 @@ class EvolutionSimulator:
             child = mutate(
                 child,
                 generation=generation,
-                mutation_rate=self.config_manager.mutation_rate,
-                initial_mutation_strength=self.config_manager.initial_mutation_strength,
-                decay_factor=self.config_manager.mutation_decay_factor
+                config_manager=self.config_manager
             )
             finetune(
                 child,
-                dataset_name=self.config_manager.dataset_name,
                 validation_loader=self.validation_loader,
-                epochs=self.config_manager.finetune_epochs,
-                precision=self.config_manager.precision_config,
-                seed=self.config_manager.seed,
-                learning_rate=self.config_manager.learning_rate,
-                scheduler_patience=self.config_manager.scheduler_patience,
-                scheduler_factor=self.config_manager.scheduler_factor,
-                subset_percentage=self.config_manager.subset_percentage,
-                show_progress_bar=self.config_manager.show_progress_bar
+                config_manager=self.config_manager
             )
             self.population = create_next_generation(
                 self.population,

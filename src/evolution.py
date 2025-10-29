@@ -102,26 +102,26 @@ def _run_training_session(
             scheduler.step(avg_val_loss)
             logger.info(f"  - Avg Train Loss: {avg_train_loss:.4f}, Avg Val Loss: {avg_val_loss:.4f}")
 
-def specialize(model_wrapper: ModelWrapper, dataset_name: "DatasetName", epochs: int = 1, precision: str = '32', seed: Optional[int] = None, learning_rate: float = 0.001, subset_percentage: float = 0.1, show_progress_bar: bool = True) -> None:
+def specialize(model_wrapper: ModelWrapper, config_manager: "ConfigManager") -> None:
     """Trains a model in-place on its specialized data niche."""
-    logger.info(f"Specializing model on niche {model_wrapper.niche_classes} for {epochs} epoch(s) with {precision}-bit precision...")
+    logger.info(f"Specializing model on niche {model_wrapper.niche_classes} for {config_manager.specialize_epochs} epoch(s) with {config_manager.precision_config}-bit precision...")
 
     train_loader, _, _, _ = get_dataloaders(
-        dataset_name=dataset_name,
+        dataset_name=config_manager.dataset_name,
         model_name=model_wrapper.model_name,
         niche_classes=model_wrapper.niche_classes,
-        subset_percentage=subset_percentage,
-        seed=seed
+        subset_percentage=config_manager.subset_percentage,
+        seed=config_manager.seed
     )
 
     _run_training_session(
         model_wrapper=model_wrapper,
         train_loader=train_loader,
-        epochs=epochs,
-        precision=precision,
-        learning_rate=learning_rate,
+        epochs=config_manager.specialize_epochs,
+        precision=config_manager.precision_config,
+        learning_rate=config_manager.learning_rate,
         description=f"Specializing Niche {model_wrapper.niche_classes}",
-        show_progress_bar=show_progress_bar
+        show_progress_bar=config_manager.show_progress_bar
     )
 
     model_wrapper.fitness_is_current = False
@@ -171,7 +171,7 @@ def merge(parent1: ModelWrapper, parent2: ModelWrapper, strategy: "MergeStrategy
     logger.info("Merging complete.")
     return child_wrapper
 
-def mutate(model_wrapper: ModelWrapper, generation: int, mutation_rate: float = 0.01, initial_mutation_strength: float = 0.1, decay_factor: float = 0.9) -> ModelWrapper:
+def mutate(model_wrapper: ModelWrapper, generation: int, config_manager: "ConfigManager") -> ModelWrapper:
     """Applies random, adaptively scaled Gaussian mutations to a model's weights.
 
     This function introduces genetic diversity by altering a fraction of the
@@ -184,27 +184,21 @@ def mutate(model_wrapper: ModelWrapper, generation: int, mutation_rate: float = 
         model_wrapper (ModelWrapper): The model wrapper to mutate.
         generation (int): The current generation number, used to calculate
             the decaying mutation strength.
-        mutation_rate (float, optional): The probability that any given
-            weight will be chosen for mutation. Defaults to 0.01.
-        initial_mutation_strength (float, optional): The initial standard
-            deviation for the mutation noise. Defaults to 0.1.
-        decay_factor (float, optional): The factor by which the mutation
-            strength decays each generation (e.g., 0.9 means 10% decay).
-            Defaults to 0.9.
+        config_manager (ConfigManager): The configuration manager.
 
     Returns:
         ModelWrapper: The same model wrapper that was passed in, allowing
             for method chaining.
     """
     # Calculate the decayed mutation strength for the current generation
-    decayed_strength = initial_mutation_strength * (decay_factor ** generation)
+    decayed_strength = config_manager.initial_mutation_strength * (config_manager.mutation_decay_factor ** generation)
     logger.info(f"Mutating child model (Gen: {generation}, Strength: {decayed_strength:.4f})...")
 
     with torch.no_grad():
         for param in model_wrapper.model.parameters():
             if len(param.shape) > 1: # Mutate only multi-dimensional layers (conv, linear)
                 # Create a random mask to decide which weights to mutate
-                mutation_mask = (torch.rand(param.shape) < mutation_rate).to(model_wrapper.device)
+                mutation_mask = (torch.rand(param.shape) < config_manager.mutation_rate).to(model_wrapper.device)
                 # Generate random noise scaled by the decayed strength
                 mutation = torch.randn(param.shape).to(model_wrapper.device) * decayed_strength
                 # Apply the mutation where the mask is True
@@ -261,29 +255,29 @@ def _calculate_loss(model_wrapper: ModelWrapper, data_loader: DataLoader) -> flo
     return total_loss / len(data_loader)
 
 
-def finetune(model_wrapper: ModelWrapper, dataset_name: "DatasetName", validation_loader: DataLoader, epochs: int = 3, precision: str = '32', seed: Optional[int] = None, learning_rate: float = 0.001, scheduler_patience: int = 2, scheduler_factor: float = 0.5, subset_percentage: float = 0.1, show_progress_bar: bool = True) -> None:
+def finetune(model_wrapper: ModelWrapper, validation_loader: DataLoader, config_manager: "ConfigManager") -> None:
     """Fine-tunes a model in-place on the full dataset with a scheduler."""
-    logger.info(f"Fine-tuning model for {epochs} epoch(s) with {precision}-bit precision and ReduceLROnPlateau scheduler...")
+    logger.info(f"Fine-tuning model for {config_manager.finetune_epochs} epoch(s) with {config_manager.precision_config}-bit precision and ReduceLROnPlateau scheduler...")
 
     train_loader, _, _, _ = get_dataloaders(
-        dataset_name=dataset_name,
+        dataset_name=config_manager.dataset_name,
         model_name=model_wrapper.model_name,
-        subset_percentage=subset_percentage,
-        seed=seed,
+        subset_percentage=config_manager.subset_percentage,
+        seed=config_manager.seed,
         validation_split=0.0
     )
 
-    optimizer = optim.Adam(model_wrapper.model.parameters(), lr=learning_rate)
-    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min', patience=scheduler_patience, factor=scheduler_factor)
+    optimizer = optim.Adam(model_wrapper.model.parameters(), lr=config_manager.learning_rate)
+    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min', patience=config_manager.scheduler_patience, factor=config_manager.scheduler_factor)
 
     _run_training_session(
         model_wrapper=model_wrapper,
         train_loader=train_loader,
-        epochs=epochs,
-        precision=precision,
-        learning_rate=learning_rate,
+        epochs=config_manager.finetune_epochs,
+        precision=config_manager.precision_config,
+        learning_rate=config_manager.learning_rate,
         description="Fine-tuning Child",
-        show_progress_bar=show_progress_bar,
+        show_progress_bar=config_manager.show_progress_bar,
         optimizer=optimizer,
         scheduler=scheduler,
         validation_loader=validation_loader
