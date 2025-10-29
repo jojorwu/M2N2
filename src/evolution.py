@@ -159,39 +159,45 @@ def merge(parent1: ModelWrapper, parent2: ModelWrapper, strategy: "MergeStrategy
     logger.info("Merging complete.")
     return child_wrapper
 
-def mutate(model_wrapper: ModelWrapper, generation: int, config_manager: "ConfigManager") -> ModelWrapper:
-    """Applies random, adaptively scaled Gaussian mutations to a model's weights.
+def mutate(model_wrapper: ModelWrapper, generation: int, config_manager: "ConfigManager", seed: Optional[int] = None) -> ModelWrapper:
+    """
+    Applies deterministic, adaptively scaled Gaussian mutations to a model.
 
-    This function introduces genetic diversity by altering a fraction of the
-    model's weights. The mutation strength is adaptive, decaying
-    exponentially with each generation. This allows for larger exploratory
-    changes in early generations and smaller, more precise changes later on.
-    The mutation is applied in-place.
+    This function introduces genetic diversity by altering a fixed fraction of
+    the model's weights. The process is made deterministic by using a seeded
+    PyTorch generator.
 
     Args:
-        model_wrapper (ModelWrapper): The model wrapper to mutate.
-        generation (int): The current generation number, used to calculate
-            the decaying mutation strength.
-        config_manager (ConfigManager): The configuration manager.
+        model_wrapper: The model to mutate.
+        generation: The current generation number, for adaptive strength.
+        config_manager: The configuration manager.
+        seed: An optional seed for the random number generator to ensure
+            reproducibility.
 
     Returns:
-        ModelWrapper: The same model wrapper that was passed in, allowing
-            for method chaining.
+        The mutated model wrapper.
     """
-    # Calculate the decayed mutation strength for the current generation
     decayed_strength = config_manager.initial_mutation_strength * (config_manager.mutation_decay_factor ** generation)
     logger.info(f"Mutating child model (Gen: {generation}, Strength: {decayed_strength:.4f})...")
 
+    generator = torch.Generator(device=model_wrapper.device)
+    if seed is not None:
+        generator.manual_seed(seed)
+
     with torch.no_grad():
         for param in model_wrapper.model.parameters():
-            if len(param.shape) > 1: # Mutate only multi-dimensional layers (conv, linear)
-                # Create a random mask to decide which weights to mutate
-                mutation_mask = (torch.rand(param.shape) < config_manager.mutation_rate).to(model_wrapper.device)
-                # Generate random noise scaled by the decayed strength
-                mutation = torch.randn(param.shape).to(model_wrapper.device) * decayed_strength
-                # Apply the mutation where the mask is True
-                param.data += mutation * mutation_mask
-    # Mark fitness as not current, as the model has been modified.
+            if param.dim() > 1:
+                num_weights = param.numel()
+                num_to_mutate = int(num_weights * config_manager.mutation_rate)
+
+                if num_to_mutate == 0:
+                    continue
+
+                indices_to_mutate = torch.randperm(num_weights, device=model_wrapper.device, generator=generator)[:num_to_mutate]
+                mutation = torch.randn(num_to_mutate, device=model_wrapper.device, generator=generator) * decayed_strength
+
+                param.view(-1)[indices_to_mutate] += mutation
+
     model_wrapper.fitness_is_current = False
     logger.info("Mutation complete.")
     return model_wrapper

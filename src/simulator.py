@@ -279,7 +279,8 @@ class EvolutionSimulator:
             child = mutate(
                 child,
                 generation=generation,
-                config_manager=self.config_manager
+                config_manager=self.config_manager,
+                seed=self.config_manager.seed
             )
             finetune(
                 child,
