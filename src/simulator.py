@@ -14,7 +14,7 @@ from .data import get_dataloaders
 from .visualization import plot_fitness_history
 from .utils import set_seed
 from .config_manager import ConfigManager
-from typing import List, Tuple
+from typing import List, Tuple, Type, Dict, Any
 from torch.utils.data import DataLoader
 from .merge_strategies import (
     AverageMergeStrategy,
@@ -60,48 +60,64 @@ class EvolutionSimulator:
         self._initialize_fitness_log()
 
     def _initialize_strategies(self) -> None:
-        """Initializes the strategy objects based on the configuration using a factory pattern."""
+        """Initializes the strategy objects based on the configuration."""
+        selection_strategy_map = {'healing': HealingMateSelectionStrategy}
+        self.mate_selection_strategy = self._create_strategy(
+            self.config_manager.mate_selection_strategy,
+            selection_strategy_map,
+            "mate selection"
+        )
 
-        # --- Mate Selection Strategy Factory ---
-        selection_strategy_map = {
-            'healing': HealingMateSelectionStrategy,
-        }
-        selection_strategy_name = self.config_manager.mate_selection_strategy
-        selection_strategy_class = selection_strategy_map.get(selection_strategy_name)
-        if not selection_strategy_class:
-            raise ValueError(f"Unknown mate selection strategy: {selection_strategy_name}")
-        self.mate_selection_strategy = selection_strategy_class()
+        generation_strategy_map = {'replace_worst': ReplaceWorstStrategy}
+        self.generation_strategy = self._create_strategy(
+            self.config_manager.generation_strategy,
+            generation_strategy_map,
+            "generation"
+        )
 
-        # --- Generation Strategy Factory ---
-        generation_strategy_map = {
-            'replace_worst': ReplaceWorstStrategy,
-        }
-        generation_strategy_name = self.config_manager.generation_strategy
-        generation_strategy_class = generation_strategy_map.get(generation_strategy_name)
-        if not generation_strategy_class:
-            raise ValueError(f"Unknown generation strategy: {generation_strategy_name}")
-        self.generation_strategy = generation_strategy_class()
-
-        # --- Merge Strategy Factory ---
         merge_strategy_map = {
             'average': AverageMergeStrategy,
             'fitness_weighted': FitnessWeightedMergeStrategy,
             'layer-wise': LayerWiseMergeStrategy,
             'sequential_constructive': SequentialConstructiveMergeStrategy,
         }
+        # Prepare arguments for strategies that require them
         merge_strategy_name = self.config_manager.merge_strategy
-        merge_strategy_class = merge_strategy_map.get(merge_strategy_name)
-
-        if not merge_strategy_class:
-            raise ValueError(f"Unknown merge strategy: {merge_strategy_name}")
-
-        # Handle strategies that require arguments
+        merge_args = {}
         if merge_strategy_name == 'fitness_weighted':
-            self.merge_strategy = merge_strategy_class(dampening_factor=self.config_manager.dampening_factor)
+            merge_args['dampening_factor'] = self.config_manager.dampening_factor
         elif merge_strategy_name == 'layer-wise':
-            self.merge_strategy = merge_strategy_class(seed=self.config_manager.seed)
-        else:
-            self.merge_strategy = merge_strategy_class()
+            merge_args['seed'] = self.config_manager.seed
+
+        self.merge_strategy = self._create_strategy(
+            merge_strategy_name,
+            merge_strategy_map,
+            "merge",
+            **merge_args
+        )
+
+    def _create_strategy(self, strategy_name: str, strategy_map: Dict[str, Type], strategy_type: str, **kwargs: Any) -> Any:
+        """
+        Factory helper to create a strategy instance.
+
+        Args:
+            strategy_name (str): The name of the strategy from the config.
+            strategy_map (Dict[str, Type]): A map from name to class.
+            strategy_type (str): A string descriptor for the strategy type,
+                used for error messages (e.g., "mate selection").
+            **kwargs: Additional keyword arguments to pass to the strategy's
+                constructor.
+
+        Returns:
+            An instance of the requested strategy.
+
+        Raises:
+            ValueError: If the strategy_name is not found in the map.
+        """
+        strategy_class = strategy_map.get(strategy_name)
+        if not strategy_class:
+            raise ValueError(f"Unknown {strategy_type} strategy: {strategy_name}")
+        return strategy_class(**kwargs)
 
     def _setup_environment(self) -> None:
         """Sets up the logger and device."""
