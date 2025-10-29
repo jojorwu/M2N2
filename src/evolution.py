@@ -42,20 +42,8 @@ def _run_training_epoch(model_wrapper: ModelWrapper, optimizer: optim.Optimizer,
         optimizer.zero_grad()
 
         with torch.cuda.amp.autocast(enabled=use_amp):
-            if model_wrapper.model_name == 'LLM':
-                input_ids = batch['input_ids'].to(model_wrapper.device)
-                attention_mask = batch['attention_mask'].to(model_wrapper.device)
-                labels = batch['labels'].to(model_wrapper.device)
-                outputs = model_wrapper.model(input_ids=input_ids, attention_mask=attention_mask)
-                loss = F.cross_entropy(outputs, labels)
-            else:
-                data, target = batch
-                data = data.to(model_wrapper.device)
-                target = target.to(model_wrapper.device)
-                if precision == '64':
-                    data = data.double()
-                output = model_wrapper.model(data)
-                loss = F.cross_entropy(output, target)
+            outputs, target = model_wrapper._process_batch(batch)
+            loss = F.cross_entropy(outputs, target)
             scaler.scale(loss).backward()
         scaler.step(optimizer)
         scaler.update()
@@ -241,19 +229,8 @@ def _calculate_loss(model_wrapper: ModelWrapper, data_loader: DataLoader) -> flo
 
     with torch.no_grad():
         for batch in data_loader:
-            if model_wrapper.model_name == 'LLM':
-                input_ids = batch['input_ids'].to(device)
-                attention_mask = batch['attention_mask'].to(device)
-                labels = batch['labels'].to(device)
-                outputs = model_wrapper.model(input_ids=input_ids, attention_mask=attention_mask)
-                loss = F.cross_entropy(outputs, labels)
-            else:
-                data, target = batch
-                data, target = data.to(device), target.to(device)
-                if next(model_wrapper.model.parameters()).dtype == torch.float64:
-                    data = data.double()
-                output = model_wrapper.model(data)
-                loss = F.cross_entropy(output, target)
+            outputs, target = model_wrapper._process_batch(batch)
+            loss = F.cross_entropy(outputs, target)
             total_loss += loss.item()
 
     if len(data_loader) == 0:
