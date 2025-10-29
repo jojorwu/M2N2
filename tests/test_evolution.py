@@ -9,7 +9,9 @@ import copy
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from src.evolution import ModelWrapper, merge, select_mates, create_next_generation
-from src.model import CifarCNN
+from src.model import CifarCNN, ResNetClassifier
+from src.enums import ModelName
+from src.model_factory import create_model
 from src.selection_strategies import HealingMateSelectionStrategy
 from src.merge_strategies import (
     FitnessWeightedMergeStrategy,
@@ -29,6 +31,13 @@ def are_state_dicts_equal(dict1, dict2):
             return False
     return True
 
+def create_mock_wrapper(model_name, niche_classes, device, num_classes=10, fitness=0.0):
+    """Helper to create a mock ModelWrapper."""
+    model = create_model(model_name, num_classes, device)
+    wrapper = ModelWrapper(model_name, model, niche_classes, device)
+    wrapper.fitness = fitness
+    return wrapper
+
 class TestEvolution(unittest.TestCase):
     """Unit tests for the evolutionary algorithm components."""
 
@@ -37,10 +46,8 @@ class TestEvolution(unittest.TestCase):
         self.device = torch.device("cpu")
 
     def test_merge_fitness_weighted_with_dampening(self):
-        parent1 = ModelWrapper(model_name='CIFAR10', niche_classes=[0], device=self.device)
-        parent1.fitness = 85.0
-        parent2 = ModelWrapper(model_name='CIFAR10', niche_classes=[1], device=self.device)
-        parent2.fitness = 15.0
+        parent1 = create_mock_wrapper(ModelName.CIFAR10, [0], self.device, fitness=85.0)
+        parent2 = create_mock_wrapper(ModelName.CIFAR10, [1], self.device, fitness=15.0)
         with torch.no_grad():
             for param in parent1.model.parameters():
                 param.fill_(1.0)
@@ -72,10 +79,8 @@ class TestEvolution(unittest.TestCase):
                 self.fc = torch.nn.Linear(10, 10)
             def forward(self, x): return x
         mock_resnet_constructor.return_value = MockResNetModule()
-        parent1 = ModelWrapper(model_name='RESNET', niche_classes=[0], device=self.device)
-        parent1.fitness = 80.0
-        parent2 = ModelWrapper(model_name='RESNET', niche_classes=[1], device=self.device)
-        parent2.fitness = 20.0
+        parent1 = create_mock_wrapper(ModelName.RESNET, [0], self.device, fitness=80.0)
+        parent2 = create_mock_wrapper(ModelName.RESNET, [1], self.device, fitness=20.0)
         mock_calculate_accuracy.return_value = 50.0
         dummy_loader = torch.utils.data.DataLoader([torch.randn(10)], batch_size=1)
         merge(parent1, parent2, strategy=SequentialConstructiveMergeStrategy(), validation_loader=dummy_loader)
@@ -89,8 +94,8 @@ class TestEvolution(unittest.TestCase):
     def test_layer_wise_merge_is_deterministic_with_seed(self):
         seed1 = 42
         seed2 = 1337
-        parent1 = ModelWrapper(model_name='CIFAR10', niche_classes=[0], device=self.device)
-        parent2 = ModelWrapper(model_name='CIFAR10', niche_classes=[1], device=self.device)
+        parent1 = create_mock_wrapper(ModelName.CIFAR10, [0], self.device)
+        parent2 = create_mock_wrapper(ModelName.CIFAR10, [1], self.device)
         with torch.no_grad():
             for param in parent1.model.parameters():
                 param.fill_(1.0)
@@ -117,10 +122,8 @@ class TestEvolution(unittest.TestCase):
         num_classes = 5
         mock_calculate_accuracy.return_value = 50.0
         dummy_loader = torch.utils.data.DataLoader([torch.randn(10)], batch_size=1)
-        parent1 = ModelWrapper(model_name='CIFAR10', niche_classes=[0], device=self.device, num_classes=num_classes)
-        parent1.fitness = 80.0
-        parent2 = ModelWrapper(model_name='CIFAR10', niche_classes=[1], device=self.device, num_classes=num_classes)
-        parent2.fitness = 70.0
+        parent1 = create_mock_wrapper(ModelName.CIFAR10, [0], self.device, num_classes=num_classes, fitness=80.0)
+        parent2 = create_mock_wrapper(ModelName.CIFAR10, [1], self.device, num_classes=num_classes, fitness=70.0)
         child = merge(parent1, parent2, strategy=SequentialConstructiveMergeStrategy(), validation_loader=dummy_loader)
         self.assertEqual(child.niche_classes, list(range(num_classes)), f"Child's niche classes should be a range up to {num_classes}, but got {child.niche_classes}.")
 
@@ -131,7 +134,7 @@ class TestEvolution(unittest.TestCase):
         mock_scheduler_instance = mock_scheduler_class.return_value
         mock_calculate_loss.return_value = 0.123
         mock_get_dataloaders.return_value = (None, None, None, 10)
-        model_wrapper = ModelWrapper(model_name='CIFAR10', niche_classes=[0], device=self.device)
+        model_wrapper = create_mock_wrapper(ModelName.CIFAR10, [0], self.device)
         dummy_validation_loader = "dummy_loader"
         from src.evolution import finetune
         finetune(model_wrapper, 'CIFAR10', dummy_validation_loader, epochs=1)
@@ -142,7 +145,7 @@ class TestEvolution(unittest.TestCase):
     @patch('src.model_wrapper.get_dataloaders')
     def test_evaluate_uses_subset_percentage(self, mock_get_dataloaders):
         mock_get_dataloaders.return_value = (None, None, "dummy_test_loader", 10)
-        model_wrapper = ModelWrapper(model_name='CIFAR10', niche_classes=[0], device=self.device)
+        model_wrapper = create_mock_wrapper(ModelName.CIFAR10, [0], self.device)
         model_wrapper.fitness_is_current = False
         test_subset_percentage = 0.5
         with patch('src.model_wrapper.ModelWrapper._calculate_accuracy', return_value=50.0):
@@ -154,9 +157,7 @@ class TestEvolution(unittest.TestCase):
     def test_create_next_generation_avoids_duplicates(self):
         from src.evolution import create_next_generation
         population_size = 5
-        population = [ModelWrapper(model_name='CIFAR10', niche_classes=[i], device=self.device) for i in range(population_size)]
-        for i, p in enumerate(population):
-            p.fitness = 70.0 - i * 10
+        population = [create_mock_wrapper(ModelName.CIFAR10, [i], self.device, fitness=(70.0 - i * 10)) for i in range(population_size)]
         duplicate_child = copy.deepcopy(population[1])
         duplicate_child.fitness = population[1].fitness
         duplicate_child.fitness_is_current = True
@@ -166,9 +167,9 @@ class TestEvolution(unittest.TestCase):
         self.assertEqual(duplicate_count, 1, "A duplicate model was added to the new generation.")
 
     def test_model_wrapper_hashing(self):
-        wrapper1 = ModelWrapper(model_name='CIFAR10', niche_classes=[0], device=self.device)
+        wrapper1 = create_mock_wrapper(ModelName.CIFAR10, [0], self.device)
         wrapper2 = copy.deepcopy(wrapper1)
-        wrapper3 = ModelWrapper(model_name='CIFAR10', niche_classes=[1], device=self.device)
+        wrapper3 = create_mock_wrapper(ModelName.CIFAR10, [1], self.device)
         self.assertEqual(wrapper1, wrapper2, "Deepcopied wrappers should be equal.")
         self.assertEqual(hash(wrapper1), hash(wrapper2), "Hashes of equal wrappers should be equal.")
         self.assertNotEqual(wrapper1, wrapper3, "Wrappers with different niches should not be equal.")
@@ -181,12 +182,9 @@ class TestEvolution(unittest.TestCase):
     @patch('src.model_wrapper.ModelWrapper.evaluate_by_class')
     def test_healing_selection_fallback_chooses_next_best_distinct_instance(self, mock_evaluate_by_class):
         mock_evaluate_by_class.return_value = [90, 80, 70, 60, 50, 10, 85, 95, 88, 75]
-        parent1 = ModelWrapper(model_name='CIFAR10', niche_classes=[0], device=self.device)
-        parent1.fitness = 95.0
-        expected_parent2 = ModelWrapper(model_name='CIFAR10', niche_classes=[1], device=self.device)
-        expected_parent2.fitness = 90.0
-        other_model = ModelWrapper(model_name='CIFAR10', niche_classes=[2], device=self.device)
-        other_model.fitness = 85.0
+        parent1 = create_mock_wrapper(ModelName.CIFAR10, [0], self.device, fitness=95.0)
+        expected_parent2 = create_mock_wrapper(ModelName.CIFAR10, [1], self.device, fitness=90.0)
+        other_model = create_mock_wrapper(ModelName.CIFAR10, [2], self.device, fitness=85.0)
         population = [parent1, expected_parent2, other_model]
         strategy = HealingMateSelectionStrategy()
         _, selected_parent2 = strategy.select_mates(population, dataset_name='CIFAR10')
@@ -195,8 +193,8 @@ class TestEvolution(unittest.TestCase):
 
     def test_layer_wise_merge_on_resnet_is_not_all_or_nothing(self):
         seed = 42
-        parent1 = ModelWrapper(model_name='RESNET', niche_classes=[0], device=self.device)
-        parent2 = ModelWrapper(model_name='RESNET', niche_classes=[1], device=self.device)
+        parent1 = create_mock_wrapper(ModelName.RESNET, [0], self.device)
+        parent2 = create_mock_wrapper(ModelName.RESNET, [1], self.device)
         with torch.no_grad():
             for param in parent1.model.parameters():
                 param.fill_(1.0)
@@ -214,10 +212,8 @@ class TestEvolution(unittest.TestCase):
         import os
         seed = 123
         golden_file_path = 'tests/golden_sequential_merge.pth'
-        parent1 = ModelWrapper(model_name='CIFAR10', niche_classes=[0], device=self.device)
-        parent2 = ModelWrapper(model_name='CIFAR10', niche_classes=[1], device=self.device)
-        parent1.fitness = 90.0
-        parent2.fitness = 80.0
+        parent1 = create_mock_wrapper(ModelName.CIFAR10, [0], self.device, fitness=90.0)
+        parent2 = create_mock_wrapper(ModelName.CIFAR10, [1], self.device, fitness=80.0)
         with torch.no_grad():
             for i, param in enumerate(parent1.model.parameters()):
                 param.fill_(float(i + 1))
@@ -246,7 +242,7 @@ class TestEvolution(unittest.TestCase):
         dummy_batch = (torch.randn(1, 3, 32, 32), torch.randint(0, 10, (1,)))
         mock_get_dataloaders.return_value = ([dummy_batch], None, None, 10)
         mock_tqdm.return_value.__iter__.return_value = iter([dummy_batch])
-        model_wrapper = ModelWrapper(model_name='CIFAR10', niche_classes=[0], device=self.device)
+        model_wrapper = create_mock_wrapper(ModelName.CIFAR10, [0], self.device)
         from src.evolution import specialize
         specialize(model_wrapper, dataset_name='CIFAR10', epochs=1, show_progress_bar=True)
         mock_tqdm.assert_called_once()
@@ -258,12 +254,10 @@ class TestEvolution(unittest.TestCase):
     @patch('src.model_wrapper.ModelWrapper.evaluate_by_class')
     def test_healing_selection_fallback_skips_identical_clone(self, mock_evaluate_by_class):
         mock_evaluate_by_class.return_value = [90, 80, 70, 60, 50, 10, 85, 95, 88, 75]
-        parent1 = ModelWrapper(model_name='CIFAR10', niche_classes=[0], device=self.device)
-        parent1.fitness = 95.0
+        parent1 = create_mock_wrapper(ModelName.CIFAR10, [0], self.device, fitness=95.0)
         clone_of_parent1 = copy.deepcopy(parent1)
         clone_of_parent1.fitness = 95.0
-        expected_parent2 = ModelWrapper(model_name='CIFAR10', niche_classes=[1], device=self.device)
-        expected_parent2.fitness = 90.0
+        expected_parent2 = create_mock_wrapper(ModelName.CIFAR10, [1], self.device, fitness=90.0)
         population = [parent1, clone_of_parent1, expected_parent2]
         strategy = HealingMateSelectionStrategy()
         selected_parent1, selected_parent2 = strategy.select_mates(population, dataset_name='CIFAR10')
@@ -273,12 +267,10 @@ class TestEvolution(unittest.TestCase):
     @patch('src.model_wrapper.ModelWrapper.evaluate_by_class')
     def test_healing_selection_fallback_handles_fitness_ties(self, mock_evaluate_by_class):
         mock_evaluate_by_class.return_value = [10] * 10
-        parent1 = ModelWrapper(model_name='CIFAR10', niche_classes=[0], device=self.device)
-        parent1.fitness = 90.0
+        parent1 = create_mock_wrapper(ModelName.CIFAR10, [0], self.device, fitness=90.0)
         clone = copy.deepcopy(parent1)
         clone.fitness = 90.0
-        distinct_model = ModelWrapper(model_name='CIFAR10', niche_classes=[1], device=self.device)
-        distinct_model.fitness = 85.0
+        distinct_model = create_mock_wrapper(ModelName.CIFAR10, [1], self.device, fitness=85.0)
         population = [parent1, clone, distinct_model]
         random.shuffle(population)
         strategy = HealingMateSelectionStrategy()
@@ -288,10 +280,8 @@ class TestEvolution(unittest.TestCase):
         self.assertEqual(selected_parent2, distinct_model, "The fallback did not select the correct distinct model.")
 
     def test_sequential_constructive_merge_uses_single_batch_optimization(self):
-        parent1 = ModelWrapper(model_name='CIFAR10', niche_classes=[0], device=self.device)
-        parent1.fitness = 90.0
-        parent2 = ModelWrapper(model_name='CIFAR10', niche_classes=[1], device=self.device)
-        parent2.fitness = 80.0
+        parent1 = create_mock_wrapper(ModelName.CIFAR10, [0], self.device, fitness=90.0)
+        parent2 = create_mock_wrapper(ModelName.CIFAR10, [1], self.device, fitness=80.0)
         dummy_batch = (torch.randn(1, 3, 32, 32), torch.randint(0, 10, (1,)))
         dummy_loader = torch.utils.data.DataLoader([dummy_batch, "dummy_batch_2"], batch_size=1)
         with patch('src.model_wrapper.ModelWrapper._calculate_accuracy', return_value=50.0) as mock_calculate_accuracy:

@@ -12,6 +12,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')
 from src.simulator import EvolutionSimulator
 from src.model import CifarCNN
 from src.config_manager import ConfigManager
+from src.model_factory import create_model
 
 class TestSimulatorInitialization(unittest.TestCase):
     """Unit tests for the EvolutionSimulator's initialization logic."""
@@ -165,11 +166,12 @@ class TestSimulatorInitialization(unittest.TestCase):
         mock_specialize.reset_mock()
         from src.model_wrapper import ModelWrapper
         from src.enums import ModelName
+        model = create_model(ModelName.CIFAR10, custom_num_classes, 'cpu')
         generalist_wrapper = ModelWrapper(
             model_name=ModelName.CIFAR10,
+            model=model,
             niche_classes=list(range(custom_num_classes)),
-            device='cpu',
-            num_classes=custom_num_classes
+            device='cpu'
         )
         simulator.population = [generalist_wrapper]
         simulator._run_specialization_phase(generation=1)
@@ -200,7 +202,8 @@ class TestSimulatorInitialization(unittest.TestCase):
         simulator = EvolutionSimulator(config_path=self.config_path)
         simulator.loaded_model_files = [loaded_model_to_delete]
         from src.model_wrapper import ModelWrapper
-        simulator.population = [ModelWrapper(model_name=simulator.config_manager.model_name, niche_classes=[0], device=simulator.device, num_classes=simulator.num_classes)]
+        model = create_model(simulator.config_manager.model_name, simulator.num_classes, simulator.device)
+        simulator.population = [ModelWrapper(model_name=simulator.config_manager.model_name, model=model, niche_classes=[0], device=simulator.device)]
         simulator.population[0].fitness = 99.0
         simulator._save_final_population()
         self.assertFalse(os.path.exists(loaded_model_to_delete), "Loaded model was not deleted.")
@@ -218,7 +221,8 @@ class TestSimulatorInitialization(unittest.TestCase):
             yaml.dump(config, f)
         simulator = EvolutionSimulator(config_path=self.config_path)
         from src.model_wrapper import ModelWrapper
-        simulator.population = [ModelWrapper(model_name=simulator.config_manager.model_name, niche_classes=[0], device=simulator.device, num_classes=simulator.num_classes)]
+        model = create_model(simulator.config_manager.model_name, simulator.num_classes, simulator.device)
+        simulator.population = [ModelWrapper(model_name=simulator.config_manager.model_name, model=model, niche_classes=[0], device=simulator.device)]
         simulator.population[0].fitness = 99.0
         simulator._save_final_population()
         self.assertTrue(os.path.exists(stale_model_path), "Stale model was deleted when flag was false.")

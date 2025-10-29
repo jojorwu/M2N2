@@ -12,6 +12,7 @@ import torch.nn.functional as F
 import logging
 from .model import CifarCNN, LLMClassifier, ResNetClassifier
 from .data import get_dataloaders
+from .model_factory import create_model
 from .merge_strategies import (
     MergeStrategy,
     AverageMergeStrategy,
@@ -159,8 +160,14 @@ def merge(parent1: ModelWrapper, parent2: ModelWrapper, strategy: "MergeStrategy
 
     # Create and return the new child model
     num_classes = parent1.model.num_classes
-    child_wrapper = ModelWrapper(model_name=parent1.model_name, niche_classes=list(range(num_classes)), device=parent1.device, num_classes=num_classes)
-    child_wrapper.model.load_state_dict(child_model_state_dict)
+    child_model = create_model(parent1.model_name, num_classes, parent1.device)
+    child_model.load_state_dict(child_model_state_dict)
+    child_wrapper = ModelWrapper(
+        model_name=parent1.model_name,
+        model=child_model,
+        niche_classes=list(range(num_classes)),
+        device=parent1.device
+    )
     logger.info("Merging complete.")
     return child_wrapper
 

@@ -7,6 +7,7 @@ import copy
 import logging
 
 from .model_wrapper import ModelWrapper
+from .model_factory import create_model
 
 logger = logging.getLogger("M2N2_SIMULATOR")
 
@@ -64,8 +65,14 @@ class SequentialConstructiveMergeStrategy(MergeStrategy):
         # Initialize a temporary model with the fitter parent's state.
         # This model's state will be modified in-place.
         num_classes = fitter_parent.model.num_classes
-        temp_model_wrapper = ModelWrapper(model_name=fitter_parent.model_name, niche_classes=list(range(num_classes)), device=fitter_parent.device, num_classes=num_classes)
-        temp_model_wrapper.model.load_state_dict(copy.deepcopy(fitter_parent.model.state_dict()))
+        temp_model = create_model(fitter_parent.model_name, num_classes, fitter_parent.device)
+        temp_model.load_state_dict(copy.deepcopy(fitter_parent.model.state_dict()))
+        temp_model_wrapper = ModelWrapper(
+            model_name=fitter_parent.model_name,
+            model=temp_model,
+            niche_classes=list(range(num_classes)),
+            device=fitter_parent.device
+        )
 
         # Use a single batch for quick validation to reduce overhead.
         try:

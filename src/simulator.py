@@ -9,6 +9,7 @@ import re
 import logging
 from .logger_config import setup_logger
 from .model_wrapper import ModelWrapper
+from .model_factory import create_model
 from .evolution import specialize, select_mates, merge, mutate, finetune, create_next_generation
 from .data import get_dataloaders
 from .visualization import plot_fitness_history
@@ -144,13 +145,18 @@ class EvolutionSimulator:
             if match:
                 niche_classes = [int(n) for n in match.group(1).split('_')]
                 fitness = float(match.group(2))
+                model = create_model(
+                    model_name=self.config_manager.model_name,
+                    num_classes=self.num_classes,
+                    device=self.device
+                )
+                model.load_state_dict(torch.load(f, map_location=self.device))
                 wrapper = ModelWrapper(
                     model_name=self.config_manager.model_name,
+                    model=model,
                     niche_classes=niche_classes,
-                    device=self.device,
-                    num_classes=self.num_classes
+                    device=self.device
                 )
-                wrapper.model.load_state_dict(torch.load(f, map_location=self.device))
                 wrapper.fitness = fitness
                 wrapper.fitness_is_current = False
                 self.population.append(wrapper)
@@ -161,12 +167,17 @@ class EvolutionSimulator:
         logger.info("No pretrained models found. Initializing a new population from scratch.")
         niches = [[i] for i in range(self.config_manager.population_size)]
         for i in range(self.config_manager.population_size):
+            model = create_model(
+                model_name=self.config_manager.model_name,
+                num_classes=self.num_classes,
+                device=self.device
+            )
             self.population.append(
                 ModelWrapper(
                     model_name=self.config_manager.model_name,
+                    model=model,
                     niche_classes=niches[i],
-                    device=self.device,
-                    num_classes=self.num_classes
+                    device=self.device
                 )
             )
 

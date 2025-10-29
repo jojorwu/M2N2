@@ -35,31 +35,20 @@ class ModelWrapper:
     fitness: float
     fitness_is_current: bool
 
-    def __init__(self, model_name: ModelName, niche_classes: List[int], device: str = 'cpu', num_classes: int = 10):
+    def __init__(self, model_name: ModelName, model: nn.Module, niche_classes: List[int], device: str = 'cpu'):
         """Initializes the ModelWrapper with a model and its niche.
-
         Args:
-            model_name (ModelName): The name of the model to instantiate.
+            model_name (ModelName): The name of the model architecture.
+            model (nn.Module): A pre-instantiated model object.
             niche_classes (list[int]): The list of class indices for the
                 model's specialized niche.
             device (str, optional): The device to run the model on.
                 Defaults to 'cpu'.
-            num_classes (int, optional): The number of output classes for the
-                model. Defaults to 10.
         """
         self.model_name = model_name
+        self.model = model
         self.niche_classes = niche_classes
         self.device = device
-
-        if self.model_name == ModelName.CIFAR10:
-            self.model = CifarCNN(num_classes=num_classes).to(device)
-        elif self.model_name == ModelName.LLM:
-            self.model = LLMClassifier(num_labels=num_classes).to(device)
-        elif self.model_name == ModelName.RESNET:
-            self.model = ResNetClassifier(num_classes=num_classes).to(device)
-        else:
-            raise ValueError(f"Unsupported model name: {self.model_name}")
-
         self.fitness = 0.0
         # This flag prevents redundant evaluations.
         self.fitness_is_current = False
@@ -90,20 +79,34 @@ class ModelWrapper:
         self.fitness_is_current = True
         return accuracy
 
+    def _process_batch(self, batch: Any) -> Tuple[torch.Tensor, torch.Tensor]:
+        """Helper to process a batch and return predictions and targets."""
+        if self.model_name == 'LLM':
+            input_ids = batch['input_ids'].to(self.device)
+            attention_mask = batch['attention_mask'].to(self.device)
+            target = batch['labels'].to(self.device)
+            output = self.model(input_ids=input_ids, attention_mask=attention_mask)
+        else:  # Handles CIFAR10, MNIST, etc.
+            data, target = batch
+            data, target = data.to(self.device), target.to(self.device)
+            if next(self.model.parameters()).dtype == torch.float64:
+                data = data.double()
+            output = self.model(data)
+
+        _, predicted = torch.max(output.data, 1)
+        return predicted, target
+
     def _calculate_accuracy(self, data_loader: Optional[DataLoader] = None, batch: Optional[Any] = None) -> float:
         """A generic helper to calculate accuracy.
-
         This function can calculate accuracy on either a full `DataLoader` or
         a single, pre-fetched `batch`. This is a key optimization for
         strategies like sequential constructive merging, as it allows for
         rapid evaluation on a consistent batch without repeated data loading.
-
         Args:
             data_loader (DataLoader, optional): A DataLoader to evaluate.
                 Defaults to None.
             batch (Any, optional): A single pre-fetched batch to evaluate.
                 Defaults to None.
-
         Returns:
             float: The calculated accuracy as a percentage.
         """
@@ -115,27 +118,11 @@ class ModelWrapper:
             raise ValueError("Either data_loader or batch must be provided.")
 
         with torch.no_grad():
-            # If a single batch is provided, wrap it in a list to make it iterable
             data_source = [batch] if batch is not None else data_loader
-
             for b in data_source:
-                if self.model_name == 'LLM':
-                    input_ids = b['input_ids'].to(self.device)
-                    attention_mask = b['attention_mask'].to(self.device)
-                    labels = b['labels'].to(self.device)
-                    outputs = self.model(input_ids=input_ids, attention_mask=attention_mask)
-                    _, predicted = torch.max(outputs, 1)
-                    total += labels.size(0)
-                    correct += (predicted == labels).sum().item()
-                else: # Handles CIFAR10, MNIST, etc.
-                    data, target = b
-                    data, target = data.to(self.device), target.to(self.device)
-                    if next(self.model.parameters()).dtype == torch.float64:
-                        data = data.double()
-                    output = self.model(data)
-                    _, predicted = torch.max(output.data, 1)
-                    total += target.size(0)
-                    correct += (predicted == target).sum().item()
+                predicted, target = self._process_batch(b)
+                total += target.size(0)
+                correct += (predicted == target).sum().item()
 
         return 100 * correct / total if total > 0 else 0.0
 
@@ -166,17 +153,7 @@ class ModelWrapper:
 
         with torch.no_grad():
             for batch in test_loader:
-                if self.model_name == 'LLM':
-                    input_ids = batch['input_ids'].to(self.device)
-                    attention_mask = batch['attention_mask'].to(self.device)
-                    target = batch['labels'].to(self.device)
-                    output = self.model(input_ids=input_ids, attention_mask=attention_mask)
-                else:
-                    data, target = batch
-                    data, target = data.to(self.device), target.to(self.device)
-                    output = self.model(data)
-
-                _, predicted = torch.max(output, 1)
+                predicted, target = self._process_batch(batch)
                 c = (predicted == target).squeeze()
 
                 for i in range(len(target)):
