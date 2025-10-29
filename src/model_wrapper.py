@@ -125,7 +125,20 @@ class ModelWrapper:
         return accuracy
 
     def _process_batch(self, batch: Any) -> Tuple[torch.Tensor, torch.Tensor]:
-        """Helper to process a batch and return predictions and targets."""
+        """
+        Helper to process a batch and return raw model outputs and targets.
+
+        This centralizes the logic for handling different data formats (e.g.,
+        CNN inputs vs. LLM inputs) and ensures consistency.
+
+        Args:
+            batch (Any): A single data batch from a DataLoader.
+
+        Returns:
+            A tuple containing:
+            - The raw output tensor from the model.
+            - The ground truth target tensor.
+        """
         if self.model_name == 'LLM':
             input_ids = batch['input_ids'].to(self.device)
             attention_mask = batch['attention_mask'].to(self.device)
@@ -137,9 +150,7 @@ class ModelWrapper:
             if next(self.model.parameters()).dtype == torch.float64:
                 data = data.double()
             output = self.model(data)
-
-        _, predicted = torch.max(output.data, 1)
-        return predicted, target
+        return output, target
 
     def _calculate_accuracy(self, data_loader: Optional[DataLoader] = None, batch: Optional[Any] = None) -> float:
         """A generic helper to calculate accuracy.
@@ -165,7 +176,8 @@ class ModelWrapper:
         with torch.no_grad():
             data_source = [batch] if batch is not None else data_loader
             for b in data_source:
-                predicted, target = self._process_batch(b)
+                output, target = self._process_batch(b)
+                _, predicted = torch.max(output.data, 1)
                 total += target.size(0)
                 correct += (predicted == target).sum().item()
 
@@ -198,7 +210,8 @@ class ModelWrapper:
 
         with torch.no_grad():
             for batch in test_loader:
-                predicted, target = self._process_batch(batch)
+                output, target = self._process_batch(batch)
+                _, predicted = torch.max(output.data, 1)
                 c = (predicted == target).squeeze()
 
                 for i in range(len(target)):

@@ -307,11 +307,11 @@ class TestEvolution(unittest.TestCase):
         # Mocking necessary components
         model_wrapper_cuda = MagicMock()
         model_wrapper_cuda.device = 'cuda'
-        model_wrapper_cuda.model.return_value = torch.randn(1, 10)
+        model_wrapper_cuda._process_batch.return_value = (torch.randn(1, 10), torch.randint(0, 10, (1,)))
 
         model_wrapper_cpu = MagicMock()
         model_wrapper_cpu.device = 'cpu'
-        model_wrapper_cpu.model.return_value = torch.randn(1, 10)
+        model_wrapper_cpu._process_batch.return_value = (torch.randn(1, 10), torch.randint(0, 10, (1,)))
 
         mock_optimizer = MagicMock()
         data_tensor = torch.randn(1, 3, 32, 32)
