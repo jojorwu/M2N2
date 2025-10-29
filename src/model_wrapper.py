@@ -4,6 +4,10 @@ import io
 import torch
 import logging
 from torch import nn
+import os
+import re
+from .model_factory import create_model
+
 
 from .model import CifarCNN, LLMClassifier, ResNetClassifier
 from .enums import ModelName
@@ -230,3 +234,45 @@ class ModelWrapper:
             state_dict_bytes = buffer.read()
 
         return hash((self.model_name, tuple(self.niche_classes), state_dict_bytes))
+
+    @staticmethod
+    def from_file(filepath: str, model_name: ModelName, num_classes: int, device: str) -> Optional[ModelWrapper]:
+        """
+        Creates a ModelWrapper instance by loading a model from a file.
+
+        This method parses the filename to extract niche and fitness metadata,
+        loads the model's state dictionary, and returns a fully initialized
+        ModelWrapper.
+
+        Args:
+            filepath (str): The path to the model file (.pth).
+            model_name (ModelName): The name of the model architecture.
+            num_classes (int): The number of output classes for the model.
+            device (str): The device to load the model onto.
+
+        Returns:
+            An optional ModelWrapper instance if the file is valid, otherwise None.
+        """
+        match = re.search(r'model_niche_([\d_]+)_fitness_([\d\.]+)\.pth', os.path.basename(filepath))
+        if not match:
+            return None
+
+        niche_classes = [int(n) for n in match.group(1).split('_')]
+        fitness = float(match.group(2))
+
+        model = create_model(
+            model_name=model_name,
+            num_classes=num_classes,
+            device=device
+        )
+        model.load_state_dict(torch.load(filepath, map_location=device))
+
+        wrapper = ModelWrapper(
+            model_name=model_name,
+            model=model,
+            niche_classes=niche_classes,
+            device=device
+        )
+        wrapper.fitness = fitness
+        wrapper.fitness_is_current = False
+        return wrapper

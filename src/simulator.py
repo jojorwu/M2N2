@@ -141,24 +141,13 @@ class EvolutionSimulator:
         """
         logger.info(f"Found {len(model_files)} models in 'src/pretrained_models'. Attempting to load them.")
         for f in model_files:
-            match = re.search(r'model_niche_([\d_]+)_fitness_([\d\.]+)\.pth', os.path.basename(f))
-            if match:
-                niche_classes = [int(n) for n in match.group(1).split('_')]
-                fitness = float(match.group(2))
-                model = create_model(
-                    model_name=self.config_manager.model_name,
-                    num_classes=self.num_classes,
-                    device=self.device
-                )
-                model.load_state_dict(torch.load(f, map_location=self.device))
-                wrapper = ModelWrapper(
-                    model_name=self.config_manager.model_name,
-                    model=model,
-                    niche_classes=niche_classes,
-                    device=self.device
-                )
-                wrapper.fitness = fitness
-                wrapper.fitness_is_current = False
+            wrapper = ModelWrapper.from_file(
+                filepath=f,
+                model_name=self.config_manager.model_name,
+                num_classes=self.num_classes,
+                device=self.device
+            )
+            if wrapper:
                 self.population.append(wrapper)
                 self.loaded_model_files.append(f)
 
