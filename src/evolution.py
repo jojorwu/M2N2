@@ -124,18 +124,14 @@ from .generation_strategies import GenerationStrategy, ReplaceWorstStrategy
 def select_mates(
     population: List[ModelWrapper],
     strategy: "MateSelectionStrategy",
-    dataset_name: "DatasetName",
-    subset_percentage: float = 1.0,
-    seed: Optional[int] = None
+    config_manager: "ConfigManager"
 ) -> Tuple[Optional[ModelWrapper], Optional[ModelWrapper]]:
     """
     Selects a pair of parents from the population using a specified strategy.
     """
     return strategy.select_mates(
         population,
-        dataset_name=dataset_name,
-        subset_percentage=subset_percentage,
-        seed=seed
+        config_manager=config_manager
     )
 
 def merge(parent1: ModelWrapper, parent2: ModelWrapper, strategy: "MergeStrategy", validation_loader: Optional[DataLoader] = None) -> ModelWrapper:
@@ -205,10 +201,8 @@ def mutate(model_wrapper: ModelWrapper, generation: int, config_manager: "Config
 def create_next_generation(
     current_population: List[ModelWrapper],
     new_child: ModelWrapper,
-    population_size: int,
-    dataset_name: "DatasetName",
     strategy: "GenerationStrategy",
-    seed: Optional[int] = None
+    config_manager: "ConfigManager"
 ) -> List[ModelWrapper]:
     """
     Creates the next generation's population using a specified strategy.
@@ -216,9 +210,7 @@ def create_next_generation(
     return strategy.create_next_generation(
         current_population,
         new_child,
-        population_size,
-        dataset_name,
-        seed=seed
+        config_manager=config_manager
     )
 
 def _calculate_loss(model_wrapper: ModelWrapper, data_loader: DataLoader) -> float:

@@ -21,9 +21,7 @@ class MateSelectionStrategy(ABC):
     def select_mates(
         self,
         population: List[ModelWrapper],
-        dataset_name: "DatasetName",
-        subset_percentage: float = 1.0,
-        seed: Optional[int] = None
+        config_manager: "ConfigManager"
     ) -> Tuple[Optional[ModelWrapper], Optional[ModelWrapper]]:
         """Selects a pair of parents from the population."""
         pass
@@ -38,9 +36,7 @@ class HealingMateSelectionStrategy(MateSelectionStrategy):
     def select_mates(
         self,
         population: List[ModelWrapper],
-        dataset_name: "DatasetName",
-        subset_percentage: float = 1.0,
-        seed: Optional[int] = None
+        config_manager: "ConfigManager"
     ) -> Tuple[Optional[ModelWrapper], Optional[ModelWrapper]]:
         logger.info("Selecting mates with healing strategy...")
         if not population:
@@ -50,7 +46,11 @@ class HealingMateSelectionStrategy(MateSelectionStrategy):
         logger.info(f"  - Parent 1 is the population's best model (Fitness: {parent1.fitness:.2f}%)")
 
         logger.info("  - Analyzing Parent 1's performance by class...")
-        class_accuracies = parent1.evaluate_by_class(dataset_name=dataset_name, subset_percentage=subset_percentage, seed=seed)
+        class_accuracies = parent1.evaluate_by_class(
+            dataset_name=config_manager.dataset_name,
+            subset_percentage=config_manager.subset_percentage,
+            seed=config_manager.seed
+        )
         # Get the top 3 weakest classes to search for a specialist mate
         sorted_class_indices = sorted(range(len(class_accuracies)), key=lambda k: class_accuracies[k])
         top_n_weakest_indices = sorted_class_indices[:3]

@@ -20,6 +20,7 @@ from src.merge_strategies import (
 )
 from src.generation_strategies import ReplaceWorstStrategy
 from src.utils import set_seed
+from src.config_manager import ConfigManager
 import src.selection_strategies
 
 def are_state_dicts_equal(dict1, dict2):
@@ -164,7 +165,12 @@ class TestEvolution(unittest.TestCase):
         duplicate_child = copy.deepcopy(population[1])
         duplicate_child.fitness = population[1].fitness
         duplicate_child.fitness_is_current = True
-        next_gen = create_next_generation(population, duplicate_child, population_size, 'CIFAR10', strategy=ReplaceWorstStrategy())
+        config_manager = MagicMock(spec=ConfigManager)
+        config_manager.population_size = population_size
+        config_manager.dataset_name = 'CIFAR10'
+        config_manager.seed = 42
+        config_manager.subset_percentage = 1.0
+        next_gen = create_next_generation(population, duplicate_child, strategy=ReplaceWorstStrategy(), config_manager=config_manager)
         self.assertEqual(len(next_gen), population_size)
         duplicate_count = sum(1 for model in next_gen if model == duplicate_child)
         self.assertEqual(duplicate_count, 1, "A duplicate model was added to the new generation.")
@@ -190,7 +196,11 @@ class TestEvolution(unittest.TestCase):
         other_model = create_mock_wrapper(ModelName.CIFAR10, [2], self.device, fitness=85.0)
         population = [parent1, expected_parent2, other_model]
         strategy = HealingMateSelectionStrategy()
-        _, selected_parent2 = strategy.select_mates(population, dataset_name='CIFAR10')
+        config_manager = MagicMock(spec=ConfigManager)
+        config_manager.dataset_name = 'CIFAR10'
+        config_manager.subset_percentage = 1.0
+        config_manager.seed = 42
+        _, selected_parent2 = strategy.select_mates(population, config_manager=config_manager)
         self.assertIsNot(selected_parent2, parent1, "Parent 2 should not be the same instance as Parent 1.")
         self.assertIs(selected_parent2, expected_parent2, "The fallback did not select the next-best distinct model instance.")
 
@@ -268,7 +278,11 @@ class TestEvolution(unittest.TestCase):
         expected_parent2 = create_mock_wrapper(ModelName.CIFAR10, [1], self.device, fitness=90.0)
         population = [parent1, clone_of_parent1, expected_parent2]
         strategy = HealingMateSelectionStrategy()
-        selected_parent1, selected_parent2 = strategy.select_mates(population, dataset_name='CIFAR10')
+        config_manager = MagicMock(spec=ConfigManager)
+        config_manager.dataset_name = 'CIFAR10'
+        config_manager.subset_percentage = 1.0
+        config_manager.seed = 42
+        selected_parent1, selected_parent2 = strategy.select_mates(population, config_manager=config_manager)
         self.assertNotEqual(selected_parent1, selected_parent2, "Selected parents should be genetically different.")
         self.assertEqual(selected_parent2, expected_parent2, "The fallback did not select the next-best genetically distinct model.")
 
@@ -282,7 +296,11 @@ class TestEvolution(unittest.TestCase):
         population = [parent1, clone, distinct_model]
         random.shuffle(population)
         strategy = HealingMateSelectionStrategy()
-        _, selected_parent2 = strategy.select_mates(population, dataset_name='CIFAR10')
+        config_manager = MagicMock(spec=ConfigManager)
+        config_manager.dataset_name = 'CIFAR10'
+        config_manager.subset_percentage = 1.0
+        config_manager.seed = 42
+        _, selected_parent2 = strategy.select_mates(population, config_manager=config_manager)
         self.assertIsNot(selected_parent2, parent1, "Parent 2 should not be the same instance as Parent 1.")
         self.assertNotEqual(selected_parent2, parent1, "Parent 2 should not be a deep copy of Parent 1.")
         self.assertEqual(selected_parent2, distinct_model, "The fallback did not select the correct distinct model.")

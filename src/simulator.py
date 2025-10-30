@@ -188,9 +188,7 @@ class EvolutionSimulator:
             )
 
         logger.info("--- Specializing Initial Models ---")
-        for model_wrapper in self.population:
-            specialize(model_wrapper, self.config_manager)
-        logger.info("")
+        self._run_specialization_phase(generation=0)
 
     def _run_specialization_phase(self, generation: int) -> None:
         """Handles the specialization of models in the population."""
@@ -266,9 +264,7 @@ class EvolutionSimulator:
         parent1, parent2 = select_mates(
             self.population,
             strategy=self.mate_selection_strategy,
-            dataset_name=self.config_manager.dataset_name,
-            subset_percentage=self.config_manager.subset_percentage,
-            seed=self.config_manager.seed
+            config_manager=self.config_manager
         )
 
         if parent1 and parent2:
@@ -291,10 +287,8 @@ class EvolutionSimulator:
             self.population = create_next_generation(
                 self.population,
                 child,
-                self.config_manager.population_size,
-                dataset_name=self.config_manager.dataset_name,
                 strategy=self.generation_strategy,
-                seed=self.config_manager.seed
+                config_manager=self.config_manager
             )
         else:
             logger.info("Population will carry over to the next generation without changes.")

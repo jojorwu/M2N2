@@ -18,9 +18,7 @@ class GenerationStrategy(ABC):
         self,
         current_population: List[ModelWrapper],
         new_child: ModelWrapper,
-        population_size: int,
-        dataset_name: str,
-        seed: Optional[int] = None
+        config_manager: "ConfigManager"
     ) -> List[ModelWrapper]:
         """
         Creates the next generation's population.
@@ -36,9 +34,7 @@ class ReplaceWorstStrategy(GenerationStrategy):
         self,
         current_population: List[ModelWrapper],
         new_child: ModelWrapper,
-        population_size: int,
-        dataset_name: str,
-        seed: Optional[int] = None
+        config_manager: "ConfigManager"
     ) -> List[ModelWrapper]:
         """
         Creates the next generation by replacing the worst model if the
@@ -47,7 +43,11 @@ class ReplaceWorstStrategy(GenerationStrategy):
         logger.info("Creating the next generation using 'Replace Worst' strategy...")
 
         # Evaluate the new child to make sure its fitness is calculated
-        new_child.evaluate(dataset_name=dataset_name, seed=seed)
+        new_child.evaluate(
+            dataset_name=config_manager.dataset_name,
+            subset_percentage=config_manager.subset_percentage,
+            seed=config_manager.seed
+        )
 
         # Combine the old population with the new child, avoiding duplicates
         if new_child in current_population:
@@ -60,7 +60,7 @@ class ReplaceWorstStrategy(GenerationStrategy):
         full_pool.sort(key=lambda x: x.fitness, reverse=True)
 
         # The next generation consists of the top 'population_size' individuals
-        next_generation = full_pool[:population_size]
+        next_generation = full_pool[:config_manager.population_size]
 
         logger.info(f"Selected {len(next_generation)} fittest individuals for the next generation.")
 

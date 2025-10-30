@@ -3,6 +3,7 @@ from unittest.mock import Mock, patch
 from src.selection_strategies import HealingMateSelectionStrategy
 from src.model_wrapper import ModelWrapper
 from src.enums import ModelName, DatasetName
+from src.config_manager import ConfigManager
 
 class TestHealingMateSelectionStrategy(unittest.TestCase):
 
@@ -53,9 +54,13 @@ class TestHealingMateSelectionStrategy(unittest.TestCase):
         ]
 
         # Execute the strategy
+        config_manager = Mock(spec=ConfigManager)
+        config_manager.dataset_name = DatasetName.CIFAR10
+        config_manager.subset_percentage = 1.0
+        config_manager.seed = 42
         selected_parent1, selected_parent2 = self.strategy.select_mates(
             population_without_weakest_specialist,
-            dataset_name=DatasetName.CIFAR10
+            config_manager=config_manager
         )
 
         # Assertions
@@ -79,9 +84,13 @@ class TestHealingMateSelectionStrategy(unittest.TestCase):
         population_without_any_specialist = [self.parent1, self.fallback_model]
 
         # Execute the strategy
+        config_manager = Mock(spec=ConfigManager)
+        config_manager.dataset_name = DatasetName.CIFAR10
+        config_manager.subset_percentage = 1.0
+        config_manager.seed = 42
         selected_parent1, selected_parent2 = self.strategy.select_mates(
             population_without_any_specialist,
-            dataset_name=DatasetName.CIFAR10
+            config_manager=config_manager
         )
 
         # Assertions
