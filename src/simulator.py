@@ -61,41 +61,49 @@ class EvolutionSimulator:
         self._initialize_fitness_log()
 
     def _initialize_strategies(self) -> None:
-        """Initializes the strategy objects based on the configuration."""
-        selection_strategy_map = {'healing': HealingMateSelectionStrategy}
-        self.mate_selection_strategy = self._create_strategy(
-            self.config_manager.mate_selection_strategy,
-            selection_strategy_map,
-            "mate selection"
-        )
+        """Initializes the strategy objects based on the configuration using a data-driven approach."""
+        strategy_configs = [
+            {
+                'name': 'mate_selection',
+                'attribute': 'mate_selection_strategy',
+                'config_key': 'mate_selection_strategy',
+                'map': {'healing': HealingMateSelectionStrategy},
+                'args': {}
+            },
+            {
+                'name': 'generation',
+                'attribute': 'generation_strategy',
+                'config_key': 'generation_strategy',
+                'map': {'replace_worst': ReplaceWorstStrategy},
+                'args': {}
+            },
+            {
+                'name': 'merge',
+                'attribute': 'merge_strategy',
+                'config_key': 'merge_strategy',
+                'map': {
+                    'average': AverageMergeStrategy,
+                    'fitness_weighted': FitnessWeightedMergeStrategy,
+                    'layer-wise': LayerWiseMergeStrategy,
+                    'sequential_constructive': SequentialConstructiveMergeStrategy,
+                },
+                'args': {
+                    'fitness_weighted': {'dampening_factor': self.config_manager.dampening_factor},
+                    'layer-wise': {'seed': self.config_manager.seed}
+                }
+            }
+        ]
 
-        generation_strategy_map = {'replace_worst': ReplaceWorstStrategy}
-        self.generation_strategy = self._create_strategy(
-            self.config_manager.generation_strategy,
-            generation_strategy_map,
-            "generation"
-        )
-
-        merge_strategy_map = {
-            'average': AverageMergeStrategy,
-            'fitness_weighted': FitnessWeightedMergeStrategy,
-            'layer-wise': LayerWiseMergeStrategy,
-            'sequential_constructive': SequentialConstructiveMergeStrategy,
-        }
-        # Prepare arguments for strategies that require them
-        merge_strategy_name = self.config_manager.merge_strategy
-        merge_args = {}
-        if merge_strategy_name == 'fitness_weighted':
-            merge_args['dampening_factor'] = self.config_manager.dampening_factor
-        elif merge_strategy_name == 'layer-wise':
-            merge_args['seed'] = self.config_manager.seed
-
-        self.merge_strategy = self._create_strategy(
-            merge_strategy_name,
-            merge_strategy_map,
-            "merge",
-            **merge_args
-        )
+        for config in strategy_configs:
+            strategy_name = getattr(self.config_manager, config['config_key'])
+            strategy_args = config['args'].get(strategy_name, {})
+            strategy_instance = self._create_strategy(
+                strategy_name,
+                config['map'],
+                config['name'],
+                **strategy_args
+            )
+            setattr(self, config['attribute'], strategy_instance)
 
     def _create_strategy(self, strategy_name: str, strategy_map: Dict[str, Type], strategy_type: str, **kwargs: Any) -> Any:
         """
