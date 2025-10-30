@@ -113,9 +113,6 @@ def get_dataloaders(dataset_name: DatasetName, model_name: ModelName, batch_size
     Raises:
         ValueError: If an unsupported `dataset_name` is provided.
     """
-    if seed is not None:
-        set_seed(seed)
-
     full_train_dataset, full_test_dataset, num_classes = _load_full_datasets(dataset_name, model_name)
 
     if niche_classes is not None:

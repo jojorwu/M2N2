@@ -121,5 +121,31 @@ class TestDataFiltering(unittest.TestCase):
         self.assertEqual(order1, order2,
                          "DataLoader shuffling is not reproducible, the fix was not successful.")
 
+    def test_get_dataloaders_does_not_affect_global_random_state(self):
+        """
+        Tests that get_dataloaders does not affect the global random state,
+        ensuring it is a pure function with respect to global seeding.
+        """
+        # Arrange
+        seed = 111
+        torch.manual_seed(seed)
+        # Get the initial state of the global generator
+        initial_state = torch.get_rng_state()
+
+        # Act
+        # Call the function, which should use its own local, seeded generators
+        # and leave the global generator untouched.
+        get_dataloaders(
+            dataset_name=DatasetName.CIFAR10, model_name=ModelName.CIFAR10,
+            validation_split=0.2, seed=seed, subset_percentage=0.1
+        )
+
+        # Assert
+        # Get the state of the global generator after the function call
+        final_state = torch.get_rng_state()
+        # The states should be identical, proving the global state was not used.
+        self.assertTrue(torch.equal(initial_state, final_state),
+                        "The function altered the global torch random state.")
+
 if __name__ == '__main__':
     unittest.main()
