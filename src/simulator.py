@@ -187,8 +187,7 @@ class EvolutionSimulator:
                 )
             )
 
-        logger.info("--- Specializing Initial Models ---")
-        self._run_specialization_phase(generation=0)
+        logger.info("--- Initial population created. Specialization will occur in the first generation. ---")
 
     def _run_specialization_phase(self, generation: int) -> None:
         """Handles the specialization of models in the population."""
@@ -348,34 +347,51 @@ class EvolutionSimulator:
         self._save_final_population()
 
     def _save_final_population(self) -> None:
-        """Saves the final population of models."""
+        """Saves the final population of models to disk."""
         logger.info("\n--- Saving final population to pretrained_models/ ---")
         model_dir = "src/pretrained_models"
         if not os.path.exists(model_dir):
             os.makedirs(model_dir)
 
         if self.config_manager.delete_old_models:
-            logger.info(f"Clearing old models loaded at the start of the run from {model_dir}...")
-            # Also clear any files that match the pattern, in case they were not loaded
-            pattern = os.path.join(model_dir, "model_niche_*.pth")
-            old_model_files = glob.glob(pattern)
-            files_to_delete = set(self.loaded_model_files + old_model_files)
-
-            if not files_to_delete:
-                logger.info("No old models found to clear.")
-            else:
-                for f in files_to_delete:
-                    try:
-                        if os.path.exists(f):
-                            os.remove(f)
-                            logger.info(f"  - Removed old model: {os.path.basename(f)}")
-                    except OSError as e:
-                        logger.error(f"Error removing file {f}: {e}")
+            self._delete_old_models(model_dir)
         else:
             logger.info("`delete_old_models` is false. Skipping cleanup of old models.")
 
         for model_wrapper in self.population:
             niche_str = "_".join(map(str, model_wrapper.niche_classes))
-            model_path = os.path.join(model_dir, f"model_niche_{niche_str}_fitness_{model_wrapper.fitness:.2f}.pth")
-            torch.save(model_wrapper.model.state_dict(), model_path)
+            filename = f"model_niche_{niche_str}_fitness_{model_wrapper.fitness:.2f}.pth"
+            model_path = os.path.join(model_dir, filename)
+            model_wrapper.save(model_path)
             logger.info(f"  - Saved model to {model_path}")
+
+    def _delete_old_models(self, model_dir: str) -> None:
+        """
+        Deletes old model files from the specified directory.
+
+        This includes models that were loaded at the start of the simulation
+        and any other files matching the simulation's standard output pattern.
+
+        Args:
+            model_dir (str): The directory from which to delete models.
+        """
+        logger.info(f"Clearing old models from {model_dir}...")
+
+        # Find all files matching the simulation's output pattern
+        pattern = os.path.join(model_dir, "model_niche_*.pth")
+        simulation_generated_files = glob.glob(pattern)
+
+        # Combine with the set of models loaded at the start
+        files_to_delete = set(self.loaded_model_files + simulation_generated_files)
+
+        if not files_to_delete:
+            logger.info("No old models found to clear.")
+            return
+
+        for f in files_to_delete:
+            try:
+                if os.path.exists(f):
+                    os.remove(f)
+                    logger.info(f"  - Removed old model: {os.path.basename(f)}")
+            except OSError as e:
+                logger.error(f"Error removing file {f}: {e}")

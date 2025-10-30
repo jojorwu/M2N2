@@ -98,6 +98,15 @@ class ModelWrapper:
             return wrapper
         return None
 
+    def save(self, filepath: str) -> None:
+        """
+        Saves the model's state dictionary to the specified file.
+
+        Args:
+            filepath (str): The path to save the model file to.
+        """
+        torch.save(self.model.state_dict(), filepath)
+
     def evaluate(self, dataset_name: str, subset_percentage: float = 1.0, seed: Optional[int] = None) -> float:
         """Evaluates fitness on the full test set and updates the wrapper.
 

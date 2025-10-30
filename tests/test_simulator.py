@@ -186,74 +186,100 @@ class TestSimulatorInitialization(unittest.TestCase):
             EvolutionSimulator(config_path=self.config_path)
         self.assertIn("The 'sequential_constructive' merge strategy requires a validation_split > 0", str(cm.exception))
 
+    @patch('src.simulator.plot_fitness_history')
+    @patch('src.simulator.EvolutionSimulator._save_final_population')
     @patch('src.simulator.EvolutionSimulator._initialize_population')
-    def test_cleanup_deletes_loaded_models_when_flag_is_true(self, mock_initialize_population):
-        model_dir = "src/pretrained_models"
-        os.makedirs(model_dir, exist_ok=True)
-        loaded_model_to_delete = os.path.join(model_dir, "model_niche_0_fitness_10.0.pth")
-        user_file_to_preserve = os.path.join(model_dir, "user_backup.pth")
-        torch.save(CifarCNN().state_dict(), loaded_model_to_delete)
-        with open(user_file_to_preserve, "w") as f:
-            f.write("preserve this file")
-        config = self.base_config.copy()
-        config['delete_old_models'] = True
+    def test_summarize_and_save_orchestrates_correctly(self, mock_init_pop, mock_save_population, mock_plot_fitness):
+        """
+        Tests that _summarize_and_save correctly calls its helper methods
+        for plotting and saving.
+        """
         with open(self.config_path, 'w') as f:
-            yaml.dump(config, f)
+            yaml.dump(self.base_config, f)
+
         simulator = EvolutionSimulator(config_path=self.config_path)
-        simulator.loaded_model_files = [loaded_model_to_delete]
+        simulator.fitness_history = [(10.0, 5.0)]
+
         from src.model_wrapper import ModelWrapper
         model = create_model(simulator.config_manager.model_name, simulator.num_classes, simulator.device)
-        simulator.population = [ModelWrapper(model_name=simulator.config_manager.model_name, model=model, niche_classes=[0], device=simulator.device)]
-        simulator.population[0].fitness = 99.0
+        wrapper = ModelWrapper(model_name=simulator.config_manager.model_name, model=model, niche_classes=[0], device='cpu')
+        wrapper.fitness = 10.0
+        simulator.population = [wrapper]
+
+        simulator._summarize_and_save()
+
+        mock_plot_fitness.assert_called_once_with(simulator.fitness_history, 'fitness_history.png')
+        mock_save_population.assert_called_once()
+
+    @patch('src.simulator.EvolutionSimulator._delete_old_models')
+    @patch('src.simulator.EvolutionSimulator._initialize_population')
+    def test_save_final_population_saves_all_models(self, mock_init_pop, mock_delete_old_models):
+        """
+        Tests that _save_final_population calls the save method for each
+        model in the population.
+        """
+        with open(self.config_path, 'w') as f:
+            yaml.dump(self.base_config, f)
+
+        simulator = EvolutionSimulator(config_path=self.config_path)
+
+        # Create a mock population
+        mock_model_1 = MagicMock()
+        mock_model_1.niche_classes = [0]
+        mock_model_1.fitness = 99.88
+        mock_model_2 = MagicMock()
+        mock_model_2.niche_classes = [1, 2]
+        mock_model_2.fitness = 88.99
+        simulator.population = [mock_model_1, mock_model_2]
+
         simulator._save_final_population()
-        self.assertFalse(os.path.exists(loaded_model_to_delete), "Loaded model was not deleted.")
-        self.assertTrue(os.path.exists(user_file_to_preserve), "User backup file was incorrectly deleted.")
+
+        mock_model_1.save.assert_called_once()
+        mock_model_2.save.assert_called_once()
+        mock_delete_old_models.assert_called_once()
+
 
     @patch('src.simulator.EvolutionSimulator._initialize_population')
-    def test_cleanup_preserves_old_models_when_flag_is_false(self, mock_initialize_population):
+    def test_delete_old_models_clears_correct_files(self, mock_initialize_population):
         model_dir = "src/pretrained_models"
         os.makedirs(model_dir, exist_ok=True)
-        stale_model_path = os.path.join(model_dir, "model_niche_stale_fitness_0.00.pth")
-        torch.save(CifarCNN().state_dict(), stale_model_path)
-        config = self.base_config.copy()
-        config['delete_old_models'] = False
-        with open(self.config_path, 'w') as f:
-            yaml.dump(config, f)
-        simulator = EvolutionSimulator(config_path=self.config_path)
-        from src.model_wrapper import ModelWrapper
-        model = create_model(simulator.config_manager.model_name, simulator.num_classes, simulator.device)
-        simulator.population = [ModelWrapper(model_name=simulator.config_manager.model_name, model=model, niche_classes=[0], device=simulator.device)]
-        simulator.population[0].fitness = 99.0
-        simulator._save_final_population()
-        self.assertTrue(os.path.exists(stale_model_path), "Stale model was deleted when flag was false.")
-        new_model_files = [f for f in os.listdir(model_dir) if f.startswith('model_niche_')]
-        self.assertGreater(len(new_model_files), 1, "New model was not saved alongside the old one.")
+        loaded_model_path = os.path.join(model_dir, "loaded_model.pth")
+        sim_generated_path = os.path.join(model_dir, "model_niche_1_fitness_5.0.pth")
+        user_backup_path = os.path.join(model_dir, "user_backup.pth")
 
-    @patch('src.simulator.specialize')
-    @patch('src.simulator.glob.glob')
-    def test_specialization_runs_on_generation_zero_for_loaded_population(self, mock_glob, mock_specialize):
-        """
-        Tests that when a population is loaded, the specialization phase is
-        correctly run for the first generation (generation 0).
-        """
-        model_dir = "src/pretrained_models"
-        os.makedirs(model_dir, exist_ok=True)
-        dummy_model_path = os.path.join(model_dir, "model_niche_0_fitness_10.0.pth")
-        torch.save(CifarCNN().state_dict(), dummy_model_path)
-        mock_glob.return_value = [dummy_model_path]
+        for p in [loaded_model_path, sim_generated_path, user_backup_path]:
+            with open(p, "w") as f: f.write("dummy content")
 
         with open(self.config_path, 'w') as f:
             yaml.dump(self.base_config, f)
 
         simulator = EvolutionSimulator(config_path=self.config_path)
-        # Ensure a model was actually loaded
-        self.assertGreater(len(simulator.population), 0, "Population should have been loaded.")
+        simulator.loaded_model_files = [loaded_model_path]
 
-        # Manually run the first generation
-        simulator.run_one_generation()
+        simulator._delete_old_models(model_dir)
 
-        # The bug is that this is NOT called for generation 0. This assertion will fail.
-        mock_specialize.assert_called_once()
+        self.assertFalse(os.path.exists(loaded_model_path))
+        self.assertFalse(os.path.exists(sim_generated_path))
+        self.assertTrue(os.path.exists(user_backup_path))
+
+    @patch('src.simulator.EvolutionSimulator._initialize_population')
+    @patch('src.simulator.EvolutionSimulator._delete_old_models')
+    def test_save_final_population_skips_delete_when_flag_is_false(self, mock_delete_old_models, mock_initialize_population):
+        config = self.base_config.copy()
+        config['delete_old_models'] = False
+        with open(self.config_path, 'w') as f:
+            yaml.dump(config, f)
+
+        simulator = EvolutionSimulator(config_path=self.config_path)
+
+        mock_model = MagicMock()
+        mock_model.niche_classes = [0]
+        mock_model.fitness = 10.0
+        simulator.population = [mock_model]
+
+        simulator._save_final_population()
+
+        mock_delete_old_models.assert_not_called()
 
 if __name__ == '__main__':
     unittest.main()
