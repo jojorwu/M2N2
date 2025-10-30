@@ -56,23 +56,21 @@ def _run_training_epoch(model_wrapper: ModelWrapper, optimizer: optim.Optimizer,
 def _run_training_session(
     model_wrapper: ModelWrapper,
     train_loader: DataLoader,
+    config_manager: "ConfigManager",
     epochs: int,
-    precision: str,
-    learning_rate: float,
     description: str,
-    show_progress_bar: bool,
     optimizer: Optional[optim.Optimizer] = None,
     scheduler: Optional[optim.lr_scheduler.ReduceLROnPlateau] = None,
     validation_loader: Optional[DataLoader] = None
 ) -> None:
     """A generalized helper to run a training session for a model."""
     if optimizer is None:
-        optimizer = optim.Adam(model_wrapper.model.parameters(), lr=learning_rate)
+        optimizer = optim.Adam(model_wrapper.model.parameters(), lr=config_manager.learning_rate)
 
-    if precision == '64':
+    if config_manager.precision_config == '64':
         model_wrapper.model.double()
 
-    scaler = torch.cuda.amp.GradScaler(enabled=(precision == '16' and 'cuda' in model_wrapper.device))
+    scaler = torch.cuda.amp.GradScaler(enabled=(config_manager.precision_config == '16' and 'cuda' in model_wrapper.device))
 
     for epoch in range(epochs):
         logger.info(f"  - Epoch {epoch + 1}/{epochs}")
@@ -81,9 +79,9 @@ def _run_training_session(
             optimizer,
             train_loader,
             scaler,
-            precision,
+            config_manager.precision_config,
             description,
-            show_progress_bar=show_progress_bar
+            show_progress_bar=config_manager.show_progress_bar
         )
         if scheduler and validation_loader:
             avg_val_loss = _calculate_loss(model_wrapper, validation_loader)
@@ -105,11 +103,9 @@ def specialize(model_wrapper: ModelWrapper, config_manager: "ConfigManager") -> 
     _run_training_session(
         model_wrapper=model_wrapper,
         train_loader=train_loader,
+        config_manager=config_manager,
         epochs=config_manager.specialize_epochs,
-        precision=config_manager.precision_config,
-        learning_rate=config_manager.learning_rate,
-        description=f"Specializing Niche {model_wrapper.niche_classes}",
-        show_progress_bar=config_manager.show_progress_bar
+        description=f"Specializing Niche {model_wrapper.niche_classes}"
     )
 
     model_wrapper.fitness_is_current = False
@@ -248,11 +244,9 @@ def finetune(model_wrapper: ModelWrapper, validation_loader: DataLoader, config_
     _run_training_session(
         model_wrapper=model_wrapper,
         train_loader=train_loader,
+        config_manager=config_manager,
         epochs=config_manager.finetune_epochs,
-        precision=config_manager.precision_config,
-        learning_rate=config_manager.learning_rate,
         description="Fine-tuning Child",
-        show_progress_bar=config_manager.show_progress_bar,
         optimizer=optimizer,
         scheduler=scheduler,
         validation_loader=validation_loader
