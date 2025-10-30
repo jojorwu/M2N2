@@ -85,32 +85,62 @@ def _run_training_session(
             scheduler.step(avg_val_loss)
             logger.info(f"  - Avg Train Loss: {avg_train_loss:.4f}, Avg Val Loss: {avg_val_loss:.4f}")
 
-def specialize(model_wrapper: ModelWrapper, config_manager: "ConfigManager") -> None:
-    """Trains a model in-place on its specialized data niche."""
-    logger.info(f"Specializing model on niche {model_wrapper.niche_classes} for {config_manager.specialize_epochs} epoch(s) with {config_manager.precision_config}-bit precision...")
+def _setup_and_run_training(
+    mode: str,
+    model_wrapper: ModelWrapper,
+    config_manager: "ConfigManager",
+    validation_loader: Optional[DataLoader] = None
+) -> None:
+    """A helper to set up and run a training session for either specialization or fine-tuning."""
+
+    if mode == 'specialize':
+        epochs = config_manager.specialize_epochs
+        description = f"Specializing Niche {model_wrapper.niche_classes}"
+        niche_classes = model_wrapper.niche_classes
+        scheduler = None
+    elif mode == 'finetune':
+        epochs = config_manager.finetune_epochs
+        description = "Fine-tuning Child"
+        niche_classes = None
+        if not validation_loader:
+            raise ValueError("Validation loader is required for fine-tuning with a scheduler.")
+    else:
+        raise ValueError(f"Invalid mode for training session: {mode}")
 
     train_loader, _, _, _ = get_dataloaders(
         dataset_name=config_manager.dataset_name,
         model_name=model_wrapper.model_name,
-        niche_classes=model_wrapper.niche_classes,
+        niche_classes=niche_classes,
         subset_percentage=config_manager.subset_percentage,
-        seed=config_manager.seed
+        seed=config_manager.seed,
+        validation_split=0.0
     )
+
     optimizer = optim.Adam(model_wrapper.model.parameters(), lr=config_manager.learning_rate)
+    if mode == 'finetune':
+        scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min', patience=config_manager.scheduler_patience, factor=config_manager.scheduler_factor)
+
     _run_training_session(
         model_wrapper=model_wrapper,
         train_loader=train_loader,
         config_manager=config_manager,
-        epochs=config_manager.specialize_epochs,
-        description=f"Specializing Niche {model_wrapper.niche_classes}",
-        optimizer=optimizer
+        epochs=epochs,
+        description=description,
+        optimizer=optimizer,
+        scheduler=scheduler,
+        validation_loader=validation_loader
     )
 
+def specialize(model_wrapper: ModelWrapper, config_manager: "ConfigManager") -> None:
+    """Trains a model in-place on its specialized data niche."""
+    logger.info(f"Specializing model on niche {model_wrapper.niche_classes} for {config_manager.specialize_epochs} epoch(s) with {config_manager.precision_config}-bit precision...")
+    _setup_and_run_training(
+        mode='specialize',
+        model_wrapper=model_wrapper,
+        config_manager=config_manager
+    )
     model_wrapper.fitness_is_current = False
     logger.info("Specialization complete.")
-
-
-
 
 from .selection_strategies import MateSelectionStrategy, HealingMateSelectionStrategy
 from .generation_strategies import GenerationStrategy, ReplaceWorstStrategy
@@ -227,28 +257,11 @@ def _calculate_loss(model_wrapper: ModelWrapper, data_loader: DataLoader) -> flo
 def finetune(model_wrapper: ModelWrapper, validation_loader: DataLoader, config_manager: "ConfigManager") -> None:
     """Fine-tunes a model in-place on the full dataset with a scheduler."""
     logger.info(f"Fine-tuning model for {config_manager.finetune_epochs} epoch(s) with {config_manager.precision_config}-bit precision and ReduceLROnPlateau scheduler...")
-
-    train_loader, _, _, _ = get_dataloaders(
-        dataset_name=config_manager.dataset_name,
-        model_name=model_wrapper.model_name,
-        subset_percentage=config_manager.subset_percentage,
-        seed=config_manager.seed,
-        validation_split=0.0
-    )
-
-    optimizer = optim.Adam(model_wrapper.model.parameters(), lr=config_manager.learning_rate)
-    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min', patience=config_manager.scheduler_patience, factor=config_manager.scheduler_factor)
-
-    _run_training_session(
+    _setup_and_run_training(
+        mode='finetune',
         model_wrapper=model_wrapper,
-        train_loader=train_loader,
         config_manager=config_manager,
-        epochs=config_manager.finetune_epochs,
-        description="Fine-tuning Child",
-        optimizer=optimizer,
-        scheduler=scheduler,
         validation_loader=validation_loader
     )
-
     model_wrapper.fitness_is_current = False
     logger.info("Fine-tuning complete.")
