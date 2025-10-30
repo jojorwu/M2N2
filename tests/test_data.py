@@ -99,5 +99,27 @@ class TestDataFiltering(unittest.TestCase):
         self.assertEqual(list(indices1), list(indices2),
                          "The data subsets are not identical, indicating a reproducibility issue.")
 
+    def test_dataloader_shuffling_is_reproducible_with_fix(self):
+        """
+        Tests that the DataLoader shuffling is reproducible after fixing the
+        shared generator bug. This test would fail with the original code.
+        """
+        # Arrange
+        seed = 888
+        # Act
+        train_loader1, _, _, _ = get_dataloaders(
+            dataset_name=DatasetName.CIFAR10, model_name=ModelName.CIFAR10,
+            validation_split=0.2, seed=seed, subset_percentage=0.1, batch_size=32
+        )
+        train_loader2, _, _, _ = get_dataloaders(
+            dataset_name=DatasetName.CIFAR10, model_name=ModelName.CIFAR10,
+            validation_split=0.2, seed=seed, subset_percentage=0.1, batch_size=32
+        )
+        # Assert
+        order1 = [torch.mean(batch[0]).item() for batch in train_loader1]
+        order2 = [torch.mean(batch[0]).item() for batch in train_loader2]
+        self.assertEqual(order1, order2,
+                         "DataLoader shuffling is not reproducible, the fix was not successful.")
+
 if __name__ == '__main__':
     unittest.main()

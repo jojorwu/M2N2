@@ -144,22 +144,30 @@ def get_dataloaders(dataset_name: DatasetName, model_name: ModelName, batch_size
     train_size = num_train - split
     val_size = split
 
-    # Create a generator for reproducibility if a seed is provided
-    g = torch.Generator()
+    # Create a dedicated, seeded generator for reproducible splitting.
+    split_generator = torch.Generator()
     if seed is not None:
-        g.manual_seed(seed)
+        split_generator.manual_seed(seed)
 
-    train_subset, validation_subset = random_split(full_train_dataset, [train_size, val_size], generator=g)
+    train_subset, validation_subset = random_split(
+        full_train_dataset, [train_size, val_size], generator=split_generator
+    )
 
     # Performance optimizations for DataLoader
     num_workers = 4 if torch.cuda.is_available() else 0
     pin_memory = True if torch.cuda.is_available() else False
 
+    # Create a second, identically seeded generator for reproducible shuffling.
+    # This isolates shuffling from splitting, fixing the reproducibility bug.
+    shuffle_generator = torch.Generator()
+    if seed is not None:
+        shuffle_generator.manual_seed(seed)
+
     train_loader = DataLoader(
         dataset=train_subset,
         batch_size=batch_size,
         shuffle=True,
-        generator=g,
+        generator=shuffle_generator,
         num_workers=num_workers,
         pin_memory=pin_memory
     )
