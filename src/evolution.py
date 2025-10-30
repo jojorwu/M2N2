@@ -59,14 +59,11 @@ def _run_training_session(
     config_manager: "ConfigManager",
     epochs: int,
     description: str,
-    optimizer: Optional[optim.Optimizer] = None,
+    optimizer: optim.Optimizer,
     scheduler: Optional[optim.lr_scheduler.ReduceLROnPlateau] = None,
     validation_loader: Optional[DataLoader] = None
 ) -> None:
     """A generalized helper to run a training session for a model."""
-    if optimizer is None:
-        optimizer = optim.Adam(model_wrapper.model.parameters(), lr=config_manager.learning_rate)
-
     if config_manager.precision_config == '64':
         model_wrapper.model.double()
 
@@ -99,13 +96,14 @@ def specialize(model_wrapper: ModelWrapper, config_manager: "ConfigManager") -> 
         subset_percentage=config_manager.subset_percentage,
         seed=config_manager.seed
     )
-
+    optimizer = optim.Adam(model_wrapper.model.parameters(), lr=config_manager.learning_rate)
     _run_training_session(
         model_wrapper=model_wrapper,
         train_loader=train_loader,
         config_manager=config_manager,
         epochs=config_manager.specialize_epochs,
-        description=f"Specializing Niche {model_wrapper.niche_classes}"
+        description=f"Specializing Niche {model_wrapper.niche_classes}",
+        optimizer=optimizer
     )
 
     model_wrapper.fitness_is_current = False
