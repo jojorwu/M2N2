@@ -32,48 +32,68 @@ class ConfigManager:
             self.config = yaml.safe_load(f)
         self._initialize_parameters()
 
+    def _get_required(self, key: str) -> Any:
+        """Gets a required config value, raising ValueError if missing."""
+        value = self.config.get(key)
+        if value is None:
+            raise ValueError(f"Missing required configuration key: '{key}'")
+        return value
+
     def _initialize_parameters(self) -> None:
         """Initializes all simulation parameters from the loaded config."""
         # --- General settings ---
-        self.model_name = ModelName(self.config['model_name'])
-        self.dataset_name = DatasetName(self.config['dataset_name'])
-        self.precision_config = str(self.config['precision_config'])
-        self.num_generations = self.config['num_generations']
-        self.population_size = self.config['population_size']
+        self.model_name = ModelName(self._get_required('model_name'))
+        self.dataset_name = DatasetName(self._get_required('dataset_name'))
+        self.precision_config = str(self._get_required('precision_config'))
+        self.num_generations = self._get_required('num_generations')
+        self.population_size = self._get_required('population_size')
         self.delete_old_models = self.config.get('delete_old_models', True)
 
         # --- Evolutionary settings ---
-        self.mate_selection_strategy = self.config['mate_selection_strategy']
+        self.mate_selection_strategy = self._get_required('mate_selection_strategy')
         self.generation_strategy = self.config.get('generation_strategy', 'replace_worst')
-        self.merge_strategy = self.config['merge_strategy']
-        self.dampening_factor = self.config['fitness_weighted_merge_dampening_factor']
-        self.mutation_rate = self.config['mutation_rate']
-        self.initial_mutation_strength = self.config['initial_mutation_strength']
-        self.mutation_decay_factor = self.config['mutation_decay_factor']
+        self.merge_strategy = self._get_required('merge_strategy')
+        self.dampening_factor = self._get_required('fitness_weighted_merge_dampening_factor')
+        self.mutation_rate = self._get_required('mutation_rate')
+        self.initial_mutation_strength = self._get_required('initial_mutation_strength')
+        self.mutation_decay_factor = self._get_required('mutation_decay_factor')
 
         # --- Optimizer settings ---
-        self.learning_rate = self.config['optimizer_config']['learning_rate']
+        optimizer_config = self._get_required('optimizer_config')
+        self.learning_rate = optimizer_config.get('learning_rate')
+        if self.learning_rate is None:
+            raise ValueError("Missing required optimizer_config key: 'learning_rate'")
 
         # --- Scheduler settings ---
-        self.scheduler_patience = self.config['scheduler_config']['patience']
-        self.scheduler_factor = self.config['scheduler_config']['factor']
+        scheduler_config = self._get_required('scheduler_config')
+        self.scheduler_patience = scheduler_config.get('patience')
+        self.scheduler_factor = scheduler_config.get('factor')
+        if self.scheduler_patience is None:
+            raise ValueError("Missing required scheduler_config key: 'patience'")
+        if self.scheduler_factor is None:
+            raise ValueError("Missing required scheduler_config key: 'factor'")
 
         # --- Data settings ---
-        self.subset_percentage = self.config['subset_percentage']
-        self.validation_split = self.config['validation_split']
-        self.batch_size = self.config['batch_size']
+        self.subset_percentage = self._get_required('subset_percentage')
+        self.validation_split = self._get_required('validation_split')
+        self.batch_size = self._get_required('batch_size')
 
         # --- UI settings ---
         self.show_progress_bar = self.config.get('show_progress_bar', True)
 
         # --- Training epochs ---
+        default_epochs = self._get_required('default_epochs')
         model_epochs = self.config.get('model_specific_epochs', {}).get(self.model_name.value)
         if model_epochs:
-            self.specialize_epochs = model_epochs['specialize']
-            self.finetune_epochs = model_epochs['finetune']
+            self.specialize_epochs = model_epochs.get('specialize', default_epochs.get('specialize', 0))
+            self.finetune_epochs = model_epochs.get('finetune', default_epochs.get('finetune', 0))
         else:
-            self.specialize_epochs = self.config['default_epochs']['specialize']
-            self.finetune_epochs = self.config['default_epochs']['finetune']
+            self.specialize_epochs = default_epochs.get('specialize')
+            self.finetune_epochs = default_epochs.get('finetune')
+            if self.specialize_epochs is None:
+                raise ValueError("Missing required default_epochs key: 'specialize'")
+            if self.finetune_epochs is None:
+                raise ValueError("Missing required default_epochs key: 'finetune'")
 
         # --- Seed for reproducibility ---
         self.seed = self.config.get('seed') or np.random.randint(0, 1_000_000)
