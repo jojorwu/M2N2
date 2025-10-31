@@ -281,5 +281,23 @@ class TestSimulatorInitialization(unittest.TestCase):
 
         mock_delete_old_models.assert_not_called()
 
+    @patch('src.simulator.EvolutionSimulator._initialize_population')
+    def test_evaluation_phase_handles_empty_population_gracefully(self, mock_init_pop):
+        """
+        Tests that _run_evaluation_phase handles an empty population gracefully
+        by logging an error and returning, instead of crashing.
+        """
+        with open(self.config_path, 'w') as f:
+            yaml.dump(self.base_config, f)
+
+        simulator = EvolutionSimulator(config_path=self.config_path)
+        simulator.population = []
+
+        # Use assertLogs to check for the expected error message
+        with self.assertLogs('M2N2_SIMULATOR', level='ERROR') as cm:
+            simulator._run_evaluation_phase()
+            # Verify that the correct error message was logged
+            self.assertIn("Population is empty. Cannot run evaluation.", cm.output[0])
+
 if __name__ == '__main__':
     unittest.main()

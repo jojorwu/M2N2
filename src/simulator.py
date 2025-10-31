@@ -218,6 +218,10 @@ class EvolutionSimulator:
     def _run_evaluation_phase(self) -> None:
         """Handles the evaluation of the population."""
         logger.info("--- Evaluating Population on Test Set ---")
+        if not self.population:
+            logger.error("Population is empty. Cannot run evaluation.")
+            return
+
         for model_wrapper in self.population:
             model_wrapper.evaluate(
                 dataset_name=self.config_manager.dataset_name,
