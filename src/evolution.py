@@ -116,6 +116,14 @@ def _setup_and_run_training(
         validation_split=0.0
     )
 
+    if len(train_loader) == 0:
+        logger.warning(
+            f"Skipping {mode} for niche {model_wrapper.niche_classes} "
+            "as the data loader is empty. This can happen with a small "
+            "subset_percentage or if niche classes have no samples in the subset."
+        )
+        return
+
     optimizer = optim.Adam(model_wrapper.model.parameters(), lr=config_manager.learning_rate)
     if mode == 'finetune':
         scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min', patience=config_manager.scheduler_patience, factor=config_manager.scheduler_factor)
