@@ -113,9 +113,6 @@ def get_dataloaders(dataset_name: DatasetName, model_name: ModelName, batch_size
     Raises:
         ValueError: If an unsupported `dataset_name` is provided.
     """
-    if seed is not None:
-        set_seed(seed)
-
     full_train_dataset, full_test_dataset, num_classes = _load_full_datasets(dataset_name, model_name)
 
     if niche_classes is not None:
@@ -125,41 +122,47 @@ def get_dataloaders(dataset_name: DatasetName, model_name: ModelName, batch_size
             niche_indices = [i for i, (_, label) in enumerate(full_train_dataset) if label in niche_classes]
         full_train_dataset = Subset(full_train_dataset, niche_indices)
 
+    # --- Subset Splitting ---
+    # Use a dedicated generator for subsetting to isolate this random operation.
     if subset_percentage < 1.0:
-        g = torch.Generator()
+        subset_g = torch.Generator()
         if seed is not None:
-            g.manual_seed(seed)
+            subset_g.manual_seed(seed)
 
         num_train = int(len(full_train_dataset) * subset_percentage)
-        train_indices = torch.randperm(len(full_train_dataset), generator=g)[:num_train].tolist()
+        train_indices = torch.randperm(len(full_train_dataset), generator=subset_g)[:num_train].tolist()
         full_train_dataset = Subset(full_train_dataset, train_indices)
 
         num_test = int(len(full_test_dataset) * subset_percentage)
-        test_indices = torch.randperm(len(full_test_dataset), generator=g)[:num_test].tolist()
+        test_indices = torch.randperm(len(full_test_dataset), generator=subset_g)[:num_test].tolist()
         full_test_dataset = Subset(full_test_dataset, test_indices)
 
-    # Split training data into training and validation using torch's random_split
+    # --- Validation Splitting ---
+    # Use a second dedicated generator for the validation split.
     num_train = len(full_train_dataset)
     split = int(np.floor(validation_split * num_train))
     train_size = num_train - split
     val_size = split
 
-    # Create a generator for reproducibility if a seed is provided
-    g = torch.Generator()
+    val_g = torch.Generator()
     if seed is not None:
-        g.manual_seed(seed)
-
-    train_subset, validation_subset = random_split(full_train_dataset, [train_size, val_size], generator=g)
+        val_g.manual_seed(seed)
+    train_subset, validation_subset = random_split(full_train_dataset, [train_size, val_size], generator=val_g)
 
     # Performance optimizations for DataLoader
     num_workers = 4 if torch.cuda.is_available() else 0
     pin_memory = True if torch.cuda.is_available() else False
 
+    # Use a third dedicated generator for the training loader's shuffling.
+    loader_g = torch.Generator()
+    if seed is not None:
+        loader_g.manual_seed(seed)
+
     train_loader = DataLoader(
         dataset=train_subset,
         batch_size=batch_size,
         shuffle=True,
-        generator=g,
+        generator=loader_g,
         num_workers=num_workers,
         pin_memory=pin_memory
     )
