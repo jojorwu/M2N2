@@ -207,13 +207,19 @@ class EvolutionSimulator:
 
     def _initialize_fitness_log(self) -> None:
         """Creates the fitness log file and writes the header."""
-        with open(FITNESS_LOG_FILE, "w") as f:
-            f.write("generation,best_fitness,average_fitness\n")
+        try:
+            with open(FITNESS_LOG_FILE, "w") as f:
+                f.write("generation,best_fitness,average_fitness\n")
+        except OSError as e:
+            logger.warning(f"Could not write to fitness log file at {FITNESS_LOG_FILE}: {e}")
 
     def _log_fitness_to_csv(self, generation: int, best_fitness: float, avg_fitness: float) -> None:
         """Appends the current generation's fitness data to the CSV log."""
-        with open(FITNESS_LOG_FILE, "a") as f:
-            f.write(f"{generation},{best_fitness:.2f},{avg_fitness:.2f}\n")
+        try:
+            with open(FITNESS_LOG_FILE, "a") as f:
+                f.write(f"{generation},{best_fitness:.2f},{avg_fitness:.2f}\n")
+        except OSError as e:
+            logger.warning(f"Failed to append to fitness log file at {FITNESS_LOG_FILE}: {e}")
 
     def _run_evaluation_phase(self) -> None:
         """Handles the evaluation of the population."""
@@ -379,22 +385,28 @@ class EvolutionSimulator:
 
     def _delete_old_models(self, model_dir: str) -> None:
         """
-        Deletes old model files from the specified directory.
-
-        This includes models that were loaded at the start of the simulation
-        and any other files matching the simulation's standard output pattern.
+        Deletes old model files from the specified directory by removing any
+        simulation-generated files that are not part of the final population.
+        This prevents deleting and immediately re-saving surviving models.
 
         Args:
             model_dir (str): The directory from which to delete models.
         """
         logger.info(f"Clearing old models from {model_dir}...")
 
-        # Find all files matching the simulation's output pattern
-        pattern = os.path.join(model_dir, "model_niche_*.pth")
-        simulation_generated_files = glob.glob(pattern)
+        # Determine the filenames of the models in the final population.
+        final_population_files = set()
+        for model_wrapper in self.population:
+            niche_str = "_".join(map(str, model_wrapper.niche_classes))
+            filename = f"model_niche_{niche_str}_fitness_{model_wrapper.fitness:.2f}.pth"
+            final_population_files.add(os.path.join(model_dir, filename))
 
-        # Combine with the set of models loaded at the start
-        files_to_delete = set(self.loaded_model_files + simulation_generated_files)
+        # Find all existing model files that match the simulation pattern.
+        pattern = os.path.join(model_dir, "model_niche_*.pth")
+        existing_model_files = set(glob.glob(pattern))
+
+        # The files to delete are those that exist but are not in the final population.
+        files_to_delete = existing_model_files - final_population_files
 
         if not files_to_delete:
             logger.info("No old models found to clear.")
