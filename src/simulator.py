@@ -207,27 +207,17 @@ class EvolutionSimulator:
 
     def _initialize_fitness_log(self) -> None:
         """Creates the fitness log file and writes the header."""
-        try:
-            with open(FITNESS_LOG_FILE, "w") as f:
-                f.write("generation,best_fitness,average_fitness\n")
-        except OSError as e:
-            logger.warning(f"Could not write to fitness log file at {FITNESS_LOG_FILE}: {e}")
+        with open(FITNESS_LOG_FILE, "w") as f:
+            f.write("generation,best_fitness,average_fitness\n")
 
     def _log_fitness_to_csv(self, generation: int, best_fitness: float, avg_fitness: float) -> None:
         """Appends the current generation's fitness data to the CSV log."""
-        try:
-            with open(FITNESS_LOG_FILE, "a") as f:
-                f.write(f"{generation},{best_fitness:.2f},{avg_fitness:.2f}\n")
-        except OSError as e:
-            logger.warning(f"Failed to append to fitness log file at {FITNESS_LOG_FILE}: {e}")
+        with open(FITNESS_LOG_FILE, "a") as f:
+            f.write(f"{generation},{best_fitness:.2f},{avg_fitness:.2f}\n")
 
     def _run_evaluation_phase(self) -> None:
         """Handles the evaluation of the population."""
         logger.info("--- Evaluating Population on Test Set ---")
-        if not self.population:
-            logger.error("Population is empty. Cannot run evaluation.")
-            return
-
         for model_wrapper in self.population:
             model_wrapper.evaluate(
                 dataset_name=self.config_manager.dataset_name,

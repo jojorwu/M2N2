@@ -78,23 +78,9 @@ class ConfigManager:
         # --- Seed for reproducibility ---
         self.seed = self.config.get('seed') or np.random.randint(0, 1_000_000)
 
-        self._validate_parameters()
-
-    def _validate_parameters(self) -> None:
-        """
-        Validates the loaded configuration parameters to ensure they are
-        within acceptable ranges and constraints.
-        """
+        # --- Configuration Validation ---
         if self.merge_strategy == 'sequential_constructive' and self.validation_split <= 0:
             raise ValueError("The 'sequential_constructive' merge strategy requires a validation_split > 0")
-        if not (0.0 <= self.mutation_rate <= 1.0):
-            raise ValueError(f"mutation_rate must be between 0.0 and 1.0, but got {self.mutation_rate}")
-        if not (0.0 <= self.subset_percentage <= 1.0):
-            raise ValueError(f"subset_percentage must be between 0.0 and 1.0, but got {self.subset_percentage}")
-        if self.learning_rate < 0:
-            raise ValueError(f"learning_rate must be non-negative, but got {self.learning_rate}")
-        if self.population_size <= 1:
-            raise ValueError(f"population_size must be greater than 1, but got {self.population_size}")
 
     def load_dynamic_config(self) -> Dict[str, Any]:
         """

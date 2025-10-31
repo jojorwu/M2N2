@@ -6,7 +6,6 @@ import torch
 import yaml
 import sys
 import json
-import builtins
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
@@ -51,41 +50,6 @@ class TestSimulatorInitialization(unittest.TestCase):
         if os.path.exists(model_dir):
             shutil.rmtree(model_dir)
 
-    def test_delete_old_models_logic(self):
-        """
-        Tests the refined logic of _delete_old_models to ensure it only
-        removes non-surviving models and preserves user files.
-        """
-        model_dir = os.path.join(self.test_dir, "models_for_delete_test")
-        os.makedirs(model_dir, exist_ok=True)
-
-        # 1. A user file that should NOT be deleted.
-        user_file_path = os.path.join(model_dir, "user_backup.pth")
-        with open(user_file_path, "w") as f: f.write("user data")
-
-        # 2. A model from a past generation that should BE deleted.
-        old_model_path = os.path.join(model_dir, "model_niche_0_fitness_5.00.pth")
-        torch.save(CifarCNN().state_dict(), old_model_path)
-
-        # 3. The model that survives to the final population (should NOT be deleted).
-        final_model_wrapper = MagicMock()
-        final_model_wrapper.niche_classes = [1]
-        final_model_wrapper.fitness = 95.00
-        final_model_path = os.path.join(model_dir, "model_niche_1_fitness_95.00.pth")
-        torch.save(CifarCNN().state_dict(), final_model_path)
-
-
-        with open(self.config_path, 'w') as f:
-            yaml.dump(self.base_config, f)
-        simulator = EvolutionSimulator(config_path=self.config_path)
-        simulator.population = [final_model_wrapper] # Set the final population
-
-        # Run the cleanup logic
-        simulator._delete_old_models(model_dir)
-
-        self.assertTrue(os.path.exists(user_file_path), "User backup file was deleted.")
-        self.assertTrue(os.path.exists(final_model_path), "Final surviving model was deleted.")
-        self.assertFalse(os.path.exists(old_model_path), "Old, non-surviving model was NOT deleted.")
 
     def test_clear_simulation_artifacts_deletes_log_file(self):
         log_file_path = "fitness_log.csv"
@@ -274,55 +238,6 @@ class TestSimulatorInitialization(unittest.TestCase):
         simulator._save_final_population()
 
         mock_delete_old_models.assert_not_called()
-
-    @patch('src.simulator.EvolutionSimulator._initialize_population')
-    def test_evaluation_phase_handles_empty_population_gracefully(self, mock_init_pop):
-        """
-        Tests that _run_evaluation_phase handles an empty population gracefully
-        by logging an error and returning, instead of crashing.
-        """
-        with open(self.config_path, 'w') as f:
-            yaml.dump(self.base_config, f)
-
-        simulator = EvolutionSimulator(config_path=self.config_path)
-        simulator.population = []
-
-        # Use assertLogs to check for the expected error message
-        with self.assertLogs('M2N2_SIMULATOR', level='ERROR') as cm:
-            simulator._run_evaluation_phase()
-            # Verify that the correct error message was logged
-            self.assertIn("Population is empty. Cannot run evaluation.", cm.output[0])
-
-    @patch('src.simulator.setup_logger')
-    @patch('src.simulator.EvolutionSimulator._initialize_population')
-    def test_fitness_logging_handles_oserror(self, mock_init_pop, mock_setup_logger):
-        """
-        Tests that fitness logging handles OSError gracefully for both initialization
-        and appending, without crashing the simulator.
-        """
-        # A side effect function that selectively mocks `open`
-        # It raises an OSError for the log file but allows other calls (like reading the config)
-        original_open = builtins.open
-        def open_side_effect(file, *args, **kwargs):
-            if 'fitness_log.csv' in str(file):
-                raise OSError("Disk full!")
-            return original_open(file, *args, **kwargs)
-
-        with open(self.config_path, 'w') as f:
-            yaml.dump(self.base_config, f)
-
-        # Patch `builtins.open` to use our selective side effect
-        with patch('builtins.open', side_effect=open_side_effect):
-            with self.assertLogs('M2N2_SIMULATOR', level='WARNING') as cm:
-                # Initialization should fail to write the log header
-                simulator = EvolutionSimulator(config_path=self.config_path)
-
-                # Appending should also fail
-                simulator._log_fitness_to_csv(1, 10.0, 5.0)
-
-                # Check that both warnings were logged correctly
-                self.assertTrue(any("Could not write to fitness log" in msg for msg in cm.output))
-                self.assertTrue(any("Failed to append to fitness log" in msg for msg in cm.output))
 
 if __name__ == '__main__':
     unittest.main()

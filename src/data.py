@@ -13,12 +13,9 @@ from datasets import load_dataset
 from transformers import AutoTokenizer
 import os
 import numpy as np
-import logging
 from .utils import set_seed
 from .enums import DatasetName, ModelName
 from typing import Optional, List
-
-logger = logging.getLogger("M2N2_DATALOADER")
 
 class TextDataset(Dataset):
     """A custom PyTorch Dataset for handling tokenized text data."""
@@ -116,6 +113,9 @@ def get_dataloaders(dataset_name: DatasetName, model_name: ModelName, batch_size
     Raises:
         ValueError: If an unsupported `dataset_name` is provided.
     """
+    if seed is not None:
+        set_seed(seed)
+
     full_train_dataset, full_test_dataset, num_classes = _load_full_datasets(dataset_name, model_name)
 
     if niche_classes is not None:
@@ -144,38 +144,22 @@ def get_dataloaders(dataset_name: DatasetName, model_name: ModelName, batch_size
     train_size = num_train - split
     val_size = split
 
-    # Log a warning if the validation set is unexpectedly empty
-    if validation_split > 0 and val_size == 0 and num_train > 0:
-        logger.warning(
-            f"Validation set is empty. The training set has {num_train} samples, "
-            f"but the validation_split of {validation_split} is too small to create "
-            "a non-empty validation set. Consider increasing the split or the dataset size."
-        )
-
-    # Create a dedicated, seeded generator for reproducible splitting.
-    split_generator = torch.Generator()
+    # Create a generator for reproducibility if a seed is provided
+    g = torch.Generator()
     if seed is not None:
-        split_generator.manual_seed(seed)
+        g.manual_seed(seed)
 
-    train_subset, validation_subset = random_split(
-        full_train_dataset, [train_size, val_size], generator=split_generator
-    )
+    train_subset, validation_subset = random_split(full_train_dataset, [train_size, val_size], generator=g)
 
     # Performance optimizations for DataLoader
     num_workers = 4 if torch.cuda.is_available() else 0
     pin_memory = True if torch.cuda.is_available() else False
 
-    # Create a second, identically seeded generator for reproducible shuffling.
-    # This isolates shuffling from splitting, fixing the reproducibility bug.
-    shuffle_generator = torch.Generator()
-    if seed is not None:
-        shuffle_generator.manual_seed(seed)
-
     train_loader = DataLoader(
         dataset=train_subset,
         batch_size=batch_size,
         shuffle=True,
-        generator=shuffle_generator,
+        generator=g,
         num_workers=num_workers,
         pin_memory=pin_memory
     )
