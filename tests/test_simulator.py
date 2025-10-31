@@ -50,6 +50,26 @@ class TestSimulatorInitialization(unittest.TestCase):
         if os.path.exists(model_dir):
             shutil.rmtree(model_dir)
 
+    def test_save_final_population_preserves_unrelated_files(self):
+        model_dir = "src/pretrained_models"
+        os.makedirs(model_dir, exist_ok=True)
+        loaded_model_path = os.path.join(model_dir, "model_niche_0_fitness_10.00.pth")
+        user_file_path = os.path.join(model_dir, "user_backup_model.pth")
+        dummy_model = CifarCNN()
+        torch.save(dummy_model.state_dict(), loaded_model_path)
+        with open(user_file_path, "w") as f:
+            f.write("This is a user backup, do not delete.")
+        config = self.base_config.copy()
+        config['num_generations'] = 1
+        config['population_size'] = 1
+        with open(self.config_path, 'w') as f:
+            yaml.dump(config, f)
+        simulator = EvolutionSimulator(config_path=self.config_path)
+        simulator.run()
+        self.assertTrue(os.path.exists(user_file_path), "The user's unrelated file was deleted.")
+        self.assertFalse(os.path.exists(loaded_model_path), "The original loaded model file was not deleted.")
+        new_model_files = [f for f in os.listdir(model_dir) if f.startswith('model_niche_')]
+        self.assertGreater(len(new_model_files), 0, "No new model was saved to the directory.")
 
     def test_clear_simulation_artifacts_deletes_log_file(self):
         log_file_path = "fitness_log.csv"
@@ -219,6 +239,28 @@ class TestSimulatorInitialization(unittest.TestCase):
         mock_delete_old_models.assert_called_once()
 
 
+    @patch('src.simulator.EvolutionSimulator._initialize_population')
+    def test_delete_old_models_clears_correct_files(self, mock_initialize_population):
+        model_dir = "src/pretrained_models"
+        os.makedirs(model_dir, exist_ok=True)
+        loaded_model_path = os.path.join(model_dir, "loaded_model.pth")
+        sim_generated_path = os.path.join(model_dir, "model_niche_1_fitness_5.0.pth")
+        user_backup_path = os.path.join(model_dir, "user_backup.pth")
+
+        for p in [loaded_model_path, sim_generated_path, user_backup_path]:
+            with open(p, "w") as f: f.write("dummy content")
+
+        with open(self.config_path, 'w') as f:
+            yaml.dump(self.base_config, f)
+
+        simulator = EvolutionSimulator(config_path=self.config_path)
+        simulator.loaded_model_files = [loaded_model_path]
+
+        simulator._delete_old_models(model_dir)
+
+        self.assertFalse(os.path.exists(loaded_model_path))
+        self.assertFalse(os.path.exists(sim_generated_path))
+        self.assertTrue(os.path.exists(user_backup_path))
 
     @patch('src.simulator.EvolutionSimulator._initialize_population')
     @patch('src.simulator.EvolutionSimulator._delete_old_models')

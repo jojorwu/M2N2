@@ -69,21 +69,28 @@ def _run_training_session(
 
     scaler = torch.cuda.amp.GradScaler(enabled=(config_manager.precision_config == '16' and 'cuda' in model_wrapper.device))
 
-    for epoch in range(epochs):
-        logger.info(f"  - Epoch {epoch + 1}/{epochs}")
-        avg_train_loss = _run_training_epoch(
-            model_wrapper,
-            optimizer,
-            train_loader,
-            scaler,
-            config_manager.precision_config,
-            description,
-            show_progress_bar=config_manager.show_progress_bar
+    try:
+        for epoch in range(epochs):
+            logger.info(f"  - Epoch {epoch + 1}/{epochs}")
+            avg_train_loss = _run_training_epoch(
+                model_wrapper,
+                optimizer,
+                train_loader,
+                scaler,
+                config_manager.precision_config,
+                description,
+                show_progress_bar=config_manager.show_progress_bar
+            )
+            if scheduler and validation_loader:
+                avg_val_loss = _calculate_loss(model_wrapper, validation_loader)
+                scheduler.step(avg_val_loss)
+                logger.info(f"  - Avg Train Loss: {avg_train_loss:.4f}, Avg Val Loss: {avg_val_loss:.4f}")
+    except RuntimeError as e:
+        logger.warning(
+            f"Training for model on niche {model_wrapper.niche_classes} failed due to a RuntimeError: {e}. "
+            "Stopping training for this model, but the simulation will continue."
         )
-        if scheduler and validation_loader:
-            avg_val_loss = _calculate_loss(model_wrapper, validation_loader)
-            scheduler.step(avg_val_loss)
-            logger.info(f"  - Avg Train Loss: {avg_train_loss:.4f}, Avg Val Loss: {avg_val_loss:.4f}")
+        return  # Stop training for this model but allow simulation to continue
 
 def _setup_and_run_training(
     mode: str,
