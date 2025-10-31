@@ -147,5 +147,27 @@ class TestDataFiltering(unittest.TestCase):
         self.assertTrue(torch.equal(initial_state, final_state),
                         "The function altered the global torch random state.")
 
+    def test_warning_for_empty_validation_set(self):
+        """
+        Tests that a warning is logged when a non-zero validation split
+        results in an empty validation set.
+        """
+        # Arrange
+        # Use a very small subset and a small validation split to guarantee
+        # that the number of validation samples rounds down to zero.
+        # 10 samples * 0.05 = 0.5, which rounds down to 0.
+        with self.assertLogs('M2N2_DATALOADER', level='WARNING') as cm:
+            # Act
+            get_dataloaders(
+                dataset_name=DatasetName.CIFAR10,
+                model_name=ModelName.CIFAR10,
+                subset_percentage=0.0002,  # Approx. 10 samples
+                validation_split=0.05,
+                seed=42
+            )
+            # Assert
+            self.assertEqual(len(cm.output), 1)
+            self.assertIn("Validation set is empty", cm.output[0])
+
 if __name__ == '__main__':
     unittest.main()
