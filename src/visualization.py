@@ -36,7 +36,7 @@ def plot_fitness_history(fitness_history, output_path):
     # BUG FIX: Use MaxNLocator to ensure the x-axis has a reasonable number
     # of integer ticks, preventing overcrowding on long runs.
     ax = plt.gca()
-    ax.xaxis.set_major_locator(MaxNLocator(integer=True, prune='both'))
+    ax.xaxis.set_major_locator(MaxNLocator(integer=True, prune=None))
 
     plt.savefig(output_path)
     print(f"\nFitness history plot saved to {output_path}")
