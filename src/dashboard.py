@@ -6,7 +6,7 @@ import time
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 import json
 import yaml
-from constants import COMMAND_FILE, FITNESS_LOG_FILE
+from constants import COMMAND_FILE, FITNESS_LOG_FILENAME
 
 def _update_command_file(updates: dict):
     """Helper to read, update, and write the command config file."""
@@ -27,7 +27,7 @@ def _update_command_file(updates: dict):
 
 def show_monitoring_page():
     # --- Main Content Area for Displaying Simulation State ---
-    if not os.path.exists(FITNESS_LOG_FILE):
+    if not os.path.exists(FITNESS_LOG_FILENAME):
         st.warning(
             "The 'fitness_log.csv' file was not found. "
             "Please start the simulation by running `python3 -m src.main` in your terminal. "
@@ -39,7 +39,7 @@ def show_monitoring_page():
 
     # Read and Display Data
     try:
-        df = pd.read_csv(FITNESS_LOG_FILE)
+        df = pd.read_csv(FITNESS_LOG_FILENAME)
 
         if not df.empty:
             st.header("Fitness History")
@@ -105,6 +105,15 @@ def show_settings_page():
         config['initial_mutation_strength'] = st.slider("Initial Mutation Strength", 0.0, 1.0, value=config.get('initial_mutation_strength', 0.1))
         config['mutation_decay_factor'] = st.slider("Mutation Decay Factor", 0.0, 1.0, value=config.get('mutation_decay_factor', 0.99))
 
+    st.subheader("Mate Selection Strategy")
+    mate_options = ['healing']
+    current_mate_strategy = config.get('mate_selection_strategy', 'healing')
+    if current_mate_strategy not in mate_options:
+        current_mate_strategy = 'healing'
+    config['mate_selection_strategy'] = st.selectbox("Mate Selection Strategy",
+                                                     options=mate_options,
+                                                     index=mate_options.index(current_mate_strategy))
+
     st.subheader("Optimizer and Scheduler")
     col1, col2 = st.columns(2) # Re-using col1 and col2 is fine
 
@@ -128,6 +137,7 @@ def show_settings_page():
             'population_size': config.get('population_size'),
             'mutation_rate': config.get('mutation_rate'),
             'merge_strategy': config.get('merge_strategy'),
+            'mate_selection_strategy': config.get('mate_selection_strategy'),
             'initial_mutation_strength': config.get('initial_mutation_strength'),
             'mutation_decay_factor': config.get('mutation_decay_factor'),
             'optimizer_config': {
