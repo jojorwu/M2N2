@@ -208,13 +208,18 @@ def mutate(model_wrapper: ModelWrapper, generation: int, config_manager: "Config
     decayed_strength = config_manager.initial_mutation_strength * (config_manager.mutation_decay_factor ** generation)
     logger.info(f"Mutating child model (Gen: {generation}, Strength: {decayed_strength:.4f})...")
 
-    generator = torch.Generator(device=model_wrapper.device)
-    if seed is not None:
-        generator.manual_seed(seed)
-
     with torch.no_grad():
+        # Use a counter to ensure each layer gets a unique, deterministic seed
+        param_idx = 0
         for param in model_wrapper.model.parameters():
             if param.dim() > 1:
+                # Create a new generator for each layer to ensure independence
+                generator = torch.Generator(device=model_wrapper.device)
+                if seed is not None:
+                    # Combine the global seed with the layer index for a unique,
+                    # deterministic seed per layer.
+                    generator.manual_seed(seed + param_idx)
+
                 num_weights = param.numel()
                 num_to_mutate = int(num_weights * config_manager.mutation_rate)
 
@@ -225,6 +230,7 @@ def mutate(model_wrapper: ModelWrapper, generation: int, config_manager: "Config
                 mutation = torch.randn(num_to_mutate, device=model_wrapper.device, generator=generator) * decayed_strength
 
                 param.view(-1)[indices_to_mutate] += mutation
+            param_idx += 1
 
     model_wrapper.fitness_is_current = False
     logger.info("Mutation complete.")
