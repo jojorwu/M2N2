@@ -13,9 +13,12 @@ from datasets import load_dataset
 from transformers import AutoTokenizer
 import os
 import numpy as np
+import logging
 from .utils import set_seed
 from .enums import DatasetName, ModelName
 from typing import Optional, List
+
+logger = logging.getLogger("M2N2_SIMULATOR")
 
 class TextDataset(Dataset):
     """A custom PyTorch Dataset for handling tokenized text data."""
@@ -143,6 +146,13 @@ def get_dataloaders(dataset_name: DatasetName, model_name: ModelName, batch_size
     split = int(np.floor(validation_split * num_train))
     train_size = num_train - split
     val_size = split
+
+    if validation_split > 0 and val_size == 0:
+        logger.warning(
+            f"Validation split {validation_split} is too small for the dataset "
+            f"size {num_train}, resulting in an empty validation set. "
+            "Fine-tuning scheduler will not run."
+        )
 
     val_g = torch.Generator()
     if seed is not None:

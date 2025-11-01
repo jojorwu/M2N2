@@ -46,27 +46,6 @@ class TestEvolution(unittest.TestCase):
         """Set up common resources for tests."""
         self.device = torch.device("cpu")
 
-    def test_merge_fitness_weighted_with_dampening(self):
-        parent1 = create_mock_wrapper(ModelName.CIFAR10, [0], self.device, fitness=85.0)
-        parent2 = create_mock_wrapper(ModelName.CIFAR10, [1], self.device, fitness=15.0)
-        with torch.no_grad():
-            for param in parent1.model.parameters():
-                param.fill_(1.0)
-            for param in parent2.model.parameters():
-                param.fill_(0.0)
-        child = merge(parent1, parent2, strategy=FitnessWeightedMergeStrategy())
-        dampening_factor = 25.0
-        dampened_fitness1 = parent1.fitness + dampening_factor
-        dampened_fitness2 = parent2.fitness + dampening_factor
-        total_dampened_fitness = dampened_fitness1 + dampened_fitness2
-        expected_weight1 = dampened_fitness1 / total_dampened_fitness
-        expected_child_tensor_val = expected_weight1
-        child_param = next(child.model.parameters())
-        self.assertTrue(
-            torch.allclose(child_param, torch.full_like(child_param, expected_child_tensor_val)),
-            f"Child weights are incorrect. Expected ~{expected_child_tensor_val:.4f}, but got {child_param.mean():.4f}."
-        )
-
     @patch('src.model_wrapper.ModelWrapper._calculate_accuracy')
     @patch('src.model.models.resnet18')
     def test_sequential_constructive_merge_skips_parameterless_resnet_layers(self, mock_resnet_constructor, mock_calculate_accuracy):

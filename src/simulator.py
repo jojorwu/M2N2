@@ -91,7 +91,6 @@ class EvolutionSimulator:
                     'sequential_constructive': SequentialConstructiveMergeStrategy,
                 },
                 'args': {
-                    'fitness_weighted': {'dampening_factor': self.config_manager.dampening_factor},
                     'layer-wise': {'seed': self.config_manager.seed}
                 }
             }
