@@ -70,7 +70,13 @@ class HealingMateSelectionStrategy(MateSelectionStrategy):
         else:
             logger.info("  - No suitable specialist found. Using second-best model as fallback Parent 2.")
             sorted_population = sorted(population, key=lambda m: m.fitness, reverse=True)
-            parent2 = next((model for model in sorted_population if model is not parent1 and model != parent1), None)
+            # Manually iterate to find the first model that is not a genetic clone of parent1.
+            # This is more robust than a generator expression with `next`.
+            parent2 = None
+            for model in sorted_population:
+                if model != parent1:
+                    parent2 = model
+                    break
 
         if parent2 is None:
             logger.info("  - Not enough distinct models in population to select a second parent.")
