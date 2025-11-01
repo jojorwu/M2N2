@@ -6,6 +6,9 @@ import torch
 import os
 import glob
 import logging
+import csv
+import builtins
+
 from .logger_config import setup_logger
 from .model_wrapper import ModelWrapper
 from .model_factory import create_model
@@ -14,7 +17,7 @@ from .data import get_dataloaders
 from .visualization import plot_fitness_history
 from .utils import set_seed
 from .config_manager import ConfigManager
-from .constants import COMMAND_FILE, FITNESS_LOG_FILE
+from .constants import COMMAND_FILE, FITNESS_LOG_FILENAME
 from typing import List, Tuple, Type, Dict, Any
 from torch.utils.data import DataLoader
 from .merge_strategies import (
@@ -188,10 +191,10 @@ class EvolutionSimulator:
             )
             self.population.append(
                 ModelWrapper(
-                    model_name=self.config_manager.model_name,
                     model=model,
-                    niche_classes=niches[i],
-                    device=self.device
+                    device=self.device,
+                    model_name=self.config_manager.model_name,
+                    niche_classes=niches[i]
                 )
             )
 
@@ -205,18 +208,31 @@ class EvolutionSimulator:
                 specialize(model_wrapper, self.config_manager)
         logger.info("")
 
-    def _initialize_fitness_log(self) -> None:
-        """Creates the fitness log file and writes the header."""
-        with open(FITNESS_LOG_FILE, "w") as f:
-            f.write("generation,best_fitness,average_fitness\n")
+    def _initialize_fitness_log(self):
+        """Creates the fitness log file and writes the header if it doesn't exist."""
+        try:
+            if not os.path.exists(FITNESS_LOG_FILENAME):
+                with builtins.open(FITNESS_LOG_FILENAME, 'w', newline='') as f:
+                    writer = csv.writer(f)
+                    writer.writerow(['generation', 'best_fitness', 'average_fitness'])
+        except OSError as e:
+            logger.warning(f"Could not write to fitness log file at {FITNESS_LOG_FILENAME}: {e}")
 
-    def _log_fitness_to_csv(self, generation: int, best_fitness: float, avg_fitness: float) -> None:
-        """Appends the current generation's fitness data to the CSV log."""
-        with open(FITNESS_LOG_FILE, "a") as f:
-            f.write(f"{generation},{best_fitness:.2f},{avg_fitness:.2f}\n")
+    def _log_fitness_to_csv(self, generation: int, best_fitness: float, average_fitness: float):
+        """Appends the fitness data for the current generation to the CSV log."""
+        try:
+            with builtins.open(FITNESS_LOG_FILENAME, 'a', newline='') as f:
+                writer = csv.writer(f)
+                writer.writerow([generation, best_fitness, average_fitness])
+        except OSError as e:
+            logger.warning(f"Failed to append to fitness log file at {FITNESS_LOG_FILENAME}: {e}")
 
     def _run_evaluation_phase(self) -> None:
         """Handles the evaluation of the population."""
+        if not self.population:
+            logger.error("Population is empty. Cannot run evaluation.")
+            return
+
         logger.info("--- Evaluating Population on Test Set ---")
         for model_wrapper in self.population:
             model_wrapper.evaluate(
@@ -235,9 +251,9 @@ class EvolutionSimulator:
     def _clear_simulation_artifacts(self) -> None:
         """Clears logs and saved models from previous runs."""
         logger.info("--- Clearing simulation artifacts ---")
-        if os.path.exists(FITNESS_LOG_FILE):
-            os.remove(FITNESS_LOG_FILE)
-            logger.info(f"Removed {FITNESS_LOG_FILE}")
+        if os.path.exists(FITNESS_LOG_FILENAME):
+            os.remove(FITNESS_LOG_FILENAME)
+            logger.info(f"Removed {FITNESS_LOG_FILENAME}")
 
         model_dir = "src/pretrained_models"
         if os.path.exists(model_dir):
@@ -315,6 +331,13 @@ class EvolutionSimulator:
         """
         command_config = self.config_manager.load_dynamic_config()
 
+        if command_config:  # If any dynamic config was loaded
+            # Check if strategy-related keys were changed and re-initialize if so
+            strategy_keys = ['mate_selection_strategy', 'generation_strategy', 'merge_strategy']
+            if any(key in command_config for key in strategy_keys):
+                logger.info("Re-initializing strategies due to dynamic configuration change.")
+                self._initialize_strategies()
+
         if command_config.get('restart_simulation'):
             self._restart()
             return "restart"
@@ -354,10 +377,15 @@ class EvolutionSimulator:
         plot_fitness_history(self.fitness_history, 'fitness_history.png')
         self._save_final_population()
 
-    def _save_final_population(self) -> None:
-        """Saves the final population of models to disk."""
-        logger.info("\n--- Saving final population to pretrained_models/ ---")
-        model_dir = "src/pretrained_models"
+    def _save_final_population(self, model_dir: str = "src/pretrained_models") -> None:
+        """
+        Saves the final population of models to disk.
+
+        Args:
+            model_dir (str, optional): The directory to save models to.
+                Defaults to "src/pretrained_models".
+        """
+        logger.info(f"\n--- Saving final population to {model_dir}/ ---")
         if not os.path.exists(model_dir):
             os.makedirs(model_dir)
 
@@ -373,33 +401,55 @@ class EvolutionSimulator:
             model_wrapper.save(model_path)
             logger.info(f"  - Saved model to {model_path}")
 
-    def _delete_old_models(self, model_dir: str) -> None:
-        """
-        Deletes old model files from the specified directory.
+    def _delete_old_models(self, model_dir: str):
+        """Deletes old model files from the specified directory.
 
-        This includes models that were loaded at the start of the simulation
-        and any other files matching the simulation's standard output pattern.
+        This function is designed to be non-destructive to user files. It cleans up by:
+        1. Deleting any model file that was explicitly loaded at the start of the
+           simulation run but is no longer in the current population (i.e., it was replaced).
+        2. Deleting any other file matching the simulation's standard output pattern
+           (`model_niche_*.pth`) that is not a surviving member of the population. This
+           prevents the accumulation of models from intermediate generations.
 
         Args:
-            model_dir (str): The directory from which to delete models.
+            model_dir (str): The directory containing the model files.
         """
+        if not os.path.isdir(model_dir):
+            return
+
         logger.info(f"Clearing old models from {model_dir}...")
 
-        # Find all files matching the simulation's output pattern
-        pattern = os.path.join(model_dir, "model_niche_*.pth")
-        simulation_generated_files = glob.glob(pattern)
+        current_model_files = {
+            f"model_niche_{'_'.join(map(str, mw.niche_classes))}_fitness_{mw.fitness:.2f}.pth"
+            for mw in self.population
+        }
 
-        # Combine with the set of models loaded at the start
-        files_to_delete = set(self.loaded_model_files + simulation_generated_files)
+        loaded_model_basenames = {os.path.basename(f) for f in self.loaded_model_files}
 
-        if not files_to_delete:
+        all_sim_files_in_dir = set(os.path.basename(f) for f in glob.glob(os.path.join(model_dir, "model_niche_*.pth")))
+
+        # Models to delete include loaded models and intermediate models that are not in the final population
+        replaced_loaded_models = loaded_model_basenames - current_model_files
+        intermediate_models = all_sim_files_in_dir - current_model_files
+
+        files_to_delete_basenames = replaced_loaded_models | intermediate_models
+
+        if not files_to_delete_basenames:
             logger.info("No old models found to clear.")
             return
 
-        for f in files_to_delete:
-            try:
-                if os.path.exists(f):
-                    os.remove(f)
-                    logger.info(f"  - Removed old model: {os.path.basename(f)}")
-            except OSError as e:
-                logger.error(f"Error removing file {f}: {e}")
+        # We need to reconstruct the full path for deletion
+        # Create a map of basename -> full path for all potentially deletable files
+        path_map = {os.path.basename(f): f for f in self.loaded_model_files}
+        for f in glob.glob(os.path.join(model_dir, "model_niche_*.pth")):
+            path_map[os.path.basename(f)] = f
+
+        for basename in files_to_delete_basenames:
+            filepath = path_map.get(basename)
+            if filepath:
+                try:
+                    if os.path.exists(filepath):
+                        os.remove(filepath)
+                        logger.info(f"Deleted old model file: {filepath}")
+                except OSError as e:
+                    logger.warning(f"Error deleting file {filepath}: {e}")
