@@ -256,7 +256,7 @@ class EvolutionSimulator:
 
         model_dir = "src/pretrained_models"
         if os.path.exists(model_dir):
-            pattern = os.path.join(model_dir, "model_niche_*.pth")
+            pattern = os.path.join(model_dir, "*.pth")
             files = glob.glob(pattern)
             if files:
                 cleared_count = 0
