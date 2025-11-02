@@ -58,12 +58,15 @@ class TestHealingMateSelectionStrategy(unittest.TestCase):
         config_manager.dataset_name = DatasetName.CIFAR10
         config_manager.subset_percentage = 1.0
         config_manager.seed = 42
-        selected_parent1, selected_parent2 = self.strategy.select_mates(
+        pairs = self.strategy.select_parent_pairs(
             population_without_weakest_specialist,
+            1,
             config_manager=config_manager
         )
 
         # Assertions
+        self.assertEqual(len(pairs), 1)
+        selected_parent1, selected_parent2 = pairs[0]
         self.assertIsNotNone(selected_parent2, "A second parent should have been selected.")
         self.assertIs(selected_parent1, self.parent1, "Parent 1 should be the model with the highest fitness.")
         self.assertIs(selected_parent2, self.specialist_second_weakest,
@@ -88,12 +91,15 @@ class TestHealingMateSelectionStrategy(unittest.TestCase):
         config_manager.dataset_name = DatasetName.CIFAR10
         config_manager.subset_percentage = 1.0
         config_manager.seed = 42
-        selected_parent1, selected_parent2 = self.strategy.select_mates(
+        pairs = self.strategy.select_parent_pairs(
             population_without_any_specialist,
+            1,
             config_manager=config_manager
         )
 
         # Assertions
+        self.assertEqual(len(pairs), 1)
+        selected_parent1, selected_parent2 = pairs[0]
         self.assertIs(selected_parent1, self.parent1)
         self.assertIs(selected_parent2, self.fallback_model,
                       "Parent 2 should be the fallback model (second-highest fitness).")

@@ -155,14 +155,16 @@ from .generation_strategies import GenerationStrategy, ReplaceWorstStrategy
 
 def select_mates(
     population: List[ModelWrapper],
+    num_pairs: int,
     strategy: "MateSelectionStrategy",
     config_manager: "ConfigManager"
-) -> Tuple[Optional[ModelWrapper], Optional[ModelWrapper]]:
+) -> List[Tuple[ModelWrapper, ModelWrapper]]:
     """
-    Selects a pair of parents from the population using a specified strategy.
+    Selects multiple pairs of parents from the population using a specified strategy.
     """
-    return strategy.select_mates(
+    return strategy.select_parent_pairs(
         population,
+        num_pairs=num_pairs,
         config_manager=config_manager
     )
 

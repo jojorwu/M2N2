@@ -194,20 +194,64 @@ class TestEvolution(unittest.TestCase):
         self.assertEqual(len(model_set), 2, "A set should be able to contain different ModelWrappers.")
 
     @patch('src.model_wrapper.ModelWrapper.evaluate_by_class')
-    def test_healing_selection_fallback_chooses_next_best_distinct_instance(self, mock_evaluate_by_class):
-        mock_evaluate_by_class.return_value = [90, 80, 70, 60, 50, 10, 85, 95, 88, 75]
-        parent1 = create_mock_wrapper(ModelName.CIFAR10, [0], self.device, fitness=95.0)
-        expected_parent2 = create_mock_wrapper(ModelName.CIFAR10, [1], self.device, fitness=90.0)
-        other_model = create_mock_wrapper(ModelName.CIFAR10, [2], self.device, fitness=85.0)
-        population = [parent1, expected_parent2, other_model]
+    def test_healing_selection_produces_diverse_pairs(self, mock_evaluate_by_class):
+        """
+        Tests that the HealingMateSelectionStrategy produces a diverse set of
+        parent pairs when asked for multiple pairs.
+        """
+        mock_evaluate_by_class.return_value = [10, 20, 30, 40, 50, 60, 70, 80, 90, 100]
+        parent1 = create_mock_wrapper(ModelName.CIFAR10, list(range(10)), self.device, fitness=95.0)
+        specialist1 = create_mock_wrapper(ModelName.CIFAR10, [0], self.device, fitness=80.0)
+        specialist2 = create_mock_wrapper(ModelName.CIFAR10, [1], self.device, fitness=85.0)
+        high_performer = create_mock_wrapper(ModelName.CIFAR10, [9], self.device, fitness=90.0)
+
+        population = [parent1, specialist1, specialist2, high_performer]
+
         strategy = HealingMateSelectionStrategy()
         config_manager = MagicMock(spec=ConfigManager)
         config_manager.dataset_name = 'CIFAR10'
         config_manager.subset_percentage = 1.0
         config_manager.seed = 42
-        _, selected_parent2 = strategy.select_mates(population, config_manager=config_manager)
-        self.assertIsNot(selected_parent2, parent1, "Parent 2 should not be the same instance as Parent 1.")
-        self.assertIs(selected_parent2, expected_parent2, "The fallback did not select the next-best distinct model instance.")
+
+        num_pairs = 3
+        pairs = strategy.select_parent_pairs(population, num_pairs, config_manager=config_manager)
+
+        self.assertEqual(len(pairs), num_pairs, f"Expected {num_pairs} pairs, but got {len(pairs)}.")
+
+        # Check that parent1 is always the first in the pair
+        for p1, _ in pairs:
+            self.assertIs(p1, parent1)
+
+        # Check that partners are unique and chosen in the correct order
+        partners = [p2 for _, p2 in pairs]
+        self.assertEqual(len(set(partners)), num_pairs, "The selected partners are not unique.")
+        self.assertIs(partners[0], specialist1)
+        self.assertIs(partners[1], specialist2)
+        self.assertIs(partners[2], high_performer)
+
+    @patch('src.model_wrapper.ModelWrapper.evaluate_by_class')
+    def test_healing_selection_fallback_skips_identical_clone(self, mock_evaluate_by_class):
+        mock_evaluate_by_class.return_value = [10] * 10
+        parent1 = create_mock_wrapper(ModelName.CIFAR10, [0], self.device, fitness=95.0)
+        clone_of_parent1 = copy.deepcopy(parent1)
+        clone_of_parent1.fitness = 95.0
+        expected_parent2 = create_mock_wrapper(ModelName.CIFAR10, [1], self.device, fitness=90.0)
+
+        population = [parent1, clone_of_parent1, expected_parent2]
+
+        strategy = HealingMateSelectionStrategy()
+        config_manager = MagicMock(spec=ConfigManager)
+        config_manager.dataset_name = 'CIFAR10'
+        config_manager.subset_percentage = 1.0
+        config_manager.seed = 42
+
+        pairs = strategy.select_parent_pairs(population, 1, config_manager=config_manager)
+
+        self.assertEqual(len(pairs), 1)
+        selected_parent1, selected_parent2 = pairs[0]
+
+        self.assertNotEqual(selected_parent1, selected_parent2, "Selected parents should be genetically different.")
+        self.assertEqual(selected_parent2, expected_parent2, "The fallback did not select the next-best genetically distinct model.")
 
     def test_layer_wise_merge_on_resnet_is_not_all_or_nothing(self):
         seed = 42
@@ -273,42 +317,6 @@ class TestEvolution(unittest.TestCase):
         config_manager.show_progress_bar = False
         specialize(model_wrapper, config_manager)
         mock_tqdm.assert_not_called()
-
-    @patch('src.model_wrapper.ModelWrapper.evaluate_by_class')
-    def test_healing_selection_fallback_skips_identical_clone(self, mock_evaluate_by_class):
-        mock_evaluate_by_class.return_value = [90, 80, 70, 60, 50, 10, 85, 95, 88, 75]
-        parent1 = create_mock_wrapper(ModelName.CIFAR10, [0], self.device, fitness=95.0)
-        clone_of_parent1 = copy.deepcopy(parent1)
-        clone_of_parent1.fitness = 95.0
-        expected_parent2 = create_mock_wrapper(ModelName.CIFAR10, [1], self.device, fitness=90.0)
-        population = [parent1, clone_of_parent1, expected_parent2]
-        strategy = HealingMateSelectionStrategy()
-        config_manager = MagicMock(spec=ConfigManager)
-        config_manager.dataset_name = 'CIFAR10'
-        config_manager.subset_percentage = 1.0
-        config_manager.seed = 42
-        selected_parent1, selected_parent2 = strategy.select_mates(population, config_manager=config_manager)
-        self.assertNotEqual(selected_parent1, selected_parent2, "Selected parents should be genetically different.")
-        self.assertEqual(selected_parent2, expected_parent2, "The fallback did not select the next-best genetically distinct model.")
-
-    @patch('src.model_wrapper.ModelWrapper.evaluate_by_class')
-    def test_healing_selection_fallback_handles_fitness_ties(self, mock_evaluate_by_class):
-        mock_evaluate_by_class.return_value = [10] * 10
-        parent1 = create_mock_wrapper(ModelName.CIFAR10, [0], self.device, fitness=90.0)
-        clone = copy.deepcopy(parent1)
-        clone.fitness = 90.0
-        distinct_model = create_mock_wrapper(ModelName.CIFAR10, [1], self.device, fitness=85.0)
-        population = [parent1, clone, distinct_model]
-        random.shuffle(population)
-        strategy = HealingMateSelectionStrategy()
-        config_manager = MagicMock(spec=ConfigManager)
-        config_manager.dataset_name = 'CIFAR10'
-        config_manager.subset_percentage = 1.0
-        config_manager.seed = 42
-        _, selected_parent2 = strategy.select_mates(population, config_manager=config_manager)
-        self.assertIsNot(selected_parent2, parent1, "Parent 2 should not be the same instance as Parent 1.")
-        self.assertNotEqual(selected_parent2, parent1, "Parent 2 should not be a deep copy of Parent 1.")
-        self.assertEqual(selected_parent2, distinct_model, "The fallback did not select the correct distinct model.")
 
     def test_sequential_constructive_merge_uses_single_batch_optimization(self):
         parent1 = create_mock_wrapper(ModelName.CIFAR10, [0], self.device, fitness=90.0)
