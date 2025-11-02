@@ -103,5 +103,31 @@ class TestSimulatorReliability(unittest.TestCase):
                 simulator._log_fitness_to_csv(generation=1, best_fitness=10.0, average_fitness=5.0)
                 self.assertTrue(any("Failed to append to fitness log file" in msg for msg in cm.output))
 
+    def test_clear_artifacts_handles_os_error_gracefully(self):
+        """
+        Ensures _clear_simulation_artifacts catches OSErrors during file
+        deletion and logs warnings without crashing.
+        """
+        model_dir = "src/pretrained_models"
+        os.makedirs(model_dir, exist_ok=True)
+        # Create dummy files that the method will attempt to delete
+        with open(FITNESS_LOG_FILENAME, "w") as f: f.write("dummy_log")
+        with open(os.path.join(model_dir, "model_niche_1.pth"), "w") as f: f.write("dummy_model")
+
+        # Patch os.remove to raise an error
+        with patch('src.simulator.os.remove', side_effect=OSError("Permission denied")):
+            with self.assertLogs('M2N2_SIMULATOR', level='WARNING') as cm:
+                simulator = EvolutionSimulator(config_path=self.config_path)
+                # The method is called during restart
+                simulator._clear_simulation_artifacts()
+
+                # Verify that warnings were logged for the files we tried to delete
+                self.assertTrue(any("Error removing log file" in msg for msg in cm.output))
+                self.assertTrue(any("Error removing model file" in msg for msg in cm.output))
+
+        # Cleanup
+        os.remove(FITNESS_LOG_FILENAME)
+        shutil.rmtree(model_dir)
+
 if __name__ == '__main__':
     unittest.main()

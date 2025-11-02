@@ -251,23 +251,33 @@ class EvolutionSimulator:
         """Clears logs and saved models from previous runs."""
         logger.info("--- Clearing simulation artifacts ---")
         if os.path.exists(FITNESS_LOG_FILENAME):
-            os.remove(FITNESS_LOG_FILENAME)
-            logger.info(f"Removed {FITNESS_LOG_FILENAME}")
+            try:
+                os.remove(FITNESS_LOG_FILENAME)
+                logger.info(f"Removed {FITNESS_LOG_FILENAME}")
+            except OSError as e:
+                logger.warning(f"Error removing log file {FITNESS_LOG_FILENAME}: {e}")
 
         model_dir = "src/pretrained_models"
         if os.path.exists(model_dir):
-            pattern = os.path.join(model_dir, "*.pth")
+            pattern = os.path.join(model_dir, "model_niche_*.pth")
             files = glob.glob(pattern)
             if files:
                 cleared_count = 0
                 for f in files:
-                    os.remove(f)
-                    cleared_count += 1
-                logger.info(f"Cleared {cleared_count} models from {model_dir}")
+                    try:
+                        os.remove(f)
+                        cleared_count += 1
+                    except OSError as e:
+                        logger.warning(f"Error removing model file {f}: {e}")
+                if cleared_count > 0:
+                    logger.info(f"Cleared {cleared_count} models from {model_dir}")
 
         if os.path.exists(COMMAND_FILE):
-            os.remove(COMMAND_FILE)
-            logger.info(f"Removed {COMMAND_FILE}")
+            try:
+                os.remove(COMMAND_FILE)
+                logger.info(f"Removed {COMMAND_FILE}")
+            except OSError as e:
+                logger.warning(f"Error removing command file {COMMAND_FILE}: {e}")
 
     def _restart(self) -> None:
         """Resets the simulation to its initial state for a fresh run."""
