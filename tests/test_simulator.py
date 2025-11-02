@@ -112,5 +112,36 @@ class TestSimulatorInitialization(unittest.TestCase):
         from src.merge_strategies import FitnessWeightedMergeStrategy
         self.assertIsInstance(simulator.merge_strategy, FitnessWeightedMergeStrategy, "Simulator's merge strategy object was not re-initialized.")
 
+    def test_delete_old_models_preserves_high_precision_fitness_models(self):
+        """
+        Tests that a surviving model with a high-precision float fitness is not
+        deleted because of a filename mismatch.
+        """
+        simulator = EvolutionSimulator(config_path=self.config_path)
+
+        # Create a model wrapper with a high-precision fitness
+        surviving_model = ModelWrapper(
+            model=create_model(self.base_config['model_name'], 10, 'cpu'),
+            device='cpu', model_name=self.base_config['model_name'], niche_classes=[1]
+        )
+        surviving_model.fitness = 85.12345  # High precision float
+        simulator.population = [surviving_model]
+
+        # The actual saved file will have its name formatted to 2 decimal places
+        formatted_filename = "model_niche_1_fitness_85.12.pth"
+        formatted_filepath = os.path.join(self.model_dir, formatted_filename)
+        torch.save({}, formatted_filepath)
+
+        # Ensure the file exists before the call
+        self.assertTrue(os.path.exists(formatted_filepath))
+
+        # Call the method under test
+        simulator._delete_old_models(model_dir=self.model_dir)
+
+        # The file should still exist because the bug is fixed
+        self.assertTrue(os.path.exists(formatted_filepath),
+                        "Model file was incorrectly deleted due to float precision mismatch.")
+
+
 if __name__ == '__main__':
     unittest.main()
