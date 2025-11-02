@@ -9,3 +9,6 @@ FITNESS_LOG_FILENAME = "fitness_log.csv"
 
 # The official filename for the command file used by the dashboard.
 COMMAND_FILE = "command.json"
+
+# The directory for caching tokenized LLM datasets to speed up subsequent runs.
+LLM_CACHE_DIR = "src/cache"

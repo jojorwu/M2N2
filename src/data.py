@@ -16,6 +16,7 @@ import numpy as np
 import logging
 from .utils import set_seed
 from .enums import DatasetName, ModelName
+from .constants import LLM_CACHE_DIR
 from typing import Optional, List
 
 logger = logging.getLogger("M2N2_SIMULATOR")
@@ -61,9 +62,8 @@ def _load_full_datasets(dataset_name: DatasetName, model_name: ModelName):
         full_test_dataset = datasets.MNIST(root='./data', train=False, download=True, transform=transform)
         num_classes = len(full_train_dataset.classes)
     elif dataset_name == DatasetName.LLM:
-        cache_dir = 'src/cache'
-        train_cache_path = os.path.join(cache_dir, 'cached_banking77_train.pt')
-        test_cache_path = os.path.join(cache_dir, 'cached_banking77_test.pt')
+        train_cache_path = os.path.join(LLM_CACHE_DIR, 'cached_banking77_train.pt')
+        test_cache_path = os.path.join(LLM_CACHE_DIR, 'cached_banking77_test.pt')
 
         # Load raw dataset info to get number of classes, regardless of cache
         raw_dataset = load_dataset('banking77')
@@ -80,7 +80,7 @@ def _load_full_datasets(dataset_name: DatasetName, model_name: ModelName):
             test_encodings = tokenizer(test_texts, truncation=True, padding=True, max_length=64)
             full_train_dataset = TextDataset(train_encodings, train_labels)
             full_test_dataset = TextDataset(test_encodings, test_labels)
-            os.makedirs(cache_dir, exist_ok=True)
+            os.makedirs(LLM_CACHE_DIR, exist_ok=True)
             torch.save(full_train_dataset, train_cache_path)
             torch.save(full_test_dataset, test_cache_path)
     else:
