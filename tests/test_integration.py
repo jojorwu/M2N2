@@ -30,6 +30,7 @@ class TestResnetIntegration(unittest.TestCase):
             'precision_config': '32',
             'num_generations': 1,
             'population_size': 1, # Keep population small for speed
+            'num_offspring': 1,
             'mate_selection_strategy': 'healing',
             'generation_strategy': 'replace_worst',
             'merge_strategy': 'average',

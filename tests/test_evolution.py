@@ -137,22 +137,48 @@ class TestEvolution(unittest.TestCase):
         call_args, call_kwargs = mock_get_dataloaders.call_args
         self.assertEqual(call_kwargs.get('subset_percentage'), test_subset_percentage, f"get_dataloaders was called with subset_percentage={call_kwargs.get('subset_percentage')}, but {test_subset_percentage} was expected.")
 
-    def test_create_next_generation_avoids_duplicates(self):
+    def test_create_next_generation_with_multiple_offspring(self):
+        """
+        Tests that the elitist strategy correctly selects the best models from
+        the current population and a new pool of offspring.
+        """
         from src.evolution import create_next_generation
         population_size = 5
-        population = [create_mock_wrapper(ModelName.CIFAR10, [i], self.device, fitness=(70.0 - i * 10)) for i in range(population_size)]
-        duplicate_child = copy.deepcopy(population[1])
-        duplicate_child.fitness = population[1].fitness
-        duplicate_child.fitness_is_current = True
+        # Population fitness: [90, 80, 70, 60, 50]
+        population = [create_mock_wrapper(ModelName.CIFAR10, [i], self.device, fitness=(90.0 - i * 10)) for i in range(population_size)]
+
+        # Offspring pool: one great, one good, one terrible, and one duplicate
+        offspring_pool = [
+            create_mock_wrapper(ModelName.CIFAR10, [10], self.device, fitness=95.0), # Should be included
+            create_mock_wrapper(ModelName.CIFAR10, [11], self.device, fitness=85.0), # Should be included
+            create_mock_wrapper(ModelName.CIFAR10, [12], self.device, fitness=45.0), # Should be excluded
+            copy.deepcopy(population[1]) # Duplicate of 80.0 fitness model
+        ]
+        offspring_pool[3].fitness = 80.0
+        offspring_pool[3].fitness_is_current = True
+
         config_manager = MagicMock(spec=ConfigManager)
         config_manager.population_size = population_size
         config_manager.dataset_name = 'CIFAR10'
         config_manager.seed = 42
         config_manager.subset_percentage = 1.0
-        next_gen = create_next_generation(population, duplicate_child, strategy=ReplaceWorstStrategy(), config_manager=config_manager)
-        self.assertEqual(len(next_gen), population_size)
-        duplicate_count = sum(1 for model in next_gen if model == duplicate_child)
-        self.assertEqual(duplicate_count, 1, "A duplicate model was added to the new generation.")
+
+        # Patch the evaluate method to do nothing, preserving the mock fitness values
+        with patch('src.model_wrapper.ModelWrapper.evaluate', return_value=None):
+            # Run the generation strategy
+            next_gen = create_next_generation(population, offspring_pool, strategy=ReplaceWorstStrategy(), config_manager=config_manager)
+
+        # Verify the results
+        self.assertEqual(len(next_gen), population_size, "The next generation has the wrong size.")
+
+        next_gen_fitness = sorted([model.fitness for model in next_gen], reverse=True)
+        # Expected fitness: 95 (new), 90 (old), 85 (new), 80 (old), 70 (old)
+        expected_fitness = [95.0, 90.0, 85.0, 80.0, 70.0]
+        self.assertListEqual(next_gen_fitness, expected_fitness, "The next generation was not composed of the fittest individuals.")
+
+        # Check that the duplicate was handled correctly
+        duplicate_count = sum(1 for model in next_gen if model.fitness == 80.0)
+        self.assertEqual(duplicate_count, 1, "A duplicate model was incorrectly added to the new generation.")
 
     def test_model_wrapper_hashing(self):
         wrapper1 = create_mock_wrapper(ModelName.CIFAR10, [0], self.device)

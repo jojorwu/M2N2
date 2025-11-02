@@ -50,6 +50,7 @@ class ConfigManager:
         self.delete_old_models = self.config.get('delete_old_models', True)
 
         # --- Evolutionary settings ---
+        self.num_offspring = self._get_required('num_offspring')
         self.mate_selection_strategy = self._get_required('mate_selection_strategy')
         self.generation_strategy = self.config.get('generation_strategy', 'replace_worst')
         self.merge_strategy = self._get_required('merge_strategy')

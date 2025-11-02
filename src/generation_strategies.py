@@ -17,7 +17,7 @@ class GenerationStrategy(ABC):
     def create_next_generation(
         self,
         current_population: List[ModelWrapper],
-        new_child: ModelWrapper,
+        offspring_pool: List[ModelWrapper],
         config_manager: "ConfigManager"
     ) -> List[ModelWrapper]:
         """
@@ -27,34 +27,37 @@ class GenerationStrategy(ABC):
 
 class ReplaceWorstStrategy(GenerationStrategy):
     """
-    An elitist selection strategy where the new child replaces the worst-
-    performing model in the population, if it is better.
+    An elitist selection strategy where the new offspring replace the worst-
+    performing models in the population, if they are better.
     """
     def create_next_generation(
         self,
         current_population: List[ModelWrapper],
-        new_child: ModelWrapper,
+        offspring_pool: List[ModelWrapper],
         config_manager: "ConfigManager"
     ) -> List[ModelWrapper]:
         """
-        Creates the next generation by replacing the worst model if the
-        new child has a higher fitness.
+        Creates the next generation by combining the current population with
+        the new offspring and selecting the fittest individuals.
         """
         logger.info("Creating the next generation using 'Replace Worst' strategy...")
 
-        # Evaluate the new child to make sure its fitness is calculated
-        new_child.evaluate(
-            dataset_name=config_manager.dataset_name,
-            subset_percentage=config_manager.subset_percentage,
-            seed=config_manager.seed
-        )
+        # Evaluate all new offspring
+        for child in offspring_pool:
+            child.evaluate(
+                dataset_name=config_manager.dataset_name,
+                subset_percentage=config_manager.subset_percentage,
+                seed=config_manager.seed
+            )
+            logger.info(f"  - New offspring evaluated with fitness: {child.fitness:.2f}%")
 
-        # Combine the old population with the new child, avoiding duplicates
-        if new_child in current_population:
-            logger.info("  - New child is a duplicate of an existing model. Not adding to the pool.")
-            full_pool = current_population
-        else:
-            full_pool = current_population + [new_child]
+        # Combine the old population with the new offspring, avoiding duplicates
+        full_pool = list(current_population)
+        for child in offspring_pool:
+            if child in full_pool:
+                logger.info(f"  - Offspring (fitness: {child.fitness:.2f}%) is a duplicate. Not adding to the pool.")
+            else:
+                full_pool.append(child)
 
         # Sort the entire pool by fitness in descending order
         full_pool.sort(key=lambda x: x.fitness, reverse=True)

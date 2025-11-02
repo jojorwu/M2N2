@@ -283,37 +283,45 @@ class EvolutionSimulator:
     def _run_evolution_phase(self, generation: int) -> None:
         """Handles the mating, mutation, and selection of models."""
         logger.info("--- Mating and Evolution ---")
-        parent1, parent2 = select_mates(
-            self.population,
-            strategy=self.mate_selection_strategy,
-            config_manager=self.config_manager
-        )
-
-        if parent1 and parent2:
-            child = merge(
-                parent1, parent2,
-                strategy=self.merge_strategy,
-                validation_loader=self.validation_loader
-            )
-            child = mutate(
-                child,
-                generation=generation,
-                config_manager=self.config_manager,
-                seed=self.config_manager.seed
-            )
-            finetune(
-                child,
-                validation_loader=self.validation_loader,
+        offspring_pool = []
+        for i in range(self.config_manager.num_offspring):
+            logger.info(f"--- Creating Offspring {i+1}/{self.config_manager.num_offspring} ---")
+            parent1, parent2 = select_mates(
+                self.population,
+                strategy=self.mate_selection_strategy,
                 config_manager=self.config_manager
             )
+
+            if parent1 and parent2:
+                child = merge(
+                    parent1, parent2,
+                    strategy=self.merge_strategy,
+                    validation_loader=self.validation_loader
+                )
+                child = mutate(
+                    child,
+                    generation=generation,
+                    config_manager=self.config_manager,
+                    seed=self.config_manager.seed
+                )
+                finetune(
+                    child,
+                    validation_loader=self.validation_loader,
+                    config_manager=self.config_manager
+                )
+                offspring_pool.append(child)
+            else:
+                logger.warning("Could not select two parents. Skipping offspring creation.")
+
+        if offspring_pool:
             self.population = create_next_generation(
                 self.population,
-                child,
+                offspring_pool,
                 strategy=self.generation_strategy,
                 config_manager=self.config_manager
             )
         else:
-            logger.info("Population will carry over to the next generation without changes.")
+            logger.info("No offspring were created. Population will carry over to the next generation without changes.")
 
     def run_one_generation(self) -> None:
         """Runs a single generation of the evolutionary simulation."""

@@ -19,6 +19,7 @@ class TestConfigManager(unittest.TestCase):
             'precision_config': '32',
             'num_generations': 1,
             'population_size': 2,
+            'num_offspring': 2,
             'mate_selection_strategy': 'healing',
             'generation_strategy': 'replace_worst',
             'merge_strategy': 'average',

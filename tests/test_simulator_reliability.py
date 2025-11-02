@@ -25,7 +25,7 @@ class TestSimulatorReliability(unittest.TestCase):
 
         self.base_config = {
             'model_name': 'CIFAR10', 'dataset_name': 'CIFAR10',
-            'precision_config': '32', 'num_generations': 1, 'population_size': 2,
+            'precision_config': '32', 'num_generations': 1, 'population_size': 2, 'num_offspring': 2,
             'mate_selection_strategy': 'healing', 'generation_strategy': 'replace_worst',
             'merge_strategy': 'average', 'fitness_weighted_merge_dampening_factor': 25.0,
             'optimizer_config': {'learning_rate': 0.001},

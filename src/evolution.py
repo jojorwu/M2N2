@@ -238,7 +238,7 @@ def mutate(model_wrapper: ModelWrapper, generation: int, config_manager: "Config
 
 def create_next_generation(
     current_population: List[ModelWrapper],
-    new_child: ModelWrapper,
+    offspring_pool: List[ModelWrapper],
     strategy: "GenerationStrategy",
     config_manager: "ConfigManager"
 ) -> List[ModelWrapper]:
@@ -247,7 +247,7 @@ def create_next_generation(
     """
     return strategy.create_next_generation(
         current_population,
-        new_child,
+        offspring_pool,
         config_manager=config_manager
     )
 

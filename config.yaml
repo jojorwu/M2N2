@@ -10,6 +10,7 @@ population_size: 10       # Number of models in the population
 delete_old_models: true   # Whether to delete models from previous runs in the pretrained_models directory
 
 # --- Evolutionary Algorithm Settings ---
+num_offspring: 4          # Number of children to produce in each generation
 mate_selection_strategy: 'healing' # Options: 'healing'
 generation_strategy: 'replace_worst' # Options: 'replace_worst'
 merge_strategy: 'sequential_constructive' # Options: 'average', 'fitness_weighted', 'layer-wise', 'sequential_constructive'
