@@ -408,54 +408,42 @@ class EvolutionSimulator:
             logger.info(f"  - Saved model to {model_path}")
 
     def _delete_old_models(self, model_dir: str):
-        """Deletes old model files from the specified directory.
-
-        This function is designed to be non-destructive to user files. It cleans up by:
-        1. Deleting any model file that was explicitly loaded at the start of the
-           simulation run but is no longer in the current population (i.e., it was replaced).
-        2. Deleting any other file matching the simulation's standard output pattern
-           (`model_niche_*.pth`) that is not a surviving member of the population. This
-           prevents the accumulation of models from intermediate generations.
-
-        Args:
-            model_dir (str): The directory containing the model files.
+        """
+        Deletes all model files from the output directory that are not part of
+        the final, surviving population. This includes models from previous
+        generations and any initial models that were replaced.
         """
         if not os.path.isdir(model_dir):
             return
 
         logger.info(f"Clearing old models from {model_dir}...")
 
-        current_model_files = {
-            f"model_niche_{'_'.join(map(str, mw.niche_classes))}_fitness_{mw.fitness:.2f}.pth"
-            for mw in self.population
-        }
+        # 1. Determine the full paths of the models to keep
+        files_to_keep = set()
+        for model_wrapper in self.population:
+            niche_str = "_".join(map(str, model_wrapper.niche_classes))
+            filename = f"model_niche_{niche_str}_fitness_{model_wrapper.fitness:.2f}.pth"
+            files_to_keep.add(os.path.join(model_dir, filename))
 
-        loaded_model_basenames = {os.path.basename(f) for f in self.loaded_model_files}
+        # 2. Get all potential model files to check:
+        #    - Files from intermediate generations matching the pattern.
+        #    - Files that were loaded at the start of the simulation.
+        intermediate_files = glob.glob(os.path.join(model_dir, "model_niche_*.pth"))
+        all_files_to_check = set(intermediate_files) | set(self.loaded_model_files)
 
-        all_sim_files_in_dir = set(os.path.basename(f) for f in glob.glob(os.path.join(model_dir, "model_niche_*.pth")))
-
-        # Models to delete include loaded models and intermediate models that are not in the final population
-        replaced_loaded_models = loaded_model_basenames - current_model_files
-        intermediate_models = all_sim_files_in_dir - current_model_files
-
-        files_to_delete_basenames = replaced_loaded_models | intermediate_models
-
-        if not files_to_delete_basenames:
-            logger.info("No old models found to clear.")
-            return
-
-        # We need to reconstruct the full path for deletion
-        # Create a map of basename -> full path for all potentially deletable files
-        path_map = {os.path.basename(f): f for f in self.loaded_model_files}
-        for f in glob.glob(os.path.join(model_dir, "model_niche_*.pth")):
-            path_map[os.path.basename(f)] = f
-
-        for basename in files_to_delete_basenames:
-            filepath = path_map.get(basename)
-            if filepath:
+        # 3. Delete any file that is not in the 'keep' list
+        deleted_count = 0
+        for filepath in all_files_to_check:
+            if filepath not in files_to_keep:
                 try:
+                    # Check existence as a loaded file might have been deleted
+                    # if it also matched the glob pattern and was handled already.
                     if os.path.exists(filepath):
                         os.remove(filepath)
                         logger.info(f"Deleted old model file: {filepath}")
+                        deleted_count += 1
                 except OSError as e:
                     logger.warning(f"Error deleting file {filepath}: {e}")
+
+        if deleted_count == 0:
+            logger.info("No old models found to clear.")
