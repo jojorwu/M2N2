@@ -195,7 +195,10 @@ def mutate(model_wrapper: ModelWrapper, generation: int, config_manager: "Config
 
     This function introduces genetic diversity by altering a fixed fraction of
     the model's weights. The process is made deterministic by using a seeded
-    PyTorch generator.
+    PyTorch generator. This implementation is optimized for performance by
+    creating a single generator and re-seeding it for each layer, which
+    preserves layer-independent randomness while avoiding object creation
+    overhead in the loop.
 
     Args:
         model_wrapper: The model to mutate.
@@ -210,16 +213,15 @@ def mutate(model_wrapper: ModelWrapper, generation: int, config_manager: "Config
     decayed_strength = config_manager.initial_mutation_strength * (config_manager.mutation_decay_factor ** generation)
     logger.info(f"Mutating child model (Gen: {generation}, Strength: {decayed_strength:.4f})...")
 
+    generator = torch.Generator(device=model_wrapper.device)
+
     with torch.no_grad():
-        # Use a counter to ensure each layer gets a unique, deterministic seed
         param_idx = 0
         for param in model_wrapper.model.parameters():
             if param.dim() > 1:
-                # Create a new generator for each layer to ensure independence
-                generator = torch.Generator(device=model_wrapper.device)
                 if seed is not None:
-                    # Combine the global seed with the layer index for a unique,
-                    # deterministic seed per layer.
+                    # Re-seed the generator for each layer to ensure independent,
+                    # deterministic mutations for each parameter.
                     generator.manual_seed(seed + param_idx)
 
                 num_weights = param.numel()
