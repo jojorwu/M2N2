@@ -33,5 +33,47 @@ class TestModelArchitectures(unittest.TestCase):
         output = model(dummy_input)
         self.assertEqual(output.shape, (4, 10), "ResNetClassifier output shape is incorrect!")
 
+import shutil
+from unittest.mock import patch
+from src.model_wrapper import ModelWrapper
+from src.enums import ModelName
+
+class TestModelWrapper(unittest.TestCase):
+    def setUp(self):
+        self.test_dir = "tests/temp_model_test"
+        os.makedirs(self.test_dir, exist_ok=True)
+
+    def tearDown(self):
+        shutil.rmtree(self.test_dir)
+
+    def test_from_file_handles_corrupted_model(self):
+        """
+        Tests that ModelWrapper.from_file returns None and logs a warning when
+        it encounters a corrupted or invalid model file.
+        """
+        # Create a dummy filename that matches the expected pattern
+        filename = "model_niche_0_fitness_0.0.pth"
+        filepath = os.path.join(self.test_dir, filename)
+
+        # Write invalid content to the file
+        with open(filepath, "w") as f:
+            f.write("This is not a valid model file.")
+
+        # Suppress logger setup to not interfere with assertLogs
+        with patch('src.model_wrapper.logger') as mock_logger:
+             # Attempt to load the corrupted model
+            wrapper = ModelWrapper.from_file(
+                filepath=filepath,
+                model_name=ModelName.CIFAR10,
+                num_classes=10,
+                device='cpu'
+            )
+
+            # Assert that the method returns None and logs a warning
+            self.assertIsNone(wrapper, "ModelWrapper.from_file should return None for a corrupted file.")
+            mock_logger.warning.assert_called_once()
+            self.assertIn("Failed to load model", mock_logger.warning.call_args[0][0])
+
+
 if __name__ == '__main__':
     unittest.main()

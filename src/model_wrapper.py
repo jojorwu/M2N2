@@ -76,8 +76,12 @@ class ModelWrapper:
             ModelWrapper | None: An initialized ModelWrapper instance if the
             filename is parsed successfully, otherwise None.
         """
-        match = re.search(r'model_niche_([\d_]+)_fitness_([\d\.]+)\.pth', os.path.basename(filepath))
-        if match:
+        try:
+            match = re.search(r'model_niche_([\d_]+)_fitness_([\d\.]+)\.pth', os.path.basename(filepath))
+            if not match:
+                logger.warning(f"Could not parse niche and fitness from filename: {filepath}")
+                return None
+
             niche_classes = [int(n) for n in match.group(1).split('_')]
             fitness = float(match.group(2))
             model = create_model(
@@ -94,9 +98,11 @@ class ModelWrapper:
                 device=device
             )
             wrapper.fitness = fitness
-            wrapper.fitness_is_current = False  # Fitness from filename might be stale
+            wrapper.fitness_is_current = False
             return wrapper
-        return None
+        except Exception as e:
+            logger.warning(f"Failed to load model from {filepath}: {e}")
+            return None
 
     def save(self, filepath: str) -> None:
         """

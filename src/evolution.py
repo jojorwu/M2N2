@@ -69,29 +69,21 @@ def _run_training_session(
 
     scaler = torch.cuda.amp.GradScaler(enabled=(config_manager.precision_config == '16' and 'cuda' in model_wrapper.device))
 
-    try:
-        for epoch in range(epochs):
-            logger.info(f"  - Epoch {epoch + 1}/{epochs}")
-            avg_train_loss = _run_training_epoch(
-                model_wrapper,
-                optimizer,
-                train_loader,
-                scaler,
-                config_manager.precision_config,
-                description,
-                show_progress_bar=config_manager.show_progress_bar
-            )
-            if scheduler and validation_loader:
-                avg_val_loss = _calculate_loss(model_wrapper, validation_loader)
-                scheduler.step(avg_val_loss)
-                logger.info(f"  - Avg Train Loss: {avg_train_loss:.4f}, Avg Val Loss: {avg_val_loss:.4f}")
-    except RuntimeError as e:
-        logger.warning(
-            f"A RuntimeError occurred during the training session for niche "
-            f"{model_wrapper.niche_classes}: {e}. This might be due to CUDA "
-            "out-of-memory. The session for this model will be aborted, "
-            "but the simulation will continue."
+    for epoch in range(epochs):
+        logger.info(f"  - Epoch {epoch + 1}/{epochs}")
+        avg_train_loss = _run_training_epoch(
+            model_wrapper,
+            optimizer,
+            train_loader,
+            scaler,
+            config_manager.precision_config,
+            description,
+            show_progress_bar=config_manager.show_progress_bar
         )
+        if scheduler and validation_loader:
+            avg_val_loss = _calculate_loss(model_wrapper, validation_loader)
+            scheduler.step(avg_val_loss)
+            logger.info(f"  - Avg Train Loss: {avg_train_loss:.4f}, Avg Val Loss: {avg_val_loss:.4f}")
 
 def _setup_and_run_training(
     mode: str,
