@@ -7,6 +7,7 @@ import sys
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from src.config_manager import ConfigManager
+from unittest import mock
 
 class TestConfigManager(unittest.TestCase):
     def setUp(self):
@@ -70,6 +71,32 @@ class TestConfigManager(unittest.TestCase):
             self.assertTrue(cm.delete_old_models) # Check that the default was applied
         except ValueError:
             self.fail("ConfigManager raised ValueError on a missing non-essential key.")
+
+    def test_empty_yaml_file_raises_value_error(self):
+        """
+        Tests that an empty YAML file raises a ValueError.
+        """
+        with open(self.config_path, 'w') as f:
+            pass  # Create an empty file
+
+        with self.assertRaisesRegex(ValueError, "invalid or empty"):
+            ConfigManager(config_path=self.config_path)
+
+    @mock.patch('yaml.safe_load')
+    def test_corrupted_yaml_file_raises_value_error(self, mock_safe_load):
+        """
+        Tests that a syntactically incorrect YAML file raises a ValueError
+        by mocking the YAML loader to raise a YAMLError.
+        """
+        mock_safe_load.side_effect = yaml.YAMLError("mocked error")
+
+        # The content of the file doesn't matter here since we're mocking the loader
+        with open(self.config_path, 'w') as f:
+            yaml.dump(self.base_config, f)
+
+        with self.assertRaisesRegex(ValueError, "Error parsing YAML file"):
+            ConfigManager(config_path=self.config_path)
+
 
 if __name__ == '__main__':
     unittest.main()

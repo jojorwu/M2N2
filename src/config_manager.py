@@ -28,8 +28,15 @@ class ConfigManager:
         Args:
             config_path (str): The path to the main YAML configuration file.
         """
-        with open(config_path, 'r') as f:
-            self.config = yaml.safe_load(f)
+        try:
+            with open(config_path, 'r') as f:
+                self.config = yaml.safe_load(f)
+        except yaml.YAMLError as e:
+            raise ValueError(f"Error parsing YAML file at {config_path}: {e}")
+
+        if not isinstance(self.config, dict):
+            raise ValueError(f"Configuration file at {config_path} is invalid or empty.")
+
         self._initialize_parameters()
 
     def _get_required(self, key: str) -> Any:
