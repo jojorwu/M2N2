@@ -294,6 +294,10 @@ class EvolutionSimulator:
         """Handles the mating, mutation, and selection of models."""
         logger.info("--- Mating and Evolution ---")
 
+        if not self.population:
+            logger.error("Population is empty. Skipping evolution phase.")
+            return
+
         parent_pairs = select_mates(
             self.population,
             num_pairs=self.config_manager.num_offspring,

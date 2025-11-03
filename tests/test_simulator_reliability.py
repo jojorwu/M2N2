@@ -129,5 +129,17 @@ class TestSimulatorReliability(unittest.TestCase):
         os.remove(FITNESS_LOG_FILENAME)
         shutil.rmtree(model_dir)
 
+    def test_evolution_phase_handles_empty_population_gracefully(self):
+        """
+        Ensures that the evolution phase does not crash if the population is
+        empty, and logs an appropriate error.
+        """
+        simulator = EvolutionSimulator(config_path=self.config_path)
+        simulator.population = []  # Manually empty the population
+
+        with self.assertLogs('M2N2_SIMULATOR', level='ERROR') as cm:
+            simulator._run_evolution_phase(generation=1)
+            self.assertTrue(any("Population is empty. Skipping evolution phase." in msg for msg in cm.output))
+
 if __name__ == '__main__':
     unittest.main()
