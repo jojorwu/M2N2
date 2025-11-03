@@ -418,8 +418,11 @@ class EvolutionSimulator:
             niche_str = "_".join(map(str, model_wrapper.niche_classes))
             filename = f"model_niche_{niche_str}_fitness_{model_wrapper.fitness:.2f}.pth"
             model_path = os.path.join(model_dir, filename)
-            model_wrapper.save(model_path)
-            logger.info(f"  - Saved model to {model_path}")
+            try:
+                model_wrapper.save(model_path)
+                logger.info(f"  - Saved model to {model_path}")
+            except OSError as e:
+                logger.warning(f"Failed to save model {model_path}: {e}")
 
     def _delete_old_models(self, model_dir: str):
         """

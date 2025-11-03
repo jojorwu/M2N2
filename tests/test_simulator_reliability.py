@@ -141,5 +141,29 @@ class TestSimulatorReliability(unittest.TestCase):
             simulator._run_evolution_phase(generation=1)
             self.assertTrue(any("Population is empty. Skipping evolution phase." in msg for msg in cm.output))
 
+    def test_save_final_population_handles_os_error_gracefully(self):
+        """
+        Ensures _save_final_population logs a warning and continues if a
+        model save fails with an OSError.
+        """
+        simulator = EvolutionSimulator(config_path=self.config_path)
+
+        # Create a mock model wrapper that will fail to save
+        mock_wrapper = unittest.mock.MagicMock(spec=ModelWrapper)
+        mock_wrapper.save.side_effect = OSError("Disk is full")
+        # Configure attributes needed for filename generation
+        mock_wrapper.niche_classes = [0]
+        mock_wrapper.fitness = 50.0
+
+        simulator.population = [mock_wrapper]
+
+        with self.assertLogs('M2N2_SIMULATOR', level='WARNING') as cm:
+            simulator._save_final_population(model_dir=self.test_dir)
+            # Verify the warning was logged
+            self.assertTrue(any("Failed to save model" in msg for msg in cm.output))
+            # Verify the mock save method was called
+            mock_wrapper.save.assert_called_once()
+
+
 if __name__ == '__main__':
     unittest.main()
