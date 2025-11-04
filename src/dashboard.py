@@ -6,7 +6,7 @@ import time
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 import json
 import yaml
-from constants import COMMAND_FILE, FITNESS_LOG_FILE
+from .constants import COMMAND_FILE, FITNESS_LOG_FILENAME
 
 def _update_command_file(updates: dict):
     """Helper to read, update, and write the command config file."""
@@ -27,7 +27,7 @@ def _update_command_file(updates: dict):
 
 def show_monitoring_page():
     # --- Main Content Area for Displaying Simulation State ---
-    if not os.path.exists(FITNESS_LOG_FILE):
+    if not os.path.exists(FITNESS_LOG_FILENAME):
         st.warning(
             "The 'fitness_log.csv' file was not found. "
             "Please start the simulation by running `python3 -m src.main` in your terminal. "
@@ -39,7 +39,7 @@ def show_monitoring_page():
 
     # Read and Display Data
     try:
-        df = pd.read_csv(FITNESS_LOG_FILE)
+        df = pd.read_csv(FITNESS_LOG_FILENAME)
 
         if not df.empty:
             st.header("Fitness History")
@@ -74,6 +74,9 @@ def show_settings_page():
                 st.session_state.simulation_config = yaml.safe_load(f)
         except FileNotFoundError:
             st.error("`config.yaml` not found. Make sure it's in the root directory.")
+            return
+        except yaml.YAMLError as e:
+            st.error(f"Error parsing `config.yaml`: {e}")
             return
 
     # Use a local variable for easier access. It's a reference to the session state dict.
