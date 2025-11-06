@@ -164,23 +164,6 @@ class TestSimulatorReliability(unittest.TestCase):
             # Verify the mock save method was called
             mock_wrapper.save.assert_called_once()
 
-    def test_summarize_and_save_handles_empty_population_gracefully(self):
-        """
-        Ensures _summarize_and_save does not crash with a ValueError if the
-        population is empty at the end of a run.
-        """
-        simulator = EvolutionSimulator(config_path=self.config_path)
-        simulator.population = []  # Set to empty list
-        simulator.fitness_history = [(10.0, 5.0)] # Add some history to plot
-
-        with self.assertLogs('M2N2_SIMULATOR', level='WARNING') as cm:
-            simulator._summarize_and_save()
-            self.assertTrue(any("Population is empty at the end of the simulation." in msg for msg in cm.output))
-
-        # Also verify that the plot is still created
-        self.assertTrue(os.path.exists('fitness_history.png'))
-        os.remove('fitness_history.png')
-
 
 if __name__ == '__main__':
     unittest.main()

@@ -72,5 +72,14 @@ class TestConfigManager(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "is invalid; expected a dictionary"):
             ConfigManager(config_path=self.config_path)
 
+    def test_constructor_handles_file_not_found(self):
+        """
+        Ensures the ConfigManager constructor raises a ValueError if the
+        config file does not exist.
+        """
+        non_existent_path = os.path.join(self.test_dir, "non_existent_config.yaml")
+        with self.assertRaisesRegex(ValueError, "Configuration file not found"):
+            ConfigManager(config_path=non_existent_path)
+
 if __name__ == '__main__':
     unittest.main()

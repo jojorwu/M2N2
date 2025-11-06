@@ -31,6 +31,8 @@ class ConfigManager:
         try:
             with open(config_path, 'r') as f:
                 self.config = yaml.safe_load(f)
+        except FileNotFoundError as e:
+            raise ValueError(f"Configuration file not found at path: {config_path}") from e
         except yaml.YAMLError as e:
             raise ValueError(f"Error parsing YAML file at {config_path}: {e}") from e
 
