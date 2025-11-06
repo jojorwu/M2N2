@@ -391,8 +391,11 @@ class EvolutionSimulator:
         for i, (best, avg) in enumerate(self.fitness_history):
             logger.info(f"  - Generation {i+1}: Best={best:.2f}%, Avg={avg:.2f}%")
 
-        final_best_model = max(self.population, key=lambda m: m.fitness)
-        logger.info(f"\nFinal best model achieved an accuracy of {final_best_model.fitness:.2f}%")
+        if self.population:
+            final_best_model = max(self.population, key=lambda m: m.fitness)
+            logger.info(f"\nFinal best model achieved an accuracy of {final_best_model.fitness:.2f}%")
+        else:
+            logger.warning("\nPopulation is empty at the end of the simulation. No best model to report.")
 
         plot_fitness_history(self.fitness_history, 'fitness_history.png')
         self._save_final_population()
