@@ -365,5 +365,50 @@ class TestEvolution(unittest.TestCase):
         _run_training_epoch(model_wrapper_cpu, mock_optimizer, dummy_loader, mock_scaler, '16', 'test')
         mock_autocast.assert_called_with(enabled=False)
 
+    def test_mixed_precision_backward_outside_autocast(self):
+        """
+        Verifies that scaler.scale().backward() is called *outside* the
+        autocast context during mixed-precision training. This is a critical
+        check to ensure correct gradient scaling.
+        """
+        from src.evolution import _run_training_epoch
+        from unittest.mock import call
+
+        # 1. Setup mocks
+        model_wrapper = MagicMock(device='cuda')
+        model_wrapper._process_batch.return_value = (torch.randn(1, 10), torch.randint(0, 10, (1,)))
+        optimizer = MagicMock()
+        dummy_loader = [(torch.randn(1, 1, 1, 1), torch.randn(1, 1))]
+        scaler = MagicMock()
+        scaled_loss = MagicMock()
+        scaler.scale.return_value = scaled_loss
+
+        # 2. Use a manager to track the call order of context entry/exit and backward()
+        manager = MagicMock()
+        autocast_context = MagicMock()
+        autocast_context.__enter__ = manager.autocast_enter
+        autocast_context.__exit__ = manager.autocast_exit
+        scaled_loss.backward = manager.backward
+
+        with patch('src.evolution.torch.cuda.amp.autocast', return_value=autocast_context):
+            _run_training_epoch(
+                model_wrapper,
+                optimizer,
+                dummy_loader,
+                scaler,
+                precision='16',
+                description='test',
+                show_progress_bar=False
+            )
+
+        # 3. Assert the correct call order
+        expected_calls = [
+            call.autocast_enter(),
+            call.autocast_exit(None, None, None),
+            call.backward()
+        ]
+        self.assertEqual(manager.mock_calls, expected_calls, "backward() must be called after the autocast context is exited.")
+
+
 if __name__ == '__main__':
     unittest.main()

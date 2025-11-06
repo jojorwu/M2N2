@@ -44,7 +44,7 @@ def _run_training_epoch(model_wrapper: ModelWrapper, optimizer: optim.Optimizer,
         with torch.cuda.amp.autocast(enabled=use_amp):
             output, target = model_wrapper._process_batch(batch)
             loss = F.cross_entropy(output, target)
-            scaler.scale(loss).backward()
+        scaler.scale(loss).backward()
         scaler.step(optimizer)
         scaler.update()
         total_train_loss += loss.item()
