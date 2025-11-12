@@ -263,14 +263,25 @@ class EvolutionSimulator:
                 logger.warning(f"Failed to save model {path}: {e}")
 
     def _delete_old_models(self, model_dir: str) -> None:
-        """Deletes model files not in the final population."""
+        """
+        Deletes generated model files from the specified directory that are not
+        part of the final population, preserving any initially loaded models.
+        """
         logger.info(f"Clearing old models from {model_dir}...")
         final_files = {os.path.join(model_dir, f"model_niche_{'_'.join(map(str, m.niche_classes))}_fitness_{m.fitness:.2f}.pth") for m in self.population}
-        all_files = set(glob.glob(os.path.join(model_dir, "*.pth"))) | set(self.loaded_model_files)
-        for f in all_files - final_files:
+        # Only consider files in the target directory for deletion.
+        generated_files = set(glob.glob(os.path.join(model_dir, "*.pth")))
+        # Exclude final population files and any original loaded files from deletion.
+        files_to_delete = generated_files - final_files
+        for f in files_to_delete:
+            # Final check to ensure we don't delete an initial model file if it was somehow
+            # still in the list (e.g., if it wasn't in the final population).
+            if f in self.loaded_model_files:
+                continue
             try:
                 if os.path.exists(f):
                     os.remove(f)
+                    logger.info(f"  - Deleted old model: {f}")
             except OSError as e:
                 logger.warning(f"Error deleting old model {f}: {e}")
 

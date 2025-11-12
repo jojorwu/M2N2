@@ -80,7 +80,7 @@ class TestSimulatorInitialization(unittest.TestCase):
 
         self.assertTrue(os.path.exists(final_model_path), "Final model was not saved.")
         self.assertFalse(os.path.exists(user_file_path), "User file was not deleted.")
-        self.assertFalse(os.path.exists(loaded_model_path), "The original loaded model file was not deleted.")
+        self.assertTrue(os.path.exists(loaded_model_path), "The original loaded model file should have been preserved, but it was deleted.")
 
     def test_simulator_restarts_and_clears_artifacts(self):
         with open(FITNESS_LOG_FILENAME, "w") as f: f.write("dummy_log")
@@ -111,6 +111,35 @@ class TestSimulatorInitialization(unittest.TestCase):
         self.assertEqual(simulator.config_manager.merge_strategy, 'fitness_weighted', "Merge strategy was not dynamically updated.")
         from src.merge_strategies import FitnessWeightedMergeStrategy
         self.assertIsInstance(simulator.merge_strategy, FitnessWeightedMergeStrategy, "Simulator's merge strategy object was not re-initialized.")
+
+    def test_save_final_population_preserves_surviving_loaded_model_file(self):
+        """
+        Tests that if a model loaded from a file survives to the final
+        generation, its original file is not deleted.
+        """
+        original_model_path = os.path.join(self.model_dir, "original_model.pth")
+        torch.save({'dummy_state': 1}, original_model_path)
+
+        simulator = EvolutionSimulator(config_path=self.config_path)
+        simulator.loaded_model_files = [original_model_path]
+
+        surviving_model = ModelWrapper(
+            model=create_model(self.base_config['model_name'], 10, 'cpu'),
+            device='cpu', model_name=self.base_config['model_name'], niche_classes=[0]
+        )
+        surviving_model.fitness = 85.50
+        simulator.population = [surviving_model]
+
+        simulator._save_final_population(model_dir=self.model_dir)
+
+        self.assertTrue(os.path.exists(original_model_path),
+                        "The original loaded model file should not be deleted.")
+
+        final_model_filename = "model_niche_0_fitness_85.50.pth"
+        final_model_path = os.path.join(self.model_dir, final_model_filename)
+        self.assertTrue(os.path.exists(final_model_path),
+                        "The new file for the surviving model was not created.")
+
 
 if __name__ == '__main__':
     unittest.main()

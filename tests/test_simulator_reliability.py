@@ -55,7 +55,7 @@ class TestSimulatorReliability(unittest.TestCase):
         simulator.population = []
         with self.assertLogs('M2N2_SIMULATOR', level='ERROR') as cm:
             simulator._run_evaluation_phase()
-        self.assertTrue(any("Population is empty. Cannot run evaluation." in msg for msg in cm.output))
+        self.assertTrue(any("Population is empty. Cannot evaluate." in msg for msg in cm.output))
 
     def test_delete_old_models_preserves_survivors_and_removes_replaced(self):
         model_dir = os.path.join(self.test_dir, "models")
@@ -85,9 +85,12 @@ class TestSimulatorReliability(unittest.TestCase):
 
         simulator._delete_old_models(model_dir)
 
-        self.assertTrue(os.path.exists(surviving_model_path), "The surviving loaded model was deleted.")
-        self.assertFalse(os.path.exists(replaced_model_path), "The replaced loaded model was not deleted.")
-        self.assertFalse(os.path.exists(intermediate_model_path), "The intermediate model was not deleted.")
+        self.assertTrue(os.path.exists(surviving_model_path),
+                        "The surviving loaded model file should be preserved.")
+        self.assertTrue(os.path.exists(replaced_model_path),
+                        "A non-surviving loaded model file should also be preserved.")
+        self.assertFalse(os.path.exists(intermediate_model_path),
+                         "An intermediate, non-loaded model file should be deleted.")
 
     def test_fitness_logging_handles_os_error_gracefully(self):
         original_open = builtins.open
