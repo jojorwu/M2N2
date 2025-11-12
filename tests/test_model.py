@@ -64,7 +64,7 @@ class TestModelWrapper(unittest.TestCase):
              # Attempt to load the corrupted model
             wrapper = ModelWrapper.from_file(
                 filepath=filepath,
-                model_name=ModelName.CIFAR10,
+                model_name=ModelName.CNN,
                 num_classes=10,
                 device='cpu'
             )

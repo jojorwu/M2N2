@@ -37,13 +37,14 @@ class TestResnetIntegration(unittest.TestCase):
             'fitness_weighted_merge_dampening_factor': 25.0,
             'optimizer_config': {'learning_rate': 0.001},
             'scheduler_config': {'patience': 2, 'factor': 0.5},
-            'batch_size': 64,
+            'batch_size': 4,
             'mutation_rate': 0.0,
             'initial_mutation_strength': 0.0,
             'mutation_decay_factor': 1.0,
             'subset_percentage': 0.01, # Use a tiny subset
             'validation_split': 0.5,
             'default_epochs': {'specialize': 0, 'finetune': 0},
+            'delete_old_models': False,
         }
         with open(self.config_path, 'w') as f:
             yaml.dump(self.config, f)
@@ -107,7 +108,7 @@ class TestResnetIntegration(unittest.TestCase):
         # Modify the config to run for 2 generations and use a simple model
         self.config['num_generations'] = 2
         self.config['population_size'] = 2 # At least 2 for mate selection
-        self.config['model_name'] = 'CIFAR10'
+        self.config['model_name'] = 'CNN'
         with open(self.config_path, 'w') as f:
             yaml.dump(self.config, f)
 

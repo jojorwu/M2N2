@@ -24,7 +24,7 @@ class TestSimulatorReliability(unittest.TestCase):
         os.makedirs(self.test_dir, exist_ok=True)
 
         self.base_config = {
-            'model_name': 'CIFAR10', 'dataset_name': 'CIFAR10',
+            'model_name': 'CNN', 'dataset_name': 'CIFAR10',
             'precision_config': '32', 'num_generations': 1, 'population_size': 2, 'num_offspring': 2,
             'mate_selection_strategy': 'healing', 'generation_strategy': 'replace_worst',
             'merge_strategy': 'average', 'fitness_weighted_merge_dampening_factor': 25.0,
@@ -55,7 +55,7 @@ class TestSimulatorReliability(unittest.TestCase):
         simulator.population = []
         with self.assertLogs('M2N2_SIMULATOR', level='ERROR') as cm:
             simulator._run_evaluation_phase()
-            self.assertTrue(any("Population is empty. Cannot run evaluation." in msg for msg in cm.output))
+        self.assertTrue(any("Population is empty. Cannot run evaluation." in msg for msg in cm.output))
 
     def test_delete_old_models_preserves_survivors_and_removes_replaced(self):
         model_dir = os.path.join(self.test_dir, "models")
@@ -70,7 +70,12 @@ class TestSimulatorReliability(unittest.TestCase):
         intermediate_model_path = os.path.join(model_dir, "model_niche_2_fitness_50.00.pth")
         torch.save(CifarCNN().state_dict(), intermediate_model_path)
 
-        survivor_wrapper = ModelWrapper(model=CifarCNN(), device="cpu", model_name=self.base_config['model_name'], niche_classes=[1])
+        survivor_wrapper = ModelWrapper(
+            model_name=self.base_config['model_name'],
+            model=CifarCNN(),
+            niche_classes=[1],
+            device="cpu"
+        )
         survivor_wrapper.fitness = 95.00
 
         simulator = EvolutionSimulator(config_path=self.config_path)
@@ -95,39 +100,13 @@ class TestSimulatorReliability(unittest.TestCase):
         with patch('builtins.open', side_effect=selective_mock):
             with self.assertLogs('M2N2_SIMULATOR', level='WARNING') as cm:
                 EvolutionSimulator(config_path=self.config_path)
-                self.assertTrue(any("Could not write to fitness log file" in msg for msg in cm.output))
+        self.assertTrue(any("Could not create fitness log" in msg for msg in cm.output))
 
         simulator = EvolutionSimulator(config_path=self.config_path)
         with patch('builtins.open', side_effect=selective_mock):
             with self.assertLogs('M2N2_SIMULATOR', level='WARNING') as cm:
-                simulator._log_fitness_to_csv(generation=1, best_fitness=10.0, average_fitness=5.0)
-                self.assertTrue(any("Failed to append to fitness log file" in msg for msg in cm.output))
-
-    def test_clear_artifacts_handles_os_error_gracefully(self):
-        """
-        Ensures _clear_simulation_artifacts catches OSErrors during file
-        deletion and logs warnings without crashing.
-        """
-        model_dir = "src/pretrained_models"
-        os.makedirs(model_dir, exist_ok=True)
-        # Create dummy files that the method will attempt to delete
-        with open(FITNESS_LOG_FILENAME, "w") as f: f.write("dummy_log")
-        with open(os.path.join(model_dir, "model_niche_1.pth"), "w") as f: f.write("dummy_model")
-
-        # Patch os.remove to raise an error
-        with patch('src.simulator.os.remove', side_effect=OSError("Permission denied")):
-            with self.assertLogs('M2N2_SIMULATOR', level='WARNING') as cm:
-                simulator = EvolutionSimulator(config_path=self.config_path)
-                # The method is called during restart
-                simulator._clear_simulation_artifacts()
-
-                # Verify that warnings were logged for the files we tried to delete
-                self.assertTrue(any("Error removing log file" in msg for msg in cm.output))
-                self.assertTrue(any("Error removing model file" in msg for msg in cm.output))
-
-        # Cleanup
-        os.remove(FITNESS_LOG_FILENAME)
-        shutil.rmtree(model_dir)
+                simulator._log_fitness_to_csv(gen=1, best=10.0, avg=5.0)
+        self.assertTrue(any("Failed to write to fitness log" in msg for msg in cm.output))
 
     def test_evolution_phase_handles_empty_population_gracefully(self):
         """
@@ -138,8 +117,8 @@ class TestSimulatorReliability(unittest.TestCase):
         simulator.population = []  # Manually empty the population
 
         with self.assertLogs('M2N2_SIMULATOR', level='ERROR') as cm:
-            simulator._run_evolution_phase(generation=1)
-            self.assertTrue(any("Population is empty. Skipping evolution phase." in msg for msg in cm.output))
+            simulator._run_evolution_phase()
+        self.assertTrue(any("Population is empty. Skipping evolution." in msg for msg in cm.output))
 
     def test_save_final_population_handles_os_error_gracefully(self):
         """

@@ -14,7 +14,7 @@ class TestHealingMateSelectionStrategy(unittest.TestCase):
         # Create mock models
         self.parent1 = Mock(spec=ModelWrapper)
         self.parent1.fitness = 95.0
-        self.parent1.model_name = ModelName.CIFAR10
+        self.parent1.model_name = ModelName.CNN
         self.parent1.niche_classes = list(range(10)) # Generalist
 
         self.fallback_model = Mock(spec=ModelWrapper)

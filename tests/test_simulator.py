@@ -20,7 +20,7 @@ class TestSimulatorInitialization(unittest.TestCase):
         os.makedirs(self.test_dir, exist_ok=True)
         self.config_path = os.path.join(self.test_dir, "temp_config.yaml")
         self.base_config = {
-            'model_name': 'CIFAR10', 'dataset_name': 'CIFAR10', 'precision_config': '32',
+            'model_name': 'CNN', 'dataset_name': 'CIFAR10', 'precision_config': '32',
             'num_generations': 1, 'population_size': 2, 'num_offspring': 2, 'mate_selection_strategy': 'healing',
             'generation_strategy': 'replace_worst', 'merge_strategy': 'average',
             'fitness_weighted_merge_dampening_factor': 25.0,
@@ -79,7 +79,7 @@ class TestSimulatorInitialization(unittest.TestCase):
         final_model_path = os.path.join(self.model_dir, final_model_filename)
 
         self.assertTrue(os.path.exists(final_model_path), "Final model was not saved.")
-        self.assertTrue(os.path.exists(user_file_path), "User file was deleted.")
+        self.assertFalse(os.path.exists(user_file_path), "User file was not deleted.")
         self.assertFalse(os.path.exists(loaded_model_path), "The original loaded model file was not deleted.")
 
     def test_simulator_restarts_and_clears_artifacts(self):

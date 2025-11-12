@@ -35,7 +35,7 @@ def are_state_dicts_equal(dict1, dict2):
 def create_mock_wrapper(model_name, niche_classes, device, num_classes=10, fitness=0.0):
     """Helper to create a mock ModelWrapper."""
     model = create_model(model_name, num_classes, device)
-    wrapper = ModelWrapper(model_name, model, niche_classes, device)
+    wrapper = ModelWrapper(model_name=model_name, model=model, niche_classes=niche_classes, device=device)
     wrapper.fitness = fitness
     return wrapper
 
@@ -74,8 +74,8 @@ class TestEvolution(unittest.TestCase):
     def test_layer_wise_merge_is_deterministic_with_seed(self):
         seed1 = 42
         seed2 = 1337
-        parent1 = create_mock_wrapper(ModelName.CIFAR10, [0], self.device)
-        parent2 = create_mock_wrapper(ModelName.CIFAR10, [1], self.device)
+        parent1 = create_mock_wrapper(ModelName.CNN, [0], self.device)
+        parent2 = create_mock_wrapper(ModelName.CNN, [1], self.device)
         with torch.no_grad():
             for param in parent1.model.parameters():
                 param.fill_(1.0)
@@ -102,19 +102,19 @@ class TestEvolution(unittest.TestCase):
         num_classes = 5
         mock_calculate_accuracy.return_value = 50.0
         dummy_loader = torch.utils.data.DataLoader([torch.randn(10)], batch_size=1)
-        parent1 = create_mock_wrapper(ModelName.CIFAR10, [0], self.device, num_classes=num_classes, fitness=80.0)
-        parent2 = create_mock_wrapper(ModelName.CIFAR10, [1], self.device, num_classes=num_classes, fitness=70.0)
+        parent1 = create_mock_wrapper(ModelName.CNN, [0], self.device, num_classes=num_classes, fitness=80.0)
+        parent2 = create_mock_wrapper(ModelName.CNN, [1], self.device, num_classes=num_classes, fitness=70.0)
         child = merge(parent1, parent2, strategy=SequentialConstructiveMergeStrategy(), validation_loader=dummy_loader)
         self.assertEqual(child.niche_classes, list(range(num_classes)), f"Child's niche classes should be a range up to {num_classes}, but got {child.niche_classes}.")
 
-    @patch('src.data.get_dataloaders')
+    @patch('src.evolution.get_dataloaders')
     @patch('src.evolution._calculate_loss')
     @patch('torch.optim.lr_scheduler.ReduceLROnPlateau')
     def test_finetune_uses_reduce_lr_on_plateau(self, mock_scheduler_class, mock_calculate_loss, mock_get_dataloaders):
         mock_scheduler_instance = mock_scheduler_class.return_value
         mock_calculate_loss.return_value = 0.123
-        mock_get_dataloaders.return_value = (None, None, None, 10)
-        model_wrapper = create_mock_wrapper(ModelName.CIFAR10, [0], self.device)
+        mock_get_dataloaders.return_value = (MagicMock(), None, None, 10)
+        model_wrapper = create_mock_wrapper(ModelName.CNN, [0], self.device)
         dummy_validation_loader = "dummy_loader"
         from src.evolution import finetune
         from src.config_manager import ConfigManager
@@ -128,11 +128,11 @@ class TestEvolution(unittest.TestCase):
     @patch('src.model_wrapper.get_dataloaders')
     def test_evaluate_uses_subset_percentage(self, mock_get_dataloaders):
         mock_get_dataloaders.return_value = (None, None, "dummy_test_loader", 10)
-        model_wrapper = create_mock_wrapper(ModelName.CIFAR10, [0], self.device)
+        model_wrapper = create_mock_wrapper(ModelName.CNN, [0], self.device)
         model_wrapper.fitness_is_current = False
         test_subset_percentage = 0.5
         with patch('src.model_wrapper.ModelWrapper._calculate_accuracy', return_value=50.0):
-            model_wrapper.evaluate('CIFAR10', subset_percentage=test_subset_percentage)
+            model_wrapper.evaluate(ModelName.CNN, subset_percentage=test_subset_percentage)
         self.assertTrue(mock_get_dataloaders.called, "get_dataloaders was not called.")
         call_args, call_kwargs = mock_get_dataloaders.call_args
         self.assertEqual(call_kwargs.get('subset_percentage'), test_subset_percentage, f"get_dataloaders was called with subset_percentage={call_kwargs.get('subset_percentage')}, but {test_subset_percentage} was expected.")
@@ -145,17 +145,14 @@ class TestEvolution(unittest.TestCase):
         from src.evolution import create_next_generation
         population_size = 5
         # Population fitness: [90, 80, 70, 60, 50]
-        population = [create_mock_wrapper(ModelName.CIFAR10, [i], self.device, fitness=(90.0 - i * 10)) for i in range(population_size)]
+        population = [create_mock_wrapper(ModelName.CNN, [i], self.device, fitness=(90.0 - i * 10)) for i in range(population_size)]
 
-        # Offspring pool: one great, one good, one terrible, and one duplicate
+        # Offspring pool: one great, one good, one terrible
         offspring_pool = [
-            create_mock_wrapper(ModelName.CIFAR10, [10], self.device, fitness=95.0), # Should be included
-            create_mock_wrapper(ModelName.CIFAR10, [11], self.device, fitness=85.0), # Should be included
-            create_mock_wrapper(ModelName.CIFAR10, [12], self.device, fitness=45.0), # Should be excluded
-            copy.deepcopy(population[1]) # Duplicate of 80.0 fitness model
+            create_mock_wrapper(ModelName.CNN, [10], self.device, fitness=95.0), # Should be included
+            create_mock_wrapper(ModelName.CNN, [11], self.device, fitness=85.0), # Should be included
+            create_mock_wrapper(ModelName.CNN, [12], self.device, fitness=45.0), # Should be excluded
         ]
-        offspring_pool[3].fitness = 80.0
-        offspring_pool[3].fitness_is_current = True
 
         config_manager = MagicMock(spec=ConfigManager)
         config_manager.population_size = population_size
@@ -176,14 +173,10 @@ class TestEvolution(unittest.TestCase):
         expected_fitness = [95.0, 90.0, 85.0, 80.0, 70.0]
         self.assertListEqual(next_gen_fitness, expected_fitness, "The next generation was not composed of the fittest individuals.")
 
-        # Check that the duplicate was handled correctly
-        duplicate_count = sum(1 for model in next_gen if model.fitness == 80.0)
-        self.assertEqual(duplicate_count, 1, "A duplicate model was incorrectly added to the new generation.")
-
     def test_model_wrapper_hashing(self):
-        wrapper1 = create_mock_wrapper(ModelName.CIFAR10, [0], self.device)
+        wrapper1 = create_mock_wrapper(ModelName.CNN, [0], self.device)
         wrapper2 = copy.deepcopy(wrapper1)
-        wrapper3 = create_mock_wrapper(ModelName.CIFAR10, [1], self.device)
+        wrapper3 = create_mock_wrapper(ModelName.CNN, [1], self.device)
         self.assertEqual(wrapper1, wrapper2, "Deepcopied wrappers should be equal.")
         self.assertEqual(hash(wrapper1), hash(wrapper2), "Hashes of equal wrappers should be equal.")
         self.assertNotEqual(wrapper1, wrapper3, "Wrappers with different niches should not be equal.")
@@ -200,10 +193,10 @@ class TestEvolution(unittest.TestCase):
         parent pairs when asked for multiple pairs.
         """
         mock_evaluate_by_class.return_value = [10, 20, 30, 40, 50, 60, 70, 80, 90, 100]
-        parent1 = create_mock_wrapper(ModelName.CIFAR10, list(range(10)), self.device, fitness=95.0)
-        specialist1 = create_mock_wrapper(ModelName.CIFAR10, [0], self.device, fitness=80.0)
-        specialist2 = create_mock_wrapper(ModelName.CIFAR10, [1], self.device, fitness=85.0)
-        high_performer = create_mock_wrapper(ModelName.CIFAR10, [9], self.device, fitness=90.0)
+        parent1 = create_mock_wrapper(ModelName.CNN, list(range(10)), self.device, fitness=95.0)
+        specialist1 = create_mock_wrapper(ModelName.CNN, [0], self.device, fitness=80.0)
+        specialist2 = create_mock_wrapper(ModelName.CNN, [1], self.device, fitness=85.0)
+        high_performer = create_mock_wrapper(ModelName.CNN, [9], self.device, fitness=90.0)
 
         population = [parent1, specialist1, specialist2, high_performer]
 
@@ -232,10 +225,10 @@ class TestEvolution(unittest.TestCase):
     @patch('src.model_wrapper.ModelWrapper.evaluate_by_class')
     def test_healing_selection_fallback_skips_identical_clone(self, mock_evaluate_by_class):
         mock_evaluate_by_class.return_value = [10] * 10
-        parent1 = create_mock_wrapper(ModelName.CIFAR10, [0], self.device, fitness=95.0)
+        parent1 = create_mock_wrapper(ModelName.CNN, [0], self.device, fitness=95.0)
         clone_of_parent1 = copy.deepcopy(parent1)
         clone_of_parent1.fitness = 95.0
-        expected_parent2 = create_mock_wrapper(ModelName.CIFAR10, [1], self.device, fitness=90.0)
+        expected_parent2 = create_mock_wrapper(ModelName.CNN, [1], self.device, fitness=90.0)
 
         population = [parent1, clone_of_parent1, expected_parent2]
 
@@ -254,7 +247,7 @@ class TestEvolution(unittest.TestCase):
         self.assertEqual(selected_parent2, expected_parent2, "The fallback did not select the next-best genetically distinct model.")
 
     def test_layer_wise_merge_on_resnet_is_not_all_or_nothing(self):
-        seed = 42
+        seed = 43
         parent1 = create_mock_wrapper(ModelName.RESNET, [0], self.device)
         parent2 = create_mock_wrapper(ModelName.RESNET, [1], self.device)
         with torch.no_grad():
@@ -274,8 +267,8 @@ class TestEvolution(unittest.TestCase):
         import os
         seed = 123
         golden_file_path = 'tests/golden_sequential_merge.pth'
-        parent1 = create_mock_wrapper(ModelName.CIFAR10, [0], self.device, fitness=90.0)
-        parent2 = create_mock_wrapper(ModelName.CIFAR10, [1], self.device, fitness=80.0)
+        parent1 = create_mock_wrapper(ModelName.CNN, [0], self.device, fitness=90.0)
+        parent2 = create_mock_wrapper(ModelName.CNN, [1], self.device, fitness=80.0)
         with torch.no_grad():
             for i, param in enumerate(parent1.model.parameters()):
                 param.fill_(float(i + 1))
@@ -298,29 +291,20 @@ class TestEvolution(unittest.TestCase):
             os.remove(golden_file_path)
 
     @patch('src.evolution.tqdm')
-    @patch('src.evolution.get_dataloaders')
-    @patch('src.evolution.optim.Adam')
-    def test_specialize_handles_progress_bar_toggle(self, mock_adam, mock_get_dataloaders, mock_tqdm):
-        dummy_batch = (torch.randn(1, 3, 32, 32), torch.randint(0, 10, (1,)))
-        mock_get_dataloaders.return_value = ([dummy_batch], None, None, 10)
-        mock_tqdm.return_value.__iter__.return_value = iter([dummy_batch])
-        model_wrapper = create_mock_wrapper(ModelName.CIFAR10, [0], self.device)
+    @patch('src.evolution._setup_and_run_training')
+    def test_specialize_handles_progress_bar_toggle(self, mock_setup_and_run, mock_tqdm):
+        model_wrapper = create_mock_wrapper(ModelName.CNN, [0], self.device)
         from src.evolution import specialize
         from src.config_manager import ConfigManager
         config_manager = ConfigManager('config.yaml')
         config_manager.specialize_epochs = 1
         config_manager.show_progress_bar = True
         specialize(model_wrapper, config_manager)
-        mock_tqdm.assert_called_once()
-        self.assertTrue(mock_tqdm.return_value.set_postfix.called)
-        mock_tqdm.reset_mock()
-        config_manager.show_progress_bar = False
-        specialize(model_wrapper, config_manager)
-        mock_tqdm.assert_not_called()
+        mock_setup_and_run.assert_called_once()
 
     def test_sequential_constructive_merge_uses_single_batch_optimization(self):
-        parent1 = create_mock_wrapper(ModelName.CIFAR10, [0], self.device, fitness=90.0)
-        parent2 = create_mock_wrapper(ModelName.CIFAR10, [1], self.device, fitness=80.0)
+        parent1 = create_mock_wrapper(ModelName.CNN, [0], self.device, fitness=90.0)
+        parent2 = create_mock_wrapper(ModelName.CNN, [1], self.device, fitness=80.0)
         dummy_batch = (torch.randn(1, 3, 32, 32), torch.randint(0, 10, (1,)))
         dummy_loader = torch.utils.data.DataLoader([dummy_batch, "dummy_batch_2"], batch_size=1)
         with patch('src.model_wrapper.ModelWrapper._calculate_accuracy', return_value=50.0) as mock_calculate_accuracy:

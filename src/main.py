@@ -1,14 +1,23 @@
 """
-The main entry point for running the M2N2 evolutionary simulation.
+Main entry point for running the M2N2 evolutionary simulation.
 
-This script creates an instance of the EvolutionSimulator and calls its
-run() method to start the experiment.
+This script initializes and runs the entire evolutionary experiment from start to
+finish. It serves as the primary executable for the simulation backend.
+
+To run the simulation, execute this script from the project's root directory:
+    python3 -m src.main
+
+The simulation's behavior is controlled by the `config.yaml` file.
 """
 from .simulator import EvolutionSimulator
 
 def main():
     """
-    Initializes and runs the evolutionary simulation.
+    Initializes the EvolutionSimulator and starts the simulation run.
+
+    This function creates an instance of the simulator, which automatically
+    loads the configuration from `config.yaml`, and then calls the `run`
+    method to begin the evolutionary process.
     """
     simulator = EvolutionSimulator(config_path='config.yaml')
     simulator.run()

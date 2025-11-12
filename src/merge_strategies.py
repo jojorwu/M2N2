@@ -1,5 +1,14 @@
+"""
+Defines the strategies for merging two parent models into a single child.
+
+This module implements the "crossover" phase of the evolutionary algorithm.
+Merge strategies define how the weights (parameters) of two parent neural
+networks are combined to create a new child network. This allows for various
+approaches, from simple averaging to more complex, fitness-aware, or
+layer-by-layer constructions.
+"""
 from abc import ABC, abstractmethod
-from typing import Dict, Any, Optional
+from typing import Dict, Optional
 import torch
 from torch.utils.data import DataLoader
 import random
@@ -11,10 +20,14 @@ from .model_factory import create_model
 
 logger = logging.getLogger("M2N2_SIMULATOR")
 
-
 class MergeStrategy(ABC):
-    """Abstract base class for all merge strategies."""
+    """
+    Abstract base class for all model merge strategies.
 
+    This class provides the interface that all merge strategy implementations
+    must follow. Subclasses are required to implement the `merge` method, which
+    contains the core logic for combining the parent models.
+    """
     @abstractmethod
     def merge(self, parent1: ModelWrapper, parent2: ModelWrapper, validation_loader: Optional[DataLoader] = None) -> Dict[str, torch.Tensor]:
         """
@@ -24,17 +37,22 @@ class MergeStrategy(ABC):
             parent1 (ModelWrapper): The first parent model.
             parent2 (ModelWrapper): The second parent model.
             validation_loader (DataLoader, optional): A DataLoader for a
-                validation set, required by some strategies. Defaults to None.
+                validation set. This is required by some advanced strategies
+                (like `SequentialConstructiveMergeStrategy`) to evaluate the
+                quality of the merge. Defaults to None.
 
         Returns:
             Dict[str, torch.Tensor]: The state dictionary for the new child model.
         """
         pass
 
-
 class AverageMergeStrategy(MergeStrategy):
-    """Merges models by averaging their weights."""
+    """
+    Merges models by taking the simple arithmetic average of their weights.
 
+    This is the most straightforward merging technique. For each parameter, the
+    value in the child model is the average of the values from the two parents.
+    """
     def merge(self, parent1: ModelWrapper, parent2: ModelWrapper, validation_loader: Optional[DataLoader] = None) -> Dict[str, torch.Tensor]:
         parent1_state_dict = parent1.model.state_dict()
         parent2_state_dict = parent2.model.state_dict()
@@ -42,119 +60,23 @@ class AverageMergeStrategy(MergeStrategy):
 
         for key in child_model_state_dict:
             child_model_state_dict[key] = (parent1_state_dict[key] + parent2_state_dict[key]) / 2.0
-
         return child_model_state_dict
 
-
-
-
-class SequentialConstructiveMergeStrategy(MergeStrategy):
-    """
-    Merges models by intelligently building a child layer by layer,
-    keeping changes only if they improve validation fitness. This implementation
-    is optimized to reduce memory overhead by avoiding redundant state copies.
-    """
-    def merge(self, parent1: ModelWrapper, parent2: ModelWrapper, validation_loader: Optional[DataLoader] = None) -> Dict[str, torch.Tensor]:
-        if validation_loader is None:
-            raise ValueError("The 'sequential_constructive' strategy requires a 'validation_loader'.")
-
-        fitter_parent = parent1 if parent1.fitness >= parent2.fitness else parent2
-        weaker_parent = parent2 if parent1.fitness >= parent2.fitness else parent1
-        logger.info(f"  - Using fitter parent (Fitness: {fitter_parent.fitness:.2f}) as base.")
-
-        # Initialize a temporary model with the fitter parent's state.
-        # This model's state will be modified in-place.
-        num_classes = fitter_parent.model.num_classes
-        temp_model = create_model(fitter_parent.model_name, num_classes, fitter_parent.device)
-        temp_model.load_state_dict(copy.deepcopy(fitter_parent.model.state_dict()))
-        temp_model_wrapper = ModelWrapper(
-            model_name=fitter_parent.model_name,
-            model=temp_model,
-            niche_classes=list(range(num_classes)),
-            device=fitter_parent.device
-        )
-
-        # Use a single batch for quick validation to reduce overhead.
-        try:
-            validation_batch = next(iter(validation_loader))
-        except StopIteration:
-            raise ValueError("Validation loader is empty. Cannot use 'sequential_constructive' strategy.")
-
-        best_fitness = temp_model_wrapper._calculate_accuracy(batch=validation_batch)
-        logger.info(f"  - Initial child validation fitness (on one batch): {best_fitness:.2f}%")
-
-        # Determine the correct layer prefixes based on the model architecture.
-        if fitter_parent.model_name == 'LLM':
-            layer_prefixes = ['bert.distilbert.embeddings']
-            num_transformer_layers = fitter_parent.model.bert.config.num_hidden_layers
-            for i in range(num_transformer_layers):
-                layer_prefixes.append(f'bert.distilbert.transformer.layer.{i}')
-            layer_prefixes.extend(['bert.pre_classifier', 'bert.classifier'])
-        elif fitter_parent.model_name == 'RESNET':
-            layer_prefixes = [name for name, _ in fitter_parent.model.resnet.named_children()]
-        else: # Default for simple models like CifarCNN
-            layer_prefixes = sorted(list(set([k.split('.')[0] for k in fitter_parent.model.state_dict().keys()])))
-
-        current_state_dict = temp_model_wrapper.model.state_dict()
-        for prefix in layer_prefixes:
-            # Skip layers without learnable parameters (e.g., ReLU, MaxPool in ResNet).
-            if fitter_parent.model_name == 'RESNET':
-                module_to_check = dict(fitter_parent.model.resnet.named_children()).get(prefix)
-                if module_to_check and not list(module_to_check.parameters()):
-                    logger.info(f"  - Skipping layer '{prefix}' as it has no learnable parameters.")
-                    continue
-
-            # Find all state_dict keys that belong to this prefix.
-            keys_for_prefix = []
-            for key in current_state_dict:
-                if fitter_parent.model_name == 'RESNET':
-                    # ResNet keys are like 'resnet.layer1.0.conv1.weight'
-                    if key.startswith(f"resnet.{prefix}"):
-                        keys_for_prefix.append(key)
-                else:
-                    # CifarCNN/LLM keys start directly with the prefix
-                    if key.startswith(prefix):
-                        keys_for_prefix.append(key)
-
-            if not keys_for_prefix:
-                continue
-
-            # Store the original layers from the current best model state.
-            original_layers = {key: current_state_dict[key].clone() for key in keys_for_prefix}
-
-            # Temporarily swap in the layers from the weaker parent to test them.
-            for key in original_layers:
-                if key in weaker_parent.model.state_dict():
-                    current_state_dict[key].copy_(weaker_parent.model.state_dict()[key])
-
-            # Evaluate the new configuration.
-            current_fitness = temp_model_wrapper._calculate_accuracy(batch=validation_batch)
-
-            # Decide whether to keep or revert the change.
-            if current_fitness >= best_fitness:
-                # If the change was beneficial, keep it and update the best fitness.
-                logger.info(f"  - Swapping layer '{prefix}' improved validation fitness to {current_fitness:.2f}%. Keeping it.")
-                best_fitness = current_fitness
-            else:
-                # If not beneficial, revert the temporary model's state for this layer.
-                logger.info(f"  - Swapping layer '{prefix}' did not improve validation fitness ({current_fitness:.2f}%). Reverting.")
-                for key, original_tensor in original_layers.items():
-                    current_state_dict[key].copy_(original_tensor)
-
-        # The final state of the temporary model is the best combination found.
-        return temp_model_wrapper.model.state_dict()
-
-
 class FitnessWeightedMergeStrategy(MergeStrategy):
-    """Merges models using a fitness-weighted average of their weights."""
+    """
+    Merges models using a weighted average based on the parents' fitness.
 
+    This strategy gives more influence to the "fitter" parent. The weights for
+    the average are calculated by applying a softmax function to the fitness
+    scores of the two parents. This ensures that the weights are positive, sum
+    to 1, and proportionally reflect the parents' performance.
+    """
     def merge(self, parent1: ModelWrapper, parent2: ModelWrapper, validation_loader: Optional[DataLoader] = None) -> Dict[str, torch.Tensor]:
         parent1_state_dict = parent1.model.state_dict()
         parent2_state_dict = parent2.model.state_dict()
         child_model_state_dict = copy.deepcopy(parent1_state_dict)
 
-        # Use softmax to ensure weights are positive and sum to 1
-        fitness_tensor = torch.tensor([parent1.fitness, parent2.fitness])
+        fitness_tensor = torch.tensor([parent1.fitness, parent2.fitness], dtype=torch.float32)
         weights = torch.nn.functional.softmax(fitness_tensor, dim=0)
         weight1, weight2 = weights[0].item(), weights[1].item()
 
@@ -162,14 +84,25 @@ class FitnessWeightedMergeStrategy(MergeStrategy):
 
         for key in child_model_state_dict:
             child_model_state_dict[key] = (parent1_state_dict[key] * weight1) + (parent2_state_dict[key] * weight2)
-
         return child_model_state_dict
 
-
 class LayerWiseMergeStrategy(MergeStrategy):
-    """Merges models by randomly selecting entire layers from parents."""
+    """
+    Merges models by randomly selecting entire layers from either parent.
 
+    For each layer (or block of layers) in the model architecture, this strategy
+    makes a random choice to copy the entire layer's weights from either
+    `parent1` or `parent2`. This can be useful for combining functional blocks
+    from different specialist models.
+    """
     def __init__(self, seed: Optional[int] = None):
+        """
+        Initializes the LayerWiseMergeStrategy.
+
+        Args:
+            seed (Optional[int], optional): A random seed to ensure
+                reproducible layer selection. Defaults to None.
+        """
         self.seed = seed
 
     def merge(self, parent1: ModelWrapper, parent2: ModelWrapper, validation_loader: Optional[DataLoader] = None) -> Dict[str, torch.Tensor]:
@@ -178,42 +111,68 @@ class LayerWiseMergeStrategy(MergeStrategy):
         child_model_state_dict = copy.deepcopy(parent1_state_dict)
 
         rng = random.Random(self.seed)
+        layer_prefixes = sorted(list(set([k.split('.')[0] for k in parent1_state_dict.keys()])))
 
-        # Use the same advanced layer prefix detection as SequentialConstructiveMergeStrategy
-        if parent1.model_name == 'LLM':
-            layer_prefixes = ['bert.distilbert.embeddings']
-            num_transformer_layers = parent1.model.bert.config.num_hidden_layers
-            for i in range(num_transformer_layers):
-                layer_prefixes.append(f'bert.distilbert.transformer.layer.{i}')
-            layer_prefixes.extend(['bert.pre_classifier', 'bert.classifier'])
-        elif parent1.model_name == 'RESNET':
-            layer_prefixes = [name for name, module in parent1.model.resnet.named_children() if list(module.parameters())]
-            layer_prefixes.sort()
-        else: # Default for simple models like CifarCNN
-            layer_prefixes = sorted(list(set([k.split('.')[0] for k in parent1_state_dict.keys()])))
-
-        parent_choices = {p: rng.choice([1, 2]) for p in layer_prefixes}
-
-        # Iterate through the generated prefixes and apply choices
-        for prefix, choice in parent_choices.items():
-            if choice == 2:  # Take this layer from parent 2
+        for prefix in layer_prefixes:
+            if rng.choice([True, False]):
+                # Take this layer from parent 2
                 for key in parent2_state_dict:
-                    # Determine if the key belongs to the current prefix
-                    key_belongs_to_prefix = False
-                    if parent1.model_name == 'RESNET':
-                        # For ResNet, keys are like 'resnet.layer1.0.conv1.weight'
-                        # and prefixes are like 'layer1'.
-                        if key.startswith(f"resnet.{prefix}"):
-                            key_belongs_to_prefix = True
-                    elif parent1.model_name == 'LLM':
-                        # For LLM, prefixes are full paths like 'bert.distilbert.transformer.layer.0'
-                        if key.startswith(prefix):
-                            key_belongs_to_prefix = True
-                    else: # For simple models like CifarCNN
-                        if key.startswith(prefix):
-                            key_belongs_to_prefix = True
-
-                    if key_belongs_to_prefix:
+                    if key.startswith(prefix):
                         child_model_state_dict[key] = parent2_state_dict[key]
-
         return child_model_state_dict
+
+class SequentialConstructiveMergeStrategy(MergeStrategy):
+    """
+    Merges models by intelligently building a child layer by layer.
+
+    This advanced strategy starts with the "fitter" parent as a base and
+    iteratively tests swapping in each layer from the "weaker" parent. A swap
+    is only kept if it results in an improvement in fitness, which is measured
+    on a small validation batch to keep the process efficient.
+    """
+    def merge(self, parent1: ModelWrapper, parent2: ModelWrapper, validation_loader: Optional[DataLoader] = None) -> Dict[str, torch.Tensor]:
+        if not validation_loader:
+            raise ValueError("The 'sequential_constructive' strategy requires a 'validation_loader'.")
+
+        fitter_parent = parent1 if parent1.fitness >= parent2.fitness else parent2
+        weaker_parent = parent2 if parent1.fitness >= parent2.fitness else parent1
+        logger.info(f"  - Base parent (fitter): Fitness {fitter_parent.fitness:.2f}")
+
+        temp_model = create_model(fitter_parent.model_name, fitter_parent.model.num_classes, fitter_parent.device)
+        temp_model.load_state_dict(copy.deepcopy(fitter_parent.model.state_dict()))
+        temp_model_wrapper = ModelWrapper(
+            model_name=fitter_parent.model_name,
+            model=temp_model,
+            niche_classes=list(range(fitter_parent.model.num_classes)),
+            device=fitter_parent.device
+        )
+
+        try:
+            validation_batch = next(iter(validation_loader))
+        except StopIteration:
+            raise ValueError("Validation loader is empty, cannot use this strategy.")
+
+        best_fitness = temp_model_wrapper._calculate_accuracy(batch=validation_batch)
+        logger.info(f"  - Initial child validation fitness (on one batch): {best_fitness:.2f}%")
+
+        layer_prefixes = sorted(list(set([k.split('.')[0] for k in fitter_parent.model.state_dict().keys()])))
+
+        for prefix in layer_prefixes:
+            original_layers = {k: v.clone() for k, v in temp_model.state_dict().items() if k.startswith(prefix)}
+
+            # Swap in the layer from the weaker parent
+            for key in original_layers:
+                if key in weaker_parent.model.state_dict():
+                    temp_model.state_dict()[key].copy_(weaker_parent.model.state_dict()[key])
+
+            current_fitness = temp_model_wrapper._calculate_accuracy(batch=validation_batch)
+
+            if current_fitness >= best_fitness:
+                logger.info(f"  - Swapping layer '{prefix}' improved fitness to {current_fitness:.2f}%. Keeping.")
+                best_fitness = current_fitness
+            else:
+                logger.info(f"  - Swapping layer '{prefix}' did not improve fitness. Reverting.")
+                for key, original_tensor in original_layers.items():
+                    temp_model.state_dict()[key].copy_(original_tensor)
+
+        return temp_model.state_dict()

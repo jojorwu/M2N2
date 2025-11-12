@@ -21,7 +21,7 @@ class TestConfigManager(unittest.TestCase):
         Ensures that if a required key is missing, a ValueError is raised.
         """
         base_config = {
-            'model_name': 'CIFAR10', 'dataset_name': 'CIFAR10', 'precision_config': '32',
+            'model_name': 'CNN', 'dataset_name': 'CIFAR10', 'precision_config': '32',
             'num_generations': 1, 'population_size': 2, 'num_offspring': 1,
             'mate_selection_strategy': 'healing', 'merge_strategy': 'average',
             'fitness_weighted_merge_dampening_factor': 25.0,
@@ -50,7 +50,7 @@ class TestConfigManager(unittest.TestCase):
         syntactically incorrect YAML file.
         """
         with open(self.config_path, "w") as f:
-            f.write("model_name: CIFAR10\n: invalid_syntax")
+            f.write("model_name: CNN\n: invalid_syntax")
 
         with self.assertRaisesRegex(ValueError, "Error parsing YAML file"):
             ConfigManager(config_path=self.config_path)

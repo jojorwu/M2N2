@@ -20,7 +20,7 @@ class TestEmptyLoader(unittest.TestCase):
         self.config_path = os.path.join(self.test_dir, "temp_config.yaml")
         os.makedirs(self.test_dir, exist_ok=True)
         self.base_config = {
-            'model_name': 'CIFAR10',
+            'model_name': 'CNN',
             'dataset_name': 'CIFAR10',
             'precision_config': '32',
             'num_generations': 1,
@@ -59,7 +59,7 @@ class TestEmptyLoader(unittest.TestCase):
 
         model = CifarCNN(num_classes=10)
         model_wrapper = ModelWrapper(
-            model_name=ModelName.CIFAR10,
+            model_name=ModelName.CNN,
             model=model,
             niche_classes=[0, 1],
             device='cpu'

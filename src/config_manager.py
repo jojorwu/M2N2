@@ -20,6 +20,20 @@ logger = logging.getLogger("M2N2_SIMULATOR")
 class ConfigManager:
     """
     Handles all configuration loading and dynamic updates for the simulator.
+
+    This class acts as a centralized manager for all simulation parameters. It loads
+    a base configuration from a YAML file (`config.yaml`) and supports real-time
+    updates from a JSON command file, which is typically controlled by the
+    dashboard UI. This ensures that all components of the simulation access a
+    consistent and validated set of parameters.
+
+    Attributes:
+        config (Dict[str, Any]): The raw dictionary loaded from the YAML file.
+        model_name (ModelName): The model architecture to be used.
+        dataset_name (DatasetName): The dataset for the experiment.
+        num_generations (int): The total number of generations to run.
+        population_size (int): The number of models in the population.
+        # ... and other parameters initialized from the config file.
     """
     def __init__(self, config_path: str = 'config.yaml'):
         """
@@ -27,6 +41,10 @@ class ConfigManager:
 
         Args:
             config_path (str): The path to the main YAML configuration file.
+
+        Raises:
+            ValueError: If the configuration file is not found, cannot be parsed,
+                        or is not a valid dictionary.
         """
         try:
             with open(config_path, 'r') as f:
@@ -42,14 +60,40 @@ class ConfigManager:
         self._initialize_parameters()
 
     def _get_required(self, key: str) -> Any:
-        """Gets a required config value, raising ValueError if missing."""
+        """
+        Gets a required config value, raising an error if it's missing.
+
+        This helper ensures that essential parameters are present in the config file,
+        preventing `None` values from propagating through the simulation.
+
+        Args:
+            key (str): The configuration key to retrieve.
+
+        Returns:
+            Any: The value associated with the key.
+
+        Raises:
+            ValueError: If the key is not found in the configuration.
+        """
         value = self.config.get(key)
         if value is None:
             raise ValueError(f"Missing required configuration key: '{key}'")
         return value
 
     def _initialize_parameters(self) -> None:
-        """Initializes all simulation parameters from the loaded config."""
+        """
+        Initializes all simulation parameters from the loaded config dictionary.
+
+        This method systematically reads, validates, and sets all the necessary
+        attributes for the simulation based on the content of the configuration
+        file. It also sets a random seed if one is not provided.
+
+        Raises:
+            ValueError: If a required configuration key is missing or if a
+                        combination of parameters is invalid (e.g., using a
+                        merge strategy that requires a validation set without
+                        defining one).
+        """
         # --- General settings ---
         self.model_name = ModelName(self._get_required('model_name'))
         self.dataset_name = DatasetName(self._get_required('dataset_name'))
@@ -114,7 +158,17 @@ class ConfigManager:
 
     def load_dynamic_config(self) -> Dict[str, Any]:
         """
-        Checks for and applies dynamic configuration from command_config.json.
+        Checks for and applies dynamic configuration from the command file.
+
+        This method reads the JSON command file (typically written to by the
+        dashboard), updates the instance's configuration attributes in-place,
+        and logs the changes. This allows for real-time control over the
+        simulation as it runs.
+
+        Returns:
+            Dict[str, Any]: A dictionary of the dynamic commands that were
+                            loaded. Returns an empty dictionary if the file
+                            does not exist or if an error occurs during parsing.
         """
         if not os.path.exists(COMMAND_FILE):
             return {}

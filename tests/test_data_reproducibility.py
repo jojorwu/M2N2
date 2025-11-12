@@ -19,7 +19,7 @@ class TestDataReproducibility(unittest.TestCase):
 
         # Get a loader with a subset of the dataset
         train_loader_1, val_loader_1, _, _ = get_dataloaders(
-            DatasetName.CIFAR10, ModelName.CIFAR10,
+            DatasetName.CIFAR10, ModelName.CNN,
             batch_size=64,
             subset_percentage=0.5,
             validation_split=0.1,
@@ -28,7 +28,7 @@ class TestDataReproducibility(unittest.TestCase):
 
         # Get a second loader with the exact same parameters
         train_loader_2, val_loader_2, _, _ = get_dataloaders(
-            DatasetName.CIFAR10, ModelName.CIFAR10,
+            DatasetName.CIFAR10, ModelName.CNN,
             batch_size=64,
             subset_percentage=0.5,
             validation_split=0.1,
