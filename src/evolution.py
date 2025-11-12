@@ -93,11 +93,9 @@ def _run_training_session(
 ) -> None:
     """
     Manages a complete training session over multiple epochs.
-
     This function orchestrates the training process, including running the
     training epochs and, if a scheduler and validation loader are provided,
     stepping the learning rate scheduler based on validation loss.
-
     Args:
         model_wrapper (ModelWrapper): The model wrapper to be trained.
         train_loader (DataLoader): The data loader for the training data.
@@ -219,17 +217,14 @@ def select_mates(
 ) -> List[Tuple[ModelWrapper, ModelWrapper]]:
     """
     Selects multiple pairs of parents from the population for breeding.
-
     Delegates the selection logic to a `MateSelectionStrategy` object,
     allowing for different algorithms (e.g., healing, random) to be used.
-
     Args:
         population (List[ModelWrapper]): The current population of models.
         num_pairs (int): The number of parent pairs to select.
         strategy (MateSelectionStrategy): The strategy object that implements
             the selection logic.
         config_manager (ConfigManager): The simulation's configuration.
-
     Returns:
         List[Tuple[ModelWrapper, ModelWrapper]]: A list of tuples, where each
             tuple contains two parent models selected for mating.
@@ -244,18 +239,15 @@ def merge(
 ) -> ModelWrapper:
     """
     Merges two parent models into a new child model.
-
     This function orchestrates the "crossover" step. It combines the weights
     of two parents to create a child, with the specific algorithm determined
     by the provided `MergeStrategy`.
-
     Args:
         parent1 (ModelWrapper): The first parent model.
         parent2 (ModelWrapper): The second parent model.
         strategy (MergeStrategy): The object that implements the merging algorithm.
         validation_loader (Optional[DataLoader], optional): Data loader for
             validation, required by some advanced strategies. Defaults to None.
-
     Returns:
         ModelWrapper: A new `ModelWrapper` for the created child model.
     """
@@ -278,18 +270,15 @@ def mutate(
 ) -> ModelWrapper:
     """
     Applies deterministic, adaptively scaled Gaussian mutations to a model.
-
     This function introduces genetic diversity by altering a fraction of the
     model's weights. The process is deterministic if a seed is provided. The
     mutation strength decays over generations.
-
     Args:
         model_wrapper (ModelWrapper): The model to mutate.
         generation (int): The current generation number, for adaptive strength.
         config_manager (ConfigManager): The configuration manager.
         seed (Optional[int], optional): A seed for the random number
             generator to ensure reproducibility. Defaults to None.
-
     Returns:
         The mutated model wrapper.
     """
@@ -318,16 +307,13 @@ def create_next_generation(
 ) -> List[ModelWrapper]:
     """
     Creates the next generation's population from the current one and offspring.
-
     Applies a survival strategy (e.g., elitism) to determine which models from
     the combined pool will survive to form the next generation.
-
     Args:
         current_population (List[ModelWrapper]): Models from the current generation.
         offspring_pool (List[ModelWrapper]): Newly created and trained offspring.
         strategy (GenerationStrategy): The object that implements the survival logic.
         config_manager (ConfigManager): The simulation's configuration.
-
     Returns:
         List[ModelWrapper]: The list of models for the next generation.
     """
@@ -336,14 +322,11 @@ def create_next_generation(
 def _calculate_loss(model_wrapper: ModelWrapper, data_loader: DataLoader) -> float:
     """
     Calculates the average loss for a model on a given dataset.
-
     Runs a model in evaluation mode over all batches in a data loader and
     computes the average cross-entropy loss, typically for validation.
-
     Args:
         model_wrapper (ModelWrapper): The model wrapper to evaluate.
         data_loader (DataLoader): The data loader with the evaluation dataset.
-
     Returns:
         float: The average loss. Returns 0.0 if the data loader is empty.
     """
