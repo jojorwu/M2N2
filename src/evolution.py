@@ -177,13 +177,21 @@ def _setup_and_run_training(
         logger.warning(f"Skipping {mode} for niche {model_wrapper.niche_classes} as data loader is empty.")
         return
 
-    optimizer = optim.Adam(model_wrapper.model.parameters(), lr=config_manager.learning_rate)
-    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min', patience=config_manager.scheduler_patience, factor=config_manager.scheduler_factor) if mode == 'finetune' else None
+    optimizer = _create_optimizer(model_wrapper, config_manager)
+    scheduler = optim.lr_scheduler.ReduceLROnPlateau(
+        optimizer, 'min',
+        patience=config_manager.scheduler_patience,
+        factor=config_manager.scheduler_factor
+    ) if mode == 'finetune' else None
 
     _run_training_session(
         model_wrapper, train_loader, config_manager, epochs, description,
         optimizer, scheduler, validation_loader
     )
+
+def _create_optimizer(model_wrapper: ModelWrapper, config_manager: "ConfigManager") -> optim.Optimizer:
+    """Creates an optimizer based on the provided configuration."""
+    return optim.Adam(model_wrapper.model.parameters(), lr=config_manager.learning_rate)
 
 def specialize(model_wrapper: ModelWrapper, config_manager: "ConfigManager") -> None:
     """

@@ -67,28 +67,33 @@ class EvolutionSimulator:
 
     def _initialize_strategies(self) -> None:
         """Initializes strategy objects based on the configuration."""
-        self.mate_selection_strategy = self._create_strategy(
-            self.config_manager.mate_selection_strategy,
-            {'healing': HealingMateSelectionStrategy}, "mate selection"
-        )
-        self.generation_strategy = self._create_strategy(
-            self.config_manager.generation_strategy,
-            {'replace_worst': ReplaceWorstStrategy}, "generation"
-        )
-        self.merge_strategy = self._create_strategy(
-            self.config_manager.merge_strategy,
-            {'average': AverageMergeStrategy, 'fitness_weighted': FitnessWeightedMergeStrategy,
-             'layer-wise': LayerWiseMergeStrategy, 'sequential_constructive': SequentialConstructiveMergeStrategy},
-            "merge", seed=self.config_manager.seed if self.config_manager.merge_strategy == 'layer-wise' else None
-        )
+        strategy_configs = [
+            ('mate_selection', self.config_manager.mate_selection_strategy, {
+                'healing': HealingMateSelectionStrategy
+            }, {}),
+            ('generation', self.config_manager.generation_strategy, {
+                'replace_worst': ReplaceWorstStrategy
+            }, {}),
+            ('merge', self.config_manager.merge_strategy, {
+                'average': AverageMergeStrategy,
+                'fitness_weighted': FitnessWeightedMergeStrategy,
+                'layer-wise': LayerWiseMergeStrategy,
+                'sequential_constructive': SequentialConstructiveMergeStrategy
+            }, {'seed': self.config_manager.seed if self.config_manager.merge_strategy == 'layer-wise' else None})
+        ]
 
-    def _create_strategy(self, name: str, mapping: Dict[str, Type], type_str: str, **kwargs) -> Any:
+        for attr_name, strategy_name, mapping, kwargs in strategy_configs:
+            strategy_instance = self._create_strategy(strategy_name, mapping, f"{attr_name} strategy", **kwargs)
+            setattr(self, f"{attr_name}_strategy", strategy_instance)
+
+    def _create_strategy(self, name: str, mapping: Dict[str, Type], type_str: str, **kwargs: Any) -> Any:
         """Factory helper to create a strategy instance."""
-        cls = mapping.get(name)
-        if not cls:
-            raise ValueError(f"Unknown {type_str} strategy: {name}")
+        strategy_class = mapping.get(name)
+        if not strategy_class:
+            raise ValueError(f"Unknown {type_str}: {name}")
         # Filter out None kwargs before passing to constructor
-        return cls(**{k: v for k, v in kwargs.items() if v is not None})
+        filtered_kwargs = {k: v for k, v in kwargs.items() if v is not None}
+        return strategy_class(**filtered_kwargs)
 
     def _setup_environment(self) -> None:
         """Sets up the logger and computation device."""
@@ -285,14 +290,22 @@ class EvolutionSimulator:
             except OSError as e:
                 logger.warning(f"Error deleting old model {f}: {e}")
 
+    def _clear_simulation_artifacts(self) -> None:
+        """Removes all generated files from the previous simulation run."""
+        logger.info("Clearing previous simulation artifacts...")
+        for path in [FITNESS_LOG_FILENAME, COMMAND_FILE, 'fitness_history.png']:
+            try:
+                if os.path.exists(path):
+                    os.remove(path)
+                    logger.info(f"  - Removed {path}")
+            except OSError as e:
+                logger.warning(f"Error removing artifact {path}: {e}")
+        self._delete_old_models("src/pretrained_models")
+
     def _restart(self) -> None:
         """Resets the simulation to its initial state."""
         logger.info("\n--- RESTARTING SIMULATION ---")
-        # Clear artifacts
-        for path in [FITNESS_LOG_FILENAME, COMMAND_FILE]:
-            if os.path.exists(path):
-                os.remove(path)
-        self._delete_old_models("src/pretrained_models")
+        self._clear_simulation_artifacts()
         # Reset state
         self.population = []
         self.fitness_history = []
