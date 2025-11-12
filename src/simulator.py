@@ -252,6 +252,11 @@ class EvolutionSimulator:
         plot_fitness_history(self.fitness_history, 'fitness_history.png')
         self._save_final_population()
 
+    def _get_model_path(self, model_wrapper: ModelWrapper, model_dir: str) -> str:
+        """Generates a standardized file path for a given model."""
+        niche = "_".join(map(str, model_wrapper.niche_classes))
+        return os.path.join(model_dir, f"model_niche_{niche}_fitness_{model_wrapper.fitness:.2f}.pth")
+
     def _save_final_population(self, model_dir: str = "src/pretrained_models") -> None:
         """Saves the final population of models to disk."""
         logger.info(f"--- Saving final population to {model_dir} ---")
@@ -259,8 +264,7 @@ class EvolutionSimulator:
         if self.config_manager.delete_old_models:
             self._delete_old_models(model_dir)
         for model in self.population:
-            niche = "_".join(map(str, model.niche_classes))
-            path = os.path.join(model_dir, f"model_niche_{niche}_fitness_{model.fitness:.2f}.pth")
+            path = self._get_model_path(model, model_dir)
             try:
                 model.save(path)
                 logger.info(f"  - Saved model to {path}")
@@ -273,7 +277,7 @@ class EvolutionSimulator:
         part of the final population, preserving any initially loaded models.
         """
         logger.info(f"Clearing old models from {model_dir}...")
-        final_files = {os.path.join(model_dir, f"model_niche_{'_'.join(map(str, m.niche_classes))}_fitness_{m.fitness:.2f}.pth") for m in self.population}
+        final_files = {self._get_model_path(m, model_dir) for m in self.population}
         # Only consider files in the target directory for deletion.
         generated_files = set(glob.glob(os.path.join(model_dir, "*.pth")))
         # Exclude final population files and any original loaded files from deletion.
