@@ -240,7 +240,8 @@ class EvolutionSimulator:
 
         model_dir = "src/pretrained_models"
         if os.path.exists(model_dir):
-            files = glob.glob(os.path.join(model_dir, "*.pth"))
+            # Only clear out simulator-generated models.
+            files = glob.glob(os.path.join(model_dir, "model_niche_*_fitness_*.pth"))
             if files:
                 for f in files:
                     os.remove(f)
@@ -421,8 +422,9 @@ class EvolutionSimulator:
         if not os.path.exists(model_dir):
             os.makedirs(model_dir)
         else:
-            # Clear out old models from previous runs to prevent confusion.
-            files = glob.glob(os.path.join(model_dir, "*.pth"))
+            # Clear out old, simulator-generated models from previous runs.
+            # This preserves any user-saved models with different naming conventions.
+            files = glob.glob(os.path.join(model_dir, "model_niche_*_fitness_*.pth"))
             for f in files:
                 os.remove(f)
 
