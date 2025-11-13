@@ -56,6 +56,7 @@ class EvolutionSimulator:
         self._setup_environment()
         logger.info(f"--- M2N2 Simulation Initialized ---")
         logger.info(f"Model: {self.config_manager.model_name}, Device: {self.device}, Seed: {self.config_manager.seed}")
+        self.model_dir = "src/pretrained_models"
         self._setup_simulation()
 
     def _setup_simulation(self) -> None:
@@ -120,8 +121,7 @@ class EvolutionSimulator:
     def _initialize_population(self) -> None:
         """Initializes or loads the starting population of models."""
         logger.info("--- STEP 1: Initializing Population ---")
-        model_dir = "src/pretrained_models"
-        model_files = glob.glob(os.path.join(model_dir, "*.pth"))
+        model_files = glob.glob(os.path.join(self.model_dir, "*.pth"))
         if model_files:
             self._load_population_from_files(model_files)
         else:
@@ -261,36 +261,37 @@ class EvolutionSimulator:
         niche = "_".join(map(str, model_wrapper.niche_classes))
         return os.path.join(model_dir, f"model_niche_{niche}_fitness_{model_wrapper.fitness:.2f}.pth")
 
-    def _save_final_population(self, model_dir: str = "src/pretrained_models") -> None:
+    def _save_final_population(self) -> None:
         """Saves the final population of models to disk."""
-        logger.info(f"--- Saving final population to {model_dir} ---")
-        os.makedirs(model_dir, exist_ok=True)
+        logger.info(f"--- Saving final population to {self.model_dir} ---")
+        os.makedirs(self.model_dir, exist_ok=True)
         if self.config_manager.delete_old_models:
-            self._delete_old_models(model_dir)
+            self._delete_old_models()
         for model in self.population:
-            path = self._get_model_path(model, model_dir)
+            path = self._get_model_path(model, self.model_dir)
             try:
                 model.save(path)
                 logger.info(f"  - Saved model to {path}")
             except OSError as e:
                 logger.warning(f"Failed to save model {path}: {e}")
 
-    def _delete_old_models(self, model_dir: str) -> None:
+    def _delete_old_models(self, preserve_loaded_models: bool = True) -> None:
         """
-        Deletes generated model files from the specified directory that are not
-        part of the final population, preserving any initially loaded models.
+        Deletes generated model files from the model directory.
+        Args:
+            preserve_loaded_models (bool): If True, preserves files that were
+                loaded at the start of the simulation. If False, deletes all
+                models not in the final population.
         """
-        logger.info(f"Clearing old models from {model_dir}...")
-        final_files = {self._get_model_path(m, model_dir) for m in self.population}
-        # Only consider files in the target directory for deletion.
-        generated_files = set(glob.glob(os.path.join(model_dir, "*.pth")))
-        # Exclude final population files and any original loaded files from deletion.
+        logger.info(f"Clearing old models from {self.model_dir}...")
+        final_files = {self._get_model_path(m, self.model_dir) for m in self.population}
+        generated_files = set(glob.glob(os.path.join(self.model_dir, "*.pth")))
         files_to_delete = generated_files - final_files
+
+        if preserve_loaded_models:
+            files_to_delete -= set(self.loaded_model_files)
+
         for f in files_to_delete:
-            # Final check to ensure we don't delete an initial model file if it was somehow
-            # still in the list (e.g., if it wasn't in the final population).
-            if f in self.loaded_model_files:
-                continue
             try:
                 if os.path.exists(f):
                     os.remove(f)
@@ -308,7 +309,7 @@ class EvolutionSimulator:
                     logger.info(f"  - Removed {path}")
             except OSError as e:
                 logger.warning(f"Error removing artifact {path}: {e}")
-        self._delete_old_models("src/pretrained_models")
+        self._delete_old_models(preserve_loaded_models=False)
 
     def _restart(self) -> None:
         """Resets the simulation to its initial state."""

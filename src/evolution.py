@@ -10,6 +10,7 @@ import torch
 import torch.optim as optim
 import torch.nn.functional as F
 import logging
+from .data import get_dataloaders
 from .model_factory import create_model
 from .merge_strategies import MergeStrategy
 from .model_wrapper import ModelWrapper
@@ -149,7 +150,6 @@ def _setup_and_run_training(
     Raises:
         ValueError: If `mode` is invalid or 'finetune' is missing `validation_loader`.
     """
-    from .data import get_dataloaders
     if mode == 'specialize':
         epochs = config_manager.specialize_epochs
         description = f"Specializing Niche {model_wrapper.niche_classes}"

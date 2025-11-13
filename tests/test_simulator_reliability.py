@@ -79,11 +79,12 @@ class TestSimulatorReliability(unittest.TestCase):
         survivor_wrapper.fitness = 95.00
 
         simulator = EvolutionSimulator(config_path=self.config_path)
+        simulator.model_dir = model_dir
         simulator.population = [survivor_wrapper]
         # Crucially, the loaded files list must contain the full paths
         simulator.loaded_model_files = [surviving_model_path, replaced_model_path]
 
-        simulator._delete_old_models(model_dir)
+        simulator._delete_old_models()
 
         self.assertTrue(os.path.exists(surviving_model_path),
                         "The surviving loaded model file should be preserved.")
@@ -138,9 +139,10 @@ class TestSimulatorReliability(unittest.TestCase):
         mock_wrapper.fitness = 50.0
 
         simulator.population = [mock_wrapper]
+        simulator.model_dir = self.test_dir
 
         with self.assertLogs('M2N2_SIMULATOR', level='WARNING') as cm:
-            simulator._save_final_population(model_dir=self.test_dir)
+            simulator._save_final_population()
             # Verify the warning was logged
             self.assertTrue(any("Failed to save model" in msg for msg in cm.output))
             # Verify the mock save method was called

@@ -64,6 +64,7 @@ class TestSimulatorInitialization(unittest.TestCase):
         torch.save({}, loaded_model_path)
 
         simulator = EvolutionSimulator(config_path=self.config_path)
+        simulator.model_dir = self.model_dir
         simulator.loaded_model_files = [loaded_model_path]
 
         final_model = ModelWrapper(
@@ -73,7 +74,7 @@ class TestSimulatorInitialization(unittest.TestCase):
         final_model.fitness = 99.88
         simulator.population = [final_model]
 
-        simulator._save_final_population(model_dir=self.model_dir)
+        simulator._save_final_population()
 
         final_model_filename = "model_niche_0_fitness_99.88.pth"
         final_model_path = os.path.join(self.model_dir, final_model_filename)
@@ -121,6 +122,7 @@ class TestSimulatorInitialization(unittest.TestCase):
         torch.save({'dummy_state': 1}, original_model_path)
 
         simulator = EvolutionSimulator(config_path=self.config_path)
+        simulator.model_dir = self.model_dir
         simulator.loaded_model_files = [original_model_path]
 
         surviving_model = ModelWrapper(
@@ -130,7 +132,7 @@ class TestSimulatorInitialization(unittest.TestCase):
         surviving_model.fitness = 85.50
         simulator.population = [surviving_model]
 
-        simulator._save_final_population(model_dir=self.model_dir)
+        simulator._save_final_population()
 
         self.assertTrue(os.path.exists(original_model_path),
                         "The original loaded model file should not be deleted.")
@@ -139,6 +141,29 @@ class TestSimulatorInitialization(unittest.TestCase):
         final_model_path = os.path.join(self.model_dir, final_model_filename)
         self.assertTrue(os.path.exists(final_model_path),
                         "The new file for the surviving model was not created.")
+
+    def test_restart_deletes_all_models_when_instructed(self):
+        """
+        Tests that when a simulation is restarted, all .pth files in the
+        model directory are deleted, including those that were loaded initially.
+        """
+        # Arrange: Create a dummy model file and set up the simulator to
+        # believe it was loaded.
+        loaded_model_path = os.path.join(self.model_dir, "previous_run_model.pth")
+        torch.save({'dummy_state': 'old'}, loaded_model_path)
+        self.assertTrue(os.path.exists(loaded_model_path))
+
+        simulator = EvolutionSimulator(config_path=self.config_path)
+        simulator.model_dir = self.model_dir  # Point simulator to the temp directory
+        simulator.loaded_model_files = [loaded_model_path]
+
+
+        # Act: Trigger the restart logic.
+        simulator._restart()
+
+        # Assert: Check that the model file was deleted.
+        self.assertFalse(os.path.exists(loaded_model_path),
+                         "Restart should delete all models, but a loaded model file persisted.")
 
 
 if __name__ == '__main__':
