@@ -13,14 +13,10 @@ To run the dashboard:
 import streamlit as st
 import pandas as pd
 import os
-import sys
 import time
 import json
 import yaml
-from .constants import COMMAND_FILE, FITNESS_LOG_FILENAME
-
-# Adjust the path to allow imports from the project root
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+from src.constants import COMMAND_FILE, FITNESS_LOG_FILENAME
 
 
 def _update_command_file(updates: dict):
@@ -168,6 +164,20 @@ def show_settings_page():
         }
         _update_command_file(dynamic_config)
 
+def _handle_sidebar_commands():
+    """Renders sidebar controls and handles command file updates."""
+    with st.sidebar:
+        st.header("Navigation")
+        page = st.radio("Go to", ["Monitoring", "Settings"])
+        st.divider()
+        st.header("Live Simulation Controls")
+        if st.button("Stop Simulation Gracefully"):
+            _update_command_file({"stop_simulation": True})
+        if st.button("Restart Simulation"):
+            # Clear any stale stop commands and issue a restart
+            _update_command_file({"restart_simulation": True, "stop_simulation": False})
+    return page
+
 def main():
     """
     Main function to run the Streamlit dashboard.
@@ -180,15 +190,7 @@ def main():
     st.set_page_config(page_title="M2N2 Simulation Monitor", layout="wide")
     st.title("M2N2 Simulation Monitor & Control")
 
-    with st.sidebar:
-        st.header("Navigation")
-        page = st.radio("Go to", ["Monitoring", "Settings"])
-        st.divider()
-        st.header("Live Simulation Controls")
-        if st.button("Stop Simulation Gracefully"):
-            _update_command_file({"stop_simulation": True})
-        if st.button("Restart Simulation"):
-            _update_command_file({"restart_simulation": True, "stop_simulation": False})
+    page = _handle_sidebar_commands()
 
     if page == "Monitoring":
         show_monitoring_page()
