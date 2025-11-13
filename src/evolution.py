@@ -81,6 +81,7 @@ def _run_training_epoch(
 
     return total_train_loss / len(train_loader) if len(train_loader) > 0 else 0.0
 
+
 def _run_training_session(
     model_wrapper: ModelWrapper,
     train_loader: DataLoader,
