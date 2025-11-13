@@ -56,6 +56,10 @@ class EvolutionSimulator:
         self._setup_environment()
         logger.info(f"--- M2N2 Simulation Initialized ---")
         logger.info(f"Model: {self.config_manager.model_name}, Device: {self.device}, Seed: {self.config_manager.seed}")
+        self._setup_simulation()
+
+    def _setup_simulation(self) -> None:
+        """Initializes or resets the simulation to its starting state."""
         self.population: List[ModelWrapper] = []
         self.fitness_history: List[Tuple[float, float]] = []
         self.current_generation = 0
@@ -310,12 +314,5 @@ class EvolutionSimulator:
         """Resets the simulation to its initial state."""
         logger.info("\n--- RESTARTING SIMULATION ---")
         self._clear_simulation_artifacts()
-        # Reset state
-        self.population = []
-        self.fitness_history = []
-        self.current_generation = 0
-        self.loaded_model_files = []
-        # Re-initialize
-        self._initialize_population()
-        self._initialize_fitness_log()
+        self._setup_simulation()
         logger.info("--- Simulation has been restarted ---")
