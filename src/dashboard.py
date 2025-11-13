@@ -84,9 +84,14 @@ def show_settings_page():
     col1, col2 = st.columns(2)
 
     with col1:
+        # Ensure nested dictionaries exist before access
+        if 'optimizer_config' not in config:
+            config['optimizer_config'] = {}
         config['optimizer_config']['learning_rate'] = st.number_input("Learning Rate", min_value=0.0001, format="%.4f", value=config.get('optimizer_config', {}).get('learning_rate', 0.001))
 
     with col2:
+        if 'scheduler_config' not in config:
+            config['scheduler_config'] = {}
         config['scheduler_config']['patience'] = st.number_input("Scheduler Patience", min_value=0, value=config.get('scheduler_config', {}).get('patience', 5))
         config['scheduler_config']['factor'] = st.slider("Scheduler Factor", 0.0, 1.0, value=config.get('scheduler_config', {}).get('factor', 0.5))
 

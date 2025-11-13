@@ -90,40 +90,46 @@ class EvolutionSimulator:
         setup_logger(log_file=log_file)
 
     def _initialize_parameters(self) -> None:
-        """Initializes simulator parameters from the config."""
+        """Initializes simulator parameters from the config using robust .get() calls."""
         # --- General settings ---
-        self.model_config = ModelName(self.config['model_config'])
-        self.dataset_name = DatasetName(self.config['dataset_name'])
-        self.precision_config = str(self.config['precision_config'])
-        self.num_generations = self.config['num_generations']
-        self.population_size = self.config['population_size']
+        self.model_config = ModelName(self.config.get('model_config', 'CIFAR10'))
+        self.dataset_name = DatasetName(self.config.get('dataset_name', 'CIFAR10'))
+        self.precision_config = str(self.config.get('precision_config', '32'))
+        self.num_generations = self.config.get('num_generations', 10)
+        self.population_size = self.config.get('population_size', 10)
 
         # --- Evolutionary settings ---
-        self.merge_strategy = self.config['merge_strategy']
-        self.dampening_factor = self.config['fitness_weighted_merge_dampening_factor']
-        self.mutation_rate = self.config['mutation_rate']
-        self.initial_mutation_strength = self.config['initial_mutation_strength']
-        self.mutation_decay_factor = self.config['mutation_decay_factor']
+        self.merge_strategy = self.config.get('merge_strategy', 'average')
+        self.dampening_factor = self.config.get('fitness_weighted_merge_dampening_factor', 25.0)
+        self.mutation_rate = self.config.get('mutation_rate', 0.05)
+        self.initial_mutation_strength = self.config.get('initial_mutation_strength', 0.1)
+        self.mutation_decay_factor = self.config.get('mutation_decay_factor', 0.99)
 
         # --- Optimizer settings ---
-        self.learning_rate = self.config['optimizer_config']['learning_rate']
+        optimizer_config = self.config.get('optimizer_config', {})
+        self.learning_rate = optimizer_config.get('learning_rate', 0.001)
 
         # --- Scheduler settings ---
-        self.scheduler_patience = self.config['scheduler_config']['patience']
-        self.scheduler_factor = self.config['scheduler_config']['factor']
+        scheduler_config = self.config.get('scheduler_config', {})
+        self.scheduler_patience = scheduler_config.get('patience', 5)
+        self.scheduler_factor = scheduler_config.get('factor', 0.5)
 
         # --- Data settings ---
-        self.subset_percentage = self.config['subset_percentage']
-        self.validation_split = self.config['validation_split']
-        self.batch_size = self.config['batch_size']
+        self.subset_percentage = self.config.get('subset_percentage', 0.1)
+        self.validation_split = self.config.get('validation_split', 0.2)
+        self.batch_size = self.config.get('batch_size', 64)
 
         # --- Training epochs ---
-        if self.model_config in self.config.get('model_specific_epochs', {}):
-            self.specialize_epochs = self.config['model_specific_epochs'][self.model_config]['specialize']
-            self.finetune_epochs = self.config['model_specific_epochs'][self.model_config]['finetune']
+        model_specific_epochs = self.config.get('model_specific_epochs', {})
+        default_epochs = self.config.get('default_epochs', {'specialize': 1, 'finetune': 3})
+
+        if self.model_config in model_specific_epochs:
+            self.specialize_epochs = model_specific_epochs[self.model_config].get('specialize', default_epochs['specialize'])
+            self.finetune_epochs = model_specific_epochs[self.model_config].get('finetune', default_epochs['finetune'])
         else:
-            self.specialize_epochs = self.config['default_epochs']['specialize']
-            self.finetune_epochs = self.config['default_epochs']['finetune']
+            self.specialize_epochs = default_epochs.get('specialize', 1)
+            self.finetune_epochs = default_epochs.get('finetune', 3)
+
 
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         # --- Seed for reproducibility ---
@@ -234,21 +240,32 @@ class EvolutionSimulator:
     def _clear_simulation_artifacts(self) -> None:
         """Clears logs and saved models from previous runs."""
         logger.info("--- Clearing simulation artifacts ---")
-        if os.path.exists("fitness_log.csv"):
-            os.remove("fitness_log.csv")
-            logger.info("Removed fitness_log.csv")
+        try:
+            if os.path.exists("fitness_log.csv"):
+                os.remove("fitness_log.csv")
+                logger.info("Removed fitness_log.csv")
+        except OSError as e:
+            logger.warning(f"Could not remove fitness_log.csv: {e}")
 
         model_dir = "src/pretrained_models"
         if os.path.exists(model_dir):
             files = glob.glob(os.path.join(model_dir, "*.pth"))
-            if files:
-                for f in files:
+            cleared_count = 0
+            for f in files:
+                try:
                     os.remove(f)
-                logger.info(f"Cleared {len(files)} models from {model_dir}")
+                    cleared_count += 1
+                except OSError as e:
+                    logger.warning(f"Could not remove model file {f}: {e}")
+            if cleared_count > 0:
+                logger.info(f"Cleared {cleared_count} models from {model_dir}")
 
-        if os.path.exists("command_config.json"):
-            os.remove("command_config.json")
-            logger.info("Removed command_config.json")
+        try:
+            if os.path.exists("command_config.json"):
+                os.remove("command_config.json")
+                logger.info("Removed command_config.json")
+        except OSError as e:
+            logger.warning(f"Could not remove command_config.json: {e}")
 
     def _restart(self) -> None:
         """Resets the simulation to its initial state for a fresh run."""
