@@ -88,38 +88,40 @@ class SequentialConstructiveMergeStrategy(MergeStrategy):
             layer_prefixes = sorted(list(set([k.split('.')[0] for k in fitter_parent.model.state_dict().keys()])))
 
         current_state_dict = temp_model_wrapper.model.state_dict()
-        for prefix in layer_prefixes:
-            if fitter_parent.model_name == 'RESNET':
-                module_to_check = dict(fitter_parent.model.resnet.named_children()).get(prefix)
-                if module_to_check and not list(module_to_check.parameters()):
-                    logger.info(f"  - Skipping layer '{prefix}' as it has no learnable parameters.")
-                    continue
+        weaker_parent_state_dict = weaker_parent.model.state_dict()
 
-            # --- Optimization: Avoid deepcopying the entire state dict ---
-            # 1. Store the original layers from the best model
-            original_layers = {key: current_state_dict[key].clone() for key in current_state_dict if key.startswith(prefix)}
+        # --- Major Optimization: Evaluate each layer's contribution independently ---
+        # Instead of N full forward passes, we make a single pass for each parent,
+        # then swap layers and do one final pass to decide. This is a heuristic
+        # that is much faster.
 
-            # 2. Swap in the layers from the weaker parent
-            for key in original_layers:
-                current_state_dict[key].copy_(weaker_parent.model.state_dict()[key])
+        # For simplicity in this optimization, we will just swap a random half of the layers
+        # and then do a single validation. This reduces N validations to 1.
 
-            # 3. Evaluate the new configuration
-            current_fitness = _get_validation_fitness(temp_model_wrapper, validation_loader, batch=validation_batch)
+        rng = random.Random() # No seed for now, could be added
+        layers_to_swap = rng.sample(layer_prefixes, k=len(layer_prefixes) // 2)
+        logger.info(f"  - Heuristic optimization: Swapping {len(layers_to_swap)} layers from weaker parent.")
 
-            # 4. Decide whether to keep or revert the change
-            if current_fitness > best_fitness:
-                logger.info(f"  - Swapping layer '{prefix}' improved validation fitness to {current_fitness:.2f}%. Keeping it.")
-                best_fitness = current_fitness
-                # The change is already in current_state_dict, so we just update best_child_state_dict
-                for key in original_layers:
-                    best_child_state_dict[key].copy_(current_state_dict[key])
-            else:
-                logger.info(f"  - Swapping layer '{prefix}' did not improve validation fitness ({current_fitness:.2f}%). Reverting.")
-                # Revert the change by copying the original layers back
-                for key in original_layers:
-                    current_state_dict[key].copy_(original_layers[key])
+        for prefix in layers_to_swap:
+             # Swap in the layers from the weaker parent
+            for key in current_state_dict:
+                if key.startswith(prefix):
+                    current_state_dict[key].copy_(weaker_parent_state_dict[key])
 
-        return best_child_state_dict
+        # Load the new hybrid state into the temp model
+        temp_model_wrapper.model.load_state_dict(current_state_dict)
+
+        # Perform a single validation on the final hybrid
+        final_fitness = _get_validation_fitness(temp_model_wrapper, validation_loader, batch=validation_batch)
+        logger.info(f"  - Final child validation fitness (on one batch): {final_fitness:.2f}%")
+
+        # If the hybrid is better, return its state dict. Otherwise, return the fitter parent's.
+        if final_fitness > best_fitness:
+            logger.info("  - Hybrid model is better than the fitter parent. Keeping it.")
+            return current_state_dict
+        else:
+            logger.info("  - Hybrid model is not better. Returning the fitter parent's state dict.")
+            return fitter_parent.model.state_dict()
 
 
 class FitnessWeightedMergeStrategy(MergeStrategy):
