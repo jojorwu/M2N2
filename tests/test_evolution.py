@@ -79,58 +79,6 @@ class TestEvolution(unittest.TestCase):
             "The specialist parent's contribution is likely being diluted."
         )
 
-    @patch('src.merge_strategies._get_validation_fitness')
-    @patch('src.model.models.resnet18')
-    def test_sequential_constructive_merge_skips_parameterless_resnet_layers(self, mock_resnet_constructor, mock_get_validation_fitness):
-        """
-        Tests that the 'sequential_constructive' merge strategy skips running
-        validation for ResNet layers that have no learnable parameters (e.g., ReLU, MaxPool).
-        """
-        # Arrange
-        # 1. Create a mock resnet module with named children and a mock fc layer
-        class MockResNetModule(torch.nn.Module):
-            def __init__(self):
-                super().__init__()
-                self.conv1 = torch.nn.Linear(10, 10) # Has params
-                self.relu = torch.nn.ReLU()          # No params
-                self.layer1 = torch.nn.Linear(10, 10) # Has params
-                self.maxpool = torch.nn.MaxPool2d(2) # No params
-                self.fc = torch.nn.Linear(10, 10)    # Has params (will be replaced, but checked)
-            def forward(self, x): return x
-
-        # 2. Configure the mock constructor to return our mock module
-        mock_resnet_constructor.return_value = MockResNetModule()
-
-        # 3. Create parent wrappers. They will now be valid ResNetClassifiers containing our mock.
-        parent1 = ModelWrapper(model_name='RESNET', niche_classes=[0], device=self.device)
-        parent1.fitness = 80.0
-        parent2 = ModelWrapper(model_name='RESNET', niche_classes=[1], device=self.device)
-        parent2.fitness = 20.0
-
-        # 4. The mock for the validation function will return a constant value
-        mock_get_validation_fitness.return_value = 50.0
-
-        # 5. A dummy validation loader is required by the strategy
-        dummy_loader = torch.utils.data.DataLoader([torch.randn(10)], batch_size=1)
-
-        # Act
-        merge(parent1, parent2, strategy='sequential_constructive', validation_loader=dummy_loader)
-
-        # Assert
-        # The named children are 'conv1', 'relu', 'layer1', 'maxpool', 'fc'.
-        # The validation should be called once for the initial base model.
-        # It should then be called for 'conv1', 'layer1', and 'fc'.
-        # It should NOT be called for 'relu' or 'maxpool'.
-        # Total expected calls = 1 (initial) + 3 (parameterized layers) = 4.
-        expected_calls = 4
-        self.assertEqual(
-            mock_get_validation_fitness.call_count,
-            expected_calls,
-            f"The validation function was called {mock_get_validation_fitness.call_count} times, but {expected_calls} were expected. "
-            "It may not be correctly skipping parameter-less layers."
-        )
-
-
     def test_layer_wise_merge_is_deterministic_with_seed(self):
         """
         Tests that the 'layer-wise' merge strategy produces identical models
@@ -333,6 +281,78 @@ class TestEvolution(unittest.TestCase):
         # Count how many times the duplicate appears in the next generation
         duplicate_count = sum(1 for model in next_gen if model == duplicate_child)
         self.assertEqual(duplicate_count, 1, "A duplicate model was added to the new generation.")
+
+
+    def test_finetune_handles_empty_validation_loader(self):
+        """
+        Tests that the `finetune` function can run without crashing when the
+        validation loader is empty, which can happen with small datasets and
+        certain validation splits.
+        """
+        # Arrange
+        from src.evolution import finetune
+        model_wrapper = ModelWrapper(model_name='CIFAR10', niche_classes=[0], device=self.device)
+        empty_validation_loader = []  # An empty list is a valid empty DataLoader for this test
+
+        # Act & Assert
+        # The test passes if this call completes without raising an exception.
+        try:
+            with patch('src.evolution.get_dataloaders') as mock_get_dataloaders:
+                # Mock get_dataloaders to return a dummy train_loader to avoid actual data loading
+                mock_get_dataloaders.return_value = ([(torch.randn(1, 3, 32, 32), torch.tensor([1]))], None, None, 1)
+                finetune(model_wrapper, 'CIFAR10', empty_validation_loader, epochs=1)
+        except Exception as e:
+            self.fail(f"finetune() raised an unexpected exception with an empty validation loader: {e}")
+
+
+    @patch('src.merge_strategies._get_validation_fitness')
+    def test_random_half_merge_swaps_layers_and_chooses_fitter(self, mock_get_validation_fitness):
+        """
+        Tests that the 'RandomHalfMergeStrategy' (formerly sequential_constructive)
+        swaps roughly half the layers and correctly chooses the better model.
+        """
+        # Arrange
+        # 1. Create two parents with easily trackable weights (all 1s and all 0s)
+        parent1 = ModelWrapper(model_name='CIFAR10', niche_classes=[0], device=self.device)
+        parent1.fitness = 80.0
+        with torch.no_grad():
+            for param in parent1.model.parameters():
+                param.fill_(1.0)
+
+        parent2 = ModelWrapper(model_name='CIFAR10', niche_classes=[1], device=self.device)
+        parent2.fitness = 70.0
+        with torch.no_grad():
+            for param in parent2.model.parameters():
+                param.fill_(0.0)
+
+        # 2. A dummy validation loader is required
+        dummy_loader = torch.utils.data.DataLoader([torch.randn(10)], batch_size=1)
+
+        # 3. Configure the mock validation to simulate the hybrid being better
+        # The first call is for the base model (parent1), the second for the hybrid.
+        mock_get_validation_fitness.side_effect = [50.0, 60.0]
+
+        # Act
+        child = merge(parent1, parent2, strategy='sequential_constructive', validation_loader=dummy_loader)
+
+        # Assert
+        # 1. Check that the fitness check was called twice (base and hybrid)
+        self.assertEqual(mock_get_validation_fitness.call_count, 2)
+
+        # 2. Check that some, but not all, layers were swapped.
+        # The child's weights should be a mix of 0s and 1s.
+        child_params = list(child.model.parameters())
+        has_zeros = any(torch.any(p == 0.0) for p in child_params)
+        has_ones = any(torch.any(p == 1.0) for p in child_params)
+        self.assertTrue(has_zeros and has_ones, "The child model does not appear to be a hybrid of the parents.")
+
+        # 3. Reset mock and test the case where the fitter parent is better
+        mock_get_validation_fitness.reset_mock()
+        mock_get_validation_fitness.side_effect = [60.0, 50.0]
+        child = merge(parent1, parent2, strategy='sequential_constructive', validation_loader=dummy_loader)
+        child_params = list(child.model.parameters())
+        is_all_ones = all(torch.all(p == 1.0) for p in child_params)
+        self.assertTrue(is_all_ones, "The merge should have returned the fitter parent, but it appears to have returned a hybrid.")
 
 
 if __name__ == '__main__':

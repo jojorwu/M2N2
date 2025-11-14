@@ -16,7 +16,7 @@ from .merge_strategies import (
     AverageMergeStrategy,
     FitnessWeightedMergeStrategy,
     LayerWiseMergeStrategy,
-    SequentialConstructiveMergeStrategy,
+    RandomHalfMergeStrategy,
 )
 from .model_wrapper import ModelWrapper
 from .utils import _calculate_accuracy
@@ -166,7 +166,8 @@ def evaluate_by_class(model_wrapper: ModelWrapper, dataset_name: str, subset_per
 
     This function is used to identify a model's strengths and weaknesses,
     which is crucial for the advanced mate selection strategy. It does not
-    modify the model wrapper.
+    modify the model wrapper. This implementation is optimized to use
+    vectorized tensor operations instead of Python loops for performance.
 
     Args:
         model_wrapper (ModelWrapper): The model wrapper to evaluate.
@@ -180,42 +181,44 @@ def evaluate_by_class(model_wrapper: ModelWrapper, dataset_name: str, subset_per
             list corresponds to the class index.
     """
     # We always evaluate on the full test set to measure general performance
-    _, _, test_loader, _ = get_dataloaders(dataset_name=dataset_name, model_name=model_wrapper.model_name, subset_percentage=subset_percentage, validation_split=0, seed=seed) # No validation split needed here
+    _, _, test_loader, _ = get_dataloaders(dataset_name=dataset_name, model_name=model_wrapper.model_name, subset_percentage=subset_percentage, validation_split=0, seed=seed)
     model_wrapper.model.eval()
 
     num_classes = model_wrapper.model.num_classes
-    class_correct = list(0. for i in range(num_classes))
-    class_total = list(0. for i in range(num_classes))
+    device = model_wrapper.device
+    class_correct = torch.zeros(num_classes, device=device)
+    class_total = torch.zeros(num_classes, device=device)
 
     with torch.no_grad():
         for batch in test_loader:
             if model_wrapper.model_name == 'LLM':
-                input_ids = batch['input_ids'].to(model_wrapper.device)
-                attention_mask = batch['attention_mask'].to(model_wrapper.device)
-                target = batch['labels'].to(model_wrapper.device)
+                input_ids = batch['input_ids'].to(device)
+                attention_mask = batch['attention_mask'].to(device)
+                target = batch['labels'].to(device)
                 output = model_wrapper.model(input_ids=input_ids, attention_mask=attention_mask)
             else:
                 data, target = batch
-                data, target = data.to(model_wrapper.device), target.to(model_wrapper.device)
+                data, target = data.to(device), target.to(device)
                 output = model_wrapper.model(data)
 
             _, predicted = torch.max(output, 1)
-            c = (predicted == target).squeeze()
+            correct_mask = (predicted == target)
 
-            for i in range(len(target)):
-                label = target[i]
-                class_correct[label] += c[i].item()
-                class_total[label] += 1
+            # Vectorized counting using bincount for efficiency
+            class_total += torch.bincount(target, minlength=num_classes)
+            class_correct += torch.bincount(target[correct_mask], minlength=num_classes)
 
-    class_accuracies = []
-    for i in range(num_classes):
-        if class_total[i] > 0:
-            accuracy = 100 * class_correct[i] / class_total[i]
-            class_accuracies.append(accuracy)
-        else:
-            class_accuracies.append(0)
+    # Calculate accuracies using vectorized division, avoiding division by zero
+    # Move totals to CPU for the final calculation and list conversion
+    class_total_cpu = class_total.cpu()
+    class_correct_cpu = class_correct.cpu()
 
-    return class_accuracies
+    # Create a mask for classes that have samples to avoid division by zero
+    valid_mask = class_total_cpu > 0
+    class_accuracies = torch.zeros(num_classes)
+    class_accuracies[valid_mask] = 100 * class_correct_cpu[valid_mask] / class_total_cpu[valid_mask]
+
+    return class_accuracies.tolist()
 
 def select_mates(population: List[ModelWrapper], dataset_name: str, subset_percentage: float = 1.0, seed: Optional[int] = None) -> Tuple[Optional[ModelWrapper], Optional[ModelWrapper]]:
     """Selects a complementary pair of parents using an advanced strategy.
@@ -300,7 +303,7 @@ def merge(parent1: ModelWrapper, parent2: ModelWrapper, strategy: str = 'average
         'average': AverageMergeStrategy,
         'fitness_weighted': FitnessWeightedMergeStrategy,
         'layer-wise': LayerWiseMergeStrategy,
-        'sequential_constructive': SequentialConstructiveMergeStrategy,
+        'sequential_constructive': RandomHalfMergeStrategy,
     }
 
     if strategy not in strategy_map:
@@ -353,15 +356,24 @@ def mutate(model_wrapper: ModelWrapper, generation: int, mutation_rate: float = 
     decayed_strength = initial_mutation_strength * (decay_factor ** generation)
     logger.info(f"Mutating child model (Gen: {generation}, Strength: {decayed_strength:.4f})...")
 
+    # Optimization: Create one generator and re-seed for each parameter
+    # to maintain determinism while avoiding repeated object instantiation.
+    generator = torch.Generator(device=model_wrapper.device)
+
     with torch.no_grad():
-        for param in model_wrapper.model.parameters():
-            if len(param.shape) > 1: # Mutate only multi-dimensional layers (conv, linear)
+        for i, param in enumerate(model_wrapper.model.parameters()):
+            if len(param.shape) > 1:  # Mutate only multi-dimensional layers
+                # Re-seed for each parameter to ensure mutations are deterministic
+                # and independent for each layer, based on a simple seed.
+                generator.manual_seed(i)
+
                 # Create a random mask to decide which weights to mutate
-                mutation_mask = (torch.rand(param.shape) < mutation_rate).to(model_wrapper.device)
+                mutation_mask = (torch.rand(param.shape, generator=generator, device=model_wrapper.device) < mutation_rate)
                 # Generate random noise scaled by the decayed strength
-                mutation = torch.randn(param.shape).to(model_wrapper.device) * decayed_strength
+                mutation = torch.randn(param.shape, generator=generator, device=model_wrapper.device) * decayed_strength
                 # Apply the mutation where the mask is True
                 param.data += mutation * mutation_mask
+
     # Mark fitness as not current, as the model has been modified.
     model_wrapper.fitness_is_current = False
     logger.info("Mutation complete.")
@@ -476,7 +488,14 @@ def finetune(model_wrapper: ModelWrapper, dataset_name: str, validation_loader: 
         validation_split=0.0
     )
     optimizer = optim.Adam(model_wrapper.model.parameters(), lr=learning_rate)
-    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min', patience=scheduler_patience, factor=scheduler_factor)
+
+    # Only create a scheduler if the validation loader is not empty
+    scheduler = None
+    if validation_loader and len(validation_loader) > 0:
+        scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min', patience=scheduler_patience, factor=scheduler_factor)
+    else:
+        logger.warning("Validation loader is empty. The learning rate scheduler will not be active.")
+
 
     if precision == '64':
         model_wrapper.model.double()
@@ -494,11 +513,13 @@ def finetune(model_wrapper: ModelWrapper, dataset_name: str, validation_loader: 
             "Fine-tuning Child"
         )
 
-        # Calculate validation loss for the scheduler
-        avg_val_loss = _calculate_loss(model_wrapper, validation_loader)
-        scheduler.step(avg_val_loss)
-
-        logger.info(f"  - Avg Train Loss: {avg_train_loss:.4f}, Avg Val Loss: {avg_val_loss:.4f}")
+        # Calculate validation loss for the scheduler if it exists
+        if scheduler:
+            avg_val_loss = _calculate_loss(model_wrapper, validation_loader)
+            scheduler.step(avg_val_loss)
+            logger.info(f"  - Avg Train Loss: {avg_train_loss:.4f}, Avg Val Loss: {avg_val_loss:.4f}")
+        else:
+            logger.info(f"  - Avg Train Loss: {avg_train_loss:.4f}")
 
     # Mark fitness as not current, as the model has been modified.
     model_wrapper.fitness_is_current = False
