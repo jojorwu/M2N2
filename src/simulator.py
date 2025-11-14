@@ -133,7 +133,7 @@ class EvolutionSimulator:
     def _initialize_dataloaders(self) -> None:
         """Creates the necessary DataLoaders for the experiment."""
         logger.info("--- Creating DataLoaders ---")
-        _, self.validation_loader, _, self.num_classes = get_dataloaders(
+        _, self.validation_loader, self.test_loader, self.num_classes = get_dataloaders(
             dataset_name=self.dataset_name,
             model_name=self.model_config,
             batch_size=self.batch_size,
@@ -222,7 +222,7 @@ class EvolutionSimulator:
         logger.info("--- Evaluating Population on Test Set ---")
         for model_wrapper in self.population:
             if not model_wrapper.fitness_is_current:
-                evaluate(model_wrapper, dataset_name=self.dataset_name, subset_percentage=self.subset_percentage, seed=self.seed)
+                evaluate(model_wrapper, dataset_name=self.dataset_name, test_loader=self.test_loader)
 
         best_fitness = max([m.fitness for m in self.population])
         avg_fitness = sum([m.fitness for m in self.population]) / len(self.population)
@@ -325,7 +325,7 @@ class EvolutionSimulator:
     def _run_evolution_phase(self, generation: int) -> None:
         """Handles the mating, mutation, and selection of models."""
         logger.info("--- Mating and Evolution ---")
-        parent1, parent2 = select_mates(self.population, dataset_name=self.dataset_name, subset_percentage=self.subset_percentage, seed=self.seed)
+        parent1, parent2 = select_mates(self.population, dataset_name=self.dataset_name, test_loader=self.test_loader)
 
         if parent1 and parent2:
             # Crossover
@@ -363,7 +363,7 @@ class EvolutionSimulator:
                 child,
                 self.population_size,
                 dataset_name=self.dataset_name,
-                seed=self.seed
+                test_loader=self.test_loader
             )
         else:
             logger.info("Population will carry over to the next generation without changes.")
