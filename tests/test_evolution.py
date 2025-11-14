@@ -176,8 +176,7 @@ class TestEvolution(unittest.TestCase):
         self.assertTrue(is_different, "Model created with a different seed was not different.")
 
 
-    @patch('src.evolution.evaluate_by_class')
-    def test_select_mates_handles_multiple_weakest_classes(self, mock_evaluate_by_class):
+    def test_select_mates_handles_multiple_weakest_classes(self):
         """
         Tests that if the best model has multiple classes with the same lowest
         accuracy, the mate selection process will randomly choose from among
@@ -185,12 +184,12 @@ class TestEvolution(unittest.TestCase):
         """
         # Arrange
         accuracies = [90, 80, 70, 50, 60, 85, 50, 95, 88, 75]
-        mock_evaluate_by_class.return_value = accuracies
         expected_weakest_indices = {3, 6}
 
         population = []
         parent1 = ModelWrapper(model_name='CIFAR10', niche_classes=[], device=self.device)
         parent1.fitness = 90.0
+        parent1.per_class_fitness = accuracies # Set the cached value
         population.append(parent1)
 
         for i in range(10):
@@ -202,7 +201,7 @@ class TestEvolution(unittest.TestCase):
         random.seed(42)
         selected_weakest_classes = []
         for _ in range(30):
-            _, parent2 = select_mates(population, dataset_name='CIFAR10')
+            _, parent2 = select_mates(population)
             selected_weakest_classes.append(parent2.niche_classes[0])
 
         # Assert
