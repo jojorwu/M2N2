@@ -335,5 +335,27 @@ class TestEvolution(unittest.TestCase):
         self.assertEqual(duplicate_count, 1, "A duplicate model was added to the new generation.")
 
 
+    def test_finetune_handles_empty_validation_loader(self):
+        """
+        Tests that the `finetune` function can run without crashing when the
+        validation loader is empty, which can happen with small datasets and
+        certain validation splits.
+        """
+        # Arrange
+        from src.evolution import finetune
+        model_wrapper = ModelWrapper(model_name='CIFAR10', niche_classes=[0], device=self.device)
+        empty_validation_loader = []  # An empty list is a valid empty DataLoader for this test
+
+        # Act & Assert
+        # The test passes if this call completes without raising an exception.
+        try:
+            with patch('src.evolution.get_dataloaders') as mock_get_dataloaders:
+                # Mock get_dataloaders to return a dummy train_loader to avoid actual data loading
+                mock_get_dataloaders.return_value = ([(torch.randn(1, 3, 32, 32), torch.tensor([1]))], None, None, 1)
+                finetune(model_wrapper, 'CIFAR10', empty_validation_loader, epochs=1)
+        except Exception as e:
+            self.fail(f"finetune() raised an unexpected exception with an empty validation loader: {e}")
+
+
 if __name__ == '__main__':
     unittest.main()
