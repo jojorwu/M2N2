@@ -48,78 +48,72 @@ class AverageMergeStrategy(MergeStrategy):
 
 
 
-class SequentialConstructiveMergeStrategy(MergeStrategy):
+class RandomHalfMergeStrategy(MergeStrategy):
     """
-    Merges models by intelligently building a child layer by layer,
-    keeping changes only if they improve validation fitness.
+    A fast, heuristic-based merge strategy that creates a hybrid by taking
+    half the layers from the weaker parent, then performs a single validation
+    check to decide whether to keep the hybrid or the original fitter parent.
+    This strategy is stateful and reuses a single model object for all
+    evaluations to reduce overhead.
     """
+    def __init__(self, model_name: str, device: torch.device, num_classes: int):
+        self.model_name = model_name
+        self.device = device
+        self.num_classes = num_classes
+        # Create a single, reusable model wrapper for all fitness evaluations.
+        self._reusable_wrapper = ModelWrapper(
+            model_name=self.model_name,
+            niche_classes=list(range(self.num_classes)),
+            device=self.device,
+            num_classes=self.num_classes
+        )
 
     def merge(self, parent1: ModelWrapper, parent2: ModelWrapper, validation_loader: Optional[DataLoader] = None) -> Dict[str, torch.Tensor]:
         if validation_loader is None:
-            raise ValueError("The 'sequential_constructive' strategy requires a 'validation_loader'.")
+            raise ValueError("The 'RandomHalfMergeStrategy' requires a 'validation_loader'.")
 
         fitter_parent = parent1 if parent1.fitness >= parent2.fitness else parent2
         weaker_parent = parent2 if parent1.fitness >= parent2.fitness else parent1
         logger.info(f"  - Using fitter parent (Fitness: {fitter_parent.fitness:.2f}) as base.")
 
-        best_child_state_dict = copy.deepcopy(fitter_parent.model.state_dict())
-        num_classes = fitter_parent.model.num_classes
-        temp_model_wrapper = ModelWrapper(model_name=fitter_parent.model_name, niche_classes=list(range(num_classes)), device=fitter_parent.device, num_classes=num_classes)
-        temp_model_wrapper.model.load_state_dict(best_child_state_dict)
+        fitter_state_dict = fitter_parent.model.state_dict()
+        weaker_state_dict = weaker_parent.model.state_dict()
+        hybrid_state_dict = copy.deepcopy(fitter_state_dict)
 
-        # --- Optimization: Use a single batch for quick validation ---
+        # Get a list of layer prefixes to choose from
+        layer_prefixes = sorted(list(set([k.split('.')[0] for k in fitter_state_dict.keys()])))
+
+        # Randomly choose half of the layers to swap from the weaker parent
+        num_layers_to_swap = len(layer_prefixes) // 2
+        layers_to_swap = random.sample(layer_prefixes, num_layers_to_swap)
+        logger.info(f"  - Randomly selected {num_layers_to_swap} layers to swap: {layers_to_swap}")
+
+        # Swap the selected layers
+        for key in hybrid_state_dict:
+            prefix = key.split('.')[0]
+            if prefix in layers_to_swap:
+                hybrid_state_dict[key] = weaker_state_dict[key]
+
+        # --- Single Validation Step ---
+        # Use a single batch for quick validation to avoid overfitting on the validation set
         try:
             validation_batch = next(iter(validation_loader))
         except StopIteration:
-            raise ValueError("Validation loader is empty. Cannot use 'sequential_constructive' strategy.")
+            raise ValueError("Validation loader is empty. Cannot use this merge strategy.")
 
-        best_fitness = _get_validation_fitness(temp_model_wrapper, validation_loader, batch=validation_batch)
-        logger.info(f"  - Initial child validation fitness (on one batch): {best_fitness:.2f}%")
+        base_fitness = _get_validation_fitness(self._reusable_wrapper, validation_loader, batch=validation_batch, model_state_dict=fitter_state_dict)
+        hybrid_fitness = _get_validation_fitness(self._reusable_wrapper, validation_loader, batch=validation_batch, model_state_dict=hybrid_state_dict)
 
-        if fitter_parent.model_name == 'LLM':
-            layer_prefixes = ['bert.distilbert.embeddings']
-            num_transformer_layers = fitter_parent.model.bert.config.num_hidden_layers
-            for i in range(num_transformer_layers):
-                layer_prefixes.append(f'bert.distilbert.transformer.layer.{i}')
-            layer_prefixes.extend(['bert.pre_classifier', 'bert.classifier'])
-        elif fitter_parent.model_name == 'RESNET':
-            layer_prefixes = [name for name, _ in fitter_parent.model.resnet.named_children()]
+        logger.info(f"  - Fitter Parent Fitness (1 batch): {base_fitness:.2f}%")
+        logger.info(f"  - Hybrid Model Fitness (1 batch): {hybrid_fitness:.2f}%")
+
+        # Return the state dict of the better performing model
+        if hybrid_fitness > base_fitness:
+            logger.info("  - Hybrid model performed better. Keeping the hybrid.")
+            return hybrid_state_dict
         else:
-            layer_prefixes = sorted(list(set([k.split('.')[0] for k in fitter_parent.model.state_dict().keys()])))
-
-        current_state_dict = temp_model_wrapper.model.state_dict()
-        for prefix in layer_prefixes:
-            if fitter_parent.model_name == 'RESNET':
-                module_to_check = dict(fitter_parent.model.resnet.named_children()).get(prefix)
-                if module_to_check and not list(module_to_check.parameters()):
-                    logger.info(f"  - Skipping layer '{prefix}' as it has no learnable parameters.")
-                    continue
-
-            # --- Optimization: Avoid deepcopying the entire state dict ---
-            # 1. Store the original layers from the best model
-            original_layers = {key: current_state_dict[key].clone() for key in current_state_dict if key.startswith(prefix)}
-
-            # 2. Swap in the layers from the weaker parent
-            for key in original_layers:
-                current_state_dict[key].copy_(weaker_parent.model.state_dict()[key])
-
-            # 3. Evaluate the new configuration
-            current_fitness = _get_validation_fitness(temp_model_wrapper, validation_loader, batch=validation_batch)
-
-            # 4. Decide whether to keep or revert the change
-            if current_fitness > best_fitness:
-                logger.info(f"  - Swapping layer '{prefix}' improved validation fitness to {current_fitness:.2f}%. Keeping it.")
-                best_fitness = current_fitness
-                # The change is already in current_state_dict, so we just update best_child_state_dict
-                for key in original_layers:
-                    best_child_state_dict[key].copy_(current_state_dict[key])
-            else:
-                logger.info(f"  - Swapping layer '{prefix}' did not improve validation fitness ({current_fitness:.2f}%). Reverting.")
-                # Revert the change by copying the original layers back
-                for key in original_layers:
-                    current_state_dict[key].copy_(original_layers[key])
-
-        return best_child_state_dict
+            logger.info("  - Fitter parent performed better. Discarding the hybrid.")
+            return fitter_state_dict
 
 
 class FitnessWeightedMergeStrategy(MergeStrategy):
