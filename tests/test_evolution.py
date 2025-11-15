@@ -80,56 +80,53 @@ class TestEvolution(unittest.TestCase):
         )
 
     @patch('src.merge_strategies._get_validation_fitness')
-    @patch('src.model.models.resnet18')
-    def test_sequential_constructive_merge_skips_parameterless_resnet_layers(self, mock_resnet_constructor, mock_get_validation_fitness):
+    def test_random_half_merge_swaps_layers_and_chooses_fitter(self, mock_get_validation_fitness):
         """
-        Tests that the 'sequential_constructive' merge strategy skips running
-        validation for ResNet layers that have no learnable parameters (e.g., ReLU, MaxPool).
+        Tests that the 'RandomHalfMergeStrategy' (formerly sequential_constructive)
+        swaps roughly half the layers and correctly chooses the better model.
         """
         # Arrange
-        # 1. Create a mock resnet module with named children and a mock fc layer
-        class MockResNetModule(torch.nn.Module):
-            def __init__(self):
-                super().__init__()
-                self.conv1 = torch.nn.Linear(10, 10) # Has params
-                self.relu = torch.nn.ReLU()          # No params
-                self.layer1 = torch.nn.Linear(10, 10) # Has params
-                self.maxpool = torch.nn.MaxPool2d(2) # No params
-                self.fc = torch.nn.Linear(10, 10)    # Has params (will be replaced, but checked)
-            def forward(self, x): return x
-
-        # 2. Configure the mock constructor to return our mock module
-        mock_resnet_constructor.return_value = MockResNetModule()
-
-        # 3. Create parent wrappers. They will now be valid ResNetClassifiers containing our mock.
-        parent1 = ModelWrapper(model_name='RESNET', niche_classes=[0], device=self.device)
+        # 1. Create two parents with easily trackable weights (all 1s and all 0s)
+        parent1 = ModelWrapper(model_name='CIFAR10', niche_classes=[0], device=self.device)
         parent1.fitness = 80.0
-        parent2 = ModelWrapper(model_name='RESNET', niche_classes=[1], device=self.device)
-        parent2.fitness = 20.0
+        with torch.no_grad():
+            for param in parent1.model.parameters():
+                param.fill_(1.0)
 
-        # 4. The mock for the validation function will return a constant value
-        mock_get_validation_fitness.return_value = 50.0
+        parent2 = ModelWrapper(model_name='CIFAR10', niche_classes=[1], device=self.device)
+        parent2.fitness = 70.0
+        with torch.no_grad():
+            for param in parent2.model.parameters():
+                param.fill_(0.0)
 
-        # 5. A dummy validation loader is required by the strategy
+        # 2. A dummy validation loader is required
         dummy_loader = torch.utils.data.DataLoader([torch.randn(10)], batch_size=1)
 
+        # 3. Configure the mock validation to simulate the hybrid being better
+        # The first call is for the base model (parent1), the second for the hybrid.
+        mock_get_validation_fitness.side_effect = [50.0, 60.0]
+
         # Act
-        merge(parent1, parent2, strategy='sequential_constructive', validation_loader=dummy_loader)
+        child = merge(parent1, parent2, strategy='random_half', validation_loader=dummy_loader)
 
         # Assert
-        # The named children are 'conv1', 'relu', 'layer1', 'maxpool', 'fc'.
-        # The validation should be called once for the initial base model.
-        # It should then be called for 'conv1', 'layer1', and 'fc'.
-        # It should NOT be called for 'relu' or 'maxpool'.
-        # Total expected calls = 1 (initial) + 3 (parameterized layers) = 4.
-        expected_calls = 4
-        self.assertEqual(
-            mock_get_validation_fitness.call_count,
-            expected_calls,
-            f"The validation function was called {mock_get_validation_fitness.call_count} times, but {expected_calls} were expected. "
-            "It may not be correctly skipping parameter-less layers."
-        )
+        # 1. Check that the fitness check was called twice (base and hybrid)
+        self.assertEqual(mock_get_validation_fitness.call_count, 2)
 
+        # 2. Check that some, but not all, layers were swapped.
+        # The child's weights should be a mix of 0s and 1s.
+        child_params = list(child.model.parameters())
+        has_zeros = any(torch.any(p == 0.0) for p in child_params)
+        has_ones = any(torch.any(p == 1.0) for p in child_params)
+        self.assertTrue(has_zeros and has_ones, "The child model does not appear to be a hybrid of the parents.")
+
+        # 3. Reset mock and test the case where the fitter parent is better
+        mock_get_validation_fitness.reset_mock()
+        mock_get_validation_fitness.side_effect = [60.0, 50.0]
+        child = merge(parent1, parent2, strategy='random_half', validation_loader=dummy_loader)
+        child_params = list(child.model.parameters())
+        is_all_ones = all(torch.all(p == 1.0) for p in child_params)
+        self.assertTrue(is_all_ones, "The merge should have returned the fitter parent, but it appears to have returned a hybrid.")
 
     def test_layer_wise_merge_is_deterministic_with_seed(self):
         """
@@ -176,8 +173,7 @@ class TestEvolution(unittest.TestCase):
         self.assertTrue(is_different, "Model created with a different seed was not different.")
 
 
-    @patch('src.evolution.evaluate_by_class')
-    def test_select_mates_handles_multiple_weakest_classes(self, mock_evaluate_by_class):
+    def test_select_mates_handles_multiple_weakest_classes(self):
         """
         Tests that if the best model has multiple classes with the same lowest
         accuracy, the mate selection process will randomly choose from among
@@ -185,12 +181,12 @@ class TestEvolution(unittest.TestCase):
         """
         # Arrange
         accuracies = [90, 80, 70, 50, 60, 85, 50, 95, 88, 75]
-        mock_evaluate_by_class.return_value = accuracies
         expected_weakest_indices = {3, 6}
 
         population = []
         parent1 = ModelWrapper(model_name='CIFAR10', niche_classes=[], device=self.device)
         parent1.fitness = 90.0
+        parent1.per_class_fitness = accuracies # Set the cached value
         population.append(parent1)
 
         for i in range(10):
@@ -202,7 +198,7 @@ class TestEvolution(unittest.TestCase):
         random.seed(42)
         selected_weakest_classes = []
         for _ in range(30):
-            _, parent2 = select_mates(population, dataset_name='CIFAR10')
+            _, parent2 = select_mates(population)
             selected_weakest_classes.append(parent2.niche_classes[0])
 
         # Assert
@@ -231,7 +227,7 @@ class TestEvolution(unittest.TestCase):
         parent2.fitness = 70.0
 
         # Act
-        child = merge(parent1, parent2, strategy='sequential_constructive', validation_loader=dummy_loader)
+        child = merge(parent1, parent2, strategy='random_half', validation_loader=dummy_loader)
 
         # Assert
         # The child's niche classes should be a list from 0 to num_classes-1
@@ -254,7 +250,7 @@ class TestEvolution(unittest.TestCase):
         # 1. Mock the behavior of the dependencies
         mock_scheduler_instance = mock_scheduler_class.return_value
         mock_calculate_loss.return_value = 0.123  # A dummy validation loss
-        mock_get_dataloaders.return_value = (None, None, None, 10) # Prevent actual data loading
+        mock_get_dataloaders.return_value = (None, None, None, 10, None) # Prevent actual data loading
 
         # 2. Create the necessary inputs for the finetune function
         model_wrapper = ModelWrapper(model_name='CIFAR10', niche_classes=[0], device=self.device)
@@ -281,7 +277,7 @@ class TestEvolution(unittest.TestCase):
         `subset_percentage` argument to the `get_dataloaders` call.
         """
         # Arrange
-        mock_get_dataloaders.return_value = (None, None, "dummy_test_loader", 10)
+        mock_get_dataloaders.return_value = (None, None, "dummy_test_loader", 10, None)
         model_wrapper = ModelWrapper(model_name='CIFAR10', niche_classes=[0], device=self.device)
         model_wrapper.fitness_is_current = False # Ensure evaluation is not skipped
         test_subset_percentage = 0.5

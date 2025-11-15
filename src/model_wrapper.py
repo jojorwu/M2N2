@@ -59,6 +59,7 @@ class ModelWrapper:
         self.fitness = 0.0
         # This flag prevents redundant evaluations.
         self.fitness_is_current = False
+        self.per_class_fitness: List[float] = []
 
     def __eq__(self, other: object) -> bool:
         """Checks for equality between two ModelWrapper instances.
