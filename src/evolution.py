@@ -16,7 +16,7 @@ from .merge_strategies import (
     AverageMergeStrategy,
     FitnessWeightedMergeStrategy,
     LayerWiseMergeStrategy,
-    SequentialConstructiveMergeStrategy,
+    RandomHalfMergeStrategy,
 )
 from .model_wrapper import ModelWrapper
 from .utils import _calculate_accuracy
@@ -61,7 +61,7 @@ def _run_training_epoch(model_wrapper: ModelWrapper, optimizer: optim.Optimizer,
 
     return total_train_loss / len(train_loader) if len(train_loader) > 0 else 0.0
 
-def specialize(model_wrapper: ModelWrapper, dataset_name: str, epochs: int = 1, precision: str = '32', seed: Optional[int] = None, learning_rate: float = 0.001, subset_percentage: float = 0.1) -> None:
+def specialize(model_wrapper: ModelWrapper, dataset_name: str, train_dataset: Optional[torch.utils.data.Dataset] = None, epochs: int = 1, precision: str = '32', seed: Optional[int] = None, learning_rate: float = 0.001, subset_percentage: float = 0.1) -> None:
     """Trains a model in-place on its specialized data niche.
 
     This simulates the "resource competition" phase where a model becomes an
@@ -70,6 +70,8 @@ def specialize(model_wrapper: ModelWrapper, dataset_name: str, epochs: int = 1, 
     Args:
         model_wrapper (ModelWrapper): The model to be trained in-place.
         dataset_name (str): The name of the dataset to use for training.
+        train_dataset (torch.utils.data.Dataset, optional): A pre-loaded
+            training dataset to avoid redundant disk I/O. Defaults to None.
         epochs (int, optional): The number of training epochs. Defaults to 1.
         precision (str, optional): The training precision ('16', '32', '64').
             Defaults to '32'.
@@ -82,9 +84,10 @@ def specialize(model_wrapper: ModelWrapper, dataset_name: str, epochs: int = 1, 
     """
     logger.info(f"Specializing model on niche {model_wrapper.niche_classes} for {epochs} epoch(s) with {precision}-bit precision...")
 
-    train_loader, _, _, _ = get_dataloaders(
+    train_loader, _, _, _, _ = get_dataloaders(
         dataset_name=dataset_name,
         model_name=model_wrapper.model_name,
+        train_dataset=train_dataset,
         niche_classes=model_wrapper.niche_classes,
         subset_percentage=subset_percentage,
         seed=seed
@@ -113,17 +116,20 @@ def specialize(model_wrapper: ModelWrapper, dataset_name: str, epochs: int = 1, 
     logger.info("Specialization complete.")
 
 
-def _get_fitness_score(model_wrapper: ModelWrapper, dataset_name: str, subset_percentage: float = 1.0, seed: Optional[int] = None) -> float:
+def _get_fitness_score(model_wrapper: ModelWrapper, dataset_name: str, test_loader: Optional[DataLoader] = None, subset_percentage: float = 1.0, seed: Optional[int] = None) -> float:
     """Calculates and returns the fitness score for a model on the test set.
 
     This is a lightweight, side-effect-free version of the `evaluate`
     function. It calculates the accuracy on the full test set but does *not*
     update the `fitness` attribute of the model wrapper or print any
-    output. This makes it suitable for repeated internal use.
+    output. This makes it suitable for repeated internal use. It can accept a
+    pre-existing test data loader to avoid redundant data loading.
 
     Args:
         model_wrapper (ModelWrapper): The model wrapper to evaluate.
         dataset_name (str): The name of the dataset to use for evaluation.
+        test_loader (DataLoader, optional): A pre-existing data loader for the
+            test set. If None, a new one is created. Defaults to None.
         subset_percentage (float, optional): The fraction of the test set to use for evaluation. Defaults to 1.0.
         seed (int, optional): A seed for the random number generator to
             ensure deterministic data splitting. Defaults to None.
@@ -131,20 +137,25 @@ def _get_fitness_score(model_wrapper: ModelWrapper, dataset_name: str, subset_pe
     Returns:
         float: The calculated accuracy (fitness) of the model as a percentage.
     """
-    # We always evaluate on the full test set to measure general performance
-    _, _, test_loader, _ = get_dataloaders(dataset_name=dataset_name, model_name=model_wrapper.model_name, subset_percentage=subset_percentage, validation_split=0, seed=seed) # No validation split needed here
+    # If a test loader isn't provided, create one. This maintains backward compatibility.
+    if test_loader is None:
+        _, _, test_loader, _, _ = get_dataloaders(dataset_name=dataset_name, model_name=model_wrapper.model_name, subset_percentage=subset_percentage, validation_split=0, seed=seed) # No validation split needed here
+
     return _calculate_accuracy(model_wrapper, test_loader)
 
-def evaluate(model_wrapper: ModelWrapper, dataset_name: str, subset_percentage: float = 1.0, seed: Optional[int] = None) -> float:
+def evaluate(model_wrapper: ModelWrapper, dataset_name: str, test_loader: Optional[DataLoader] = None, subset_percentage: float = 1.0, seed: Optional[int] = None) -> float:
     """Evaluates fitness on the full test set and updates the wrapper.
 
     This function skips evaluation if the model's fitness is already
     marked as current. Otherwise, it calculates the accuracy on the test
-    set and updates the `fitness` and `fitness_is_current` attributes.
+    set and updates the `fitness` and `fitness_is_current` attributes. It
+    can accept a pre-existing test data loader to avoid redundant data loading.
 
     Args:
         model_wrapper (ModelWrapper): The model wrapper to evaluate.
         dataset_name (str): The name of the dataset to use for evaluation.
+        test_loader (DataLoader, optional): A pre-existing data loader for the
+            test set. If None, a new one is created. Defaults to None.
         subset_percentage (float, optional): The fraction of the test set to use for evaluation. Defaults to 1.0.
         seed (int, optional): A seed for the random number generator to
             ensure deterministic data splitting. Defaults to None.
@@ -156,68 +167,18 @@ def evaluate(model_wrapper: ModelWrapper, dataset_name: str, subset_percentage: 
         logger.debug(f"  - Skipping evaluation for model with up-to-date fitness: {model_wrapper.fitness:.2f}%")
         return model_wrapper.fitness
 
-    accuracy = _get_fitness_score(model_wrapper, dataset_name=dataset_name, subset_percentage=subset_percentage, seed=seed)
+    accuracy = _get_fitness_score(
+        model_wrapper,
+        dataset_name=dataset_name,
+        test_loader=test_loader,
+        subset_percentage=subset_percentage,
+        seed=seed
+    )
     model_wrapper.fitness = accuracy
     model_wrapper.fitness_is_current = True
     return accuracy
 
-def evaluate_by_class(model_wrapper: ModelWrapper, dataset_name: str, subset_percentage: float = 1.0, seed: Optional[int] = None) -> List[float]:
-    """Evaluates a model's accuracy on each individual class.
-
-    This function is used to identify a model's strengths and weaknesses,
-    which is crucial for the advanced mate selection strategy. It does not
-    modify the model wrapper.
-
-    Args:
-        model_wrapper (ModelWrapper): The model wrapper to evaluate.
-        dataset_name (str): The name of the dataset to use for evaluation.
-        subset_percentage (float, optional): The fraction of the test set to use for evaluation. Defaults to 1.0.
-        seed (int, optional): A seed for the random number generator to
-            ensure deterministic data splitting. Defaults to None.
-
-    Returns:
-        list[float]: A list of accuracy percentages, where the index of the
-            list corresponds to the class index.
-    """
-    # We always evaluate on the full test set to measure general performance
-    _, _, test_loader, _ = get_dataloaders(dataset_name=dataset_name, model_name=model_wrapper.model_name, subset_percentage=subset_percentage, validation_split=0, seed=seed) # No validation split needed here
-    model_wrapper.model.eval()
-
-    num_classes = model_wrapper.model.num_classes
-    class_correct = list(0. for i in range(num_classes))
-    class_total = list(0. for i in range(num_classes))
-
-    with torch.no_grad():
-        for batch in test_loader:
-            if model_wrapper.model_name == 'LLM':
-                input_ids = batch['input_ids'].to(model_wrapper.device)
-                attention_mask = batch['attention_mask'].to(model_wrapper.device)
-                target = batch['labels'].to(model_wrapper.device)
-                output = model_wrapper.model(input_ids=input_ids, attention_mask=attention_mask)
-            else:
-                data, target = batch
-                data, target = data.to(model_wrapper.device), target.to(model_wrapper.device)
-                output = model_wrapper.model(data)
-
-            _, predicted = torch.max(output, 1)
-            c = (predicted == target).squeeze()
-
-            for i in range(len(target)):
-                label = target[i]
-                class_correct[label] += c[i].item()
-                class_total[label] += 1
-
-    class_accuracies = []
-    for i in range(num_classes):
-        if class_total[i] > 0:
-            accuracy = 100 * class_correct[i] / class_total[i]
-            class_accuracies.append(accuracy)
-        else:
-            class_accuracies.append(0)
-
-    return class_accuracies
-
-def select_mates(population: List[ModelWrapper], dataset_name: str, subset_percentage: float = 1.0, seed: Optional[int] = None) -> Tuple[Optional[ModelWrapper], Optional[ModelWrapper]]:
+def select_mates(population: List[ModelWrapper]) -> Tuple[Optional[ModelWrapper], Optional[ModelWrapper]]:
     """Selects a complementary pair of parents using an advanced strategy.
 
     This function promotes "healing" by pairing a strong model with a model
@@ -230,11 +191,9 @@ def select_mates(population: List[ModelWrapper], dataset_name: str, subset_perce
     This function prints its selection logic to the console.
 
     Args:
-        population (list[ModelWrapper]): The current population of models.
-        dataset_name (str): The name of the dataset to use for evaluation.
-        subset_percentage (float, optional): The fraction of the test set to use for evaluation. Defaults to 1.0.
-        seed (int, optional): A seed for the random number generator to
-            ensure deterministic data splitting. Defaults to None.
+        population (list[ModelWrapper]): The current population of models,
+            where each model is assumed to have its fitness and
+            per_class_fitness attributes pre-calculated and up-to-date.
 
     Returns:
         tuple[ModelWrapper | None, ModelWrapper | None]: A tuple containing
@@ -249,9 +208,13 @@ def select_mates(population: List[ModelWrapper], dataset_name: str, subset_perce
     parent1 = max(population, key=lambda m: m.fitness)
     logger.info(f"  - Parent 1 is the population's best model (Fitness: {parent1.fitness:.2f}%)")
 
-    # 2. Analyze Parent 1 to find its weakest class.
+    # 2. Analyze Parent 1 to find its weakest class using the cached metrics.
     logger.info("  - Analyzing Parent 1's performance by class...")
-    class_accuracies = evaluate_by_class(parent1, dataset_name=dataset_name, subset_percentage=subset_percentage, seed=seed)
+    if not parent1.per_class_fitness:
+        logger.error("  - FATAL: Per-class fitness has not been calculated for Parent 1. Cannot select mates.")
+        return None, None
+
+    class_accuracies = parent1.per_class_fitness
     min_accuracy = min(class_accuracies)
     weakest_indices = [i for i, acc in enumerate(class_accuracies) if acc == min_accuracy]
     weakest_class_index = random.choice(weakest_indices)
@@ -300,7 +263,8 @@ def merge(parent1: ModelWrapper, parent2: ModelWrapper, strategy: str = 'average
         'average': AverageMergeStrategy,
         'fitness_weighted': FitnessWeightedMergeStrategy,
         'layer-wise': LayerWiseMergeStrategy,
-        'sequential_constructive': SequentialConstructiveMergeStrategy,
+        'random_half': RandomHalfMergeStrategy,
+        'sequential_constructive': RandomHalfMergeStrategy, # For backward compatibility
     }
 
     if strategy not in strategy_map:
@@ -312,6 +276,10 @@ def merge(parent1: ModelWrapper, parent2: ModelWrapper, strategy: str = 'average
         strategy_args['dampening_factor'] = dampening_factor
     elif strategy == 'layer-wise':
         strategy_args['seed'] = seed
+    elif strategy == 'random_half':
+        strategy_args['model_name'] = parent1.model_name
+        strategy_args['device'] = parent1.device
+        strategy_args['num_classes'] = parent1.model.num_classes
 
     # Instantiate the strategy and merge
     merge_strategy = strategy_map[strategy](**strategy_args)
@@ -356,24 +324,24 @@ def mutate(model_wrapper: ModelWrapper, generation: int, mutation_rate: float = 
     with torch.no_grad():
         for param in model_wrapper.model.parameters():
             if len(param.shape) > 1: # Mutate only multi-dimensional layers (conv, linear)
-                # Create a random mask to decide which weights to mutate
-                mutation_mask = (torch.rand(param.shape) < mutation_rate).to(model_wrapper.device)
-                # Generate random noise scaled by the decayed strength
-                mutation = torch.randn(param.shape).to(model_wrapper.device) * decayed_strength
-                # Apply the mutation where the mask is True
+                # Create tensors directly on the target device to avoid unnecessary CPU-GPU transfers.
+                mutation_mask = torch.rand(param.shape, device=model_wrapper.device) < mutation_rate
+                mutation = torch.randn(param.shape, device=model_wrapper.device) * decayed_strength
                 param.data += mutation * mutation_mask
     # Mark fitness as not current, as the model has been modified.
     model_wrapper.fitness_is_current = False
     logger.info("Mutation complete.")
     return model_wrapper
 
-def create_next_generation(current_population: List[ModelWrapper], new_child: ModelWrapper, population_size: int, dataset_name: str, seed: Optional[int] = None) -> List[ModelWrapper]:
+def create_next_generation(current_population: List[ModelWrapper], new_child: ModelWrapper, population_size: int, dataset_name: str, test_loader: Optional[DataLoader] = None, seed: Optional[int] = None) -> List[ModelWrapper]:
     """Creates the next generation's population using elitist selection.
 
     This function implements the selection step of the algorithm. It combines
     the existing population with the new child, evaluates the child's
     fitness, and then selects the top individuals to form the next
     generation's population. This function prints its progress to the console.
+    It can accept a pre-existing test data loader to avoid redundant data
+    loading.
 
     Args:
         current_population (list[ModelWrapper]): The list of models in the
@@ -382,6 +350,8 @@ def create_next_generation(current_population: List[ModelWrapper], new_child: Mo
             evaluated and included in the selection pool.
         population_size (int): The maximum size of the population.
         dataset_name (str): The name of the dataset to use for evaluation.
+        test_loader (DataLoader, optional): A pre-existing data loader for the
+            test set. If None, a new one is created. Defaults to None.
         seed (int, optional): A seed for the random number generator to
             ensure deterministic data splitting. Defaults to None.
 
@@ -391,7 +361,7 @@ def create_next_generation(current_population: List[ModelWrapper], new_child: Mo
     """
     logger.info("Creating the next generation...")
     # Evaluate the new child to make sure its fitness is calculated
-    evaluate(new_child, dataset_name=dataset_name, seed=seed)
+    evaluate(new_child, dataset_name=dataset_name, test_loader=test_loader, seed=seed)
 
     # Combine the old population with the new child, avoiding duplicates
     if new_child in current_population:
@@ -438,7 +408,7 @@ def _calculate_loss(model_wrapper: ModelWrapper, data_loader: DataLoader) -> flo
     return total_loss / len(data_loader)
 
 
-def finetune(model_wrapper: ModelWrapper, dataset_name: str, validation_loader: DataLoader, epochs: int = 3, precision: str = '32', seed: Optional[int] = None, learning_rate: float = 0.001, scheduler_patience: int = 2, scheduler_factor: float = 0.5, subset_percentage: float = 0.1) -> None:
+def finetune(model_wrapper: ModelWrapper, dataset_name: str, validation_loader: DataLoader, train_dataset: Optional[torch.utils.data.Dataset] = None, epochs: int = 3, precision: str = '32', seed: Optional[int] = None, learning_rate: float = 0.001, scheduler_patience: int = 2, scheduler_factor: float = 0.5, subset_percentage: float = 0.1) -> None:
     """Fine-tunes a model in-place on the full dataset with a scheduler.
 
     This step is crucial for a newly merged child model. It uses an Adam
@@ -450,6 +420,8 @@ def finetune(model_wrapper: ModelWrapper, dataset_name: str, validation_loader: 
         dataset_name (str): The name of the dataset to use for training.
         validation_loader (DataLoader): A DataLoader for the validation set,
             used to control the learning rate scheduler.
+        train_dataset (torch.utils.data.Dataset, optional): A pre-loaded
+            training dataset to avoid redundant disk I/O. Defaults to None.
         epochs (int, optional): The number of fine-tuning epochs.
             Defaults to 3.
         precision (str, optional): The training precision ('16', '32', '64').
@@ -468,9 +440,10 @@ def finetune(model_wrapper: ModelWrapper, dataset_name: str, validation_loader: 
     logger.info(f"Fine-tuning model for {epochs} epoch(s) with {precision}-bit precision and ReduceLROnPlateau scheduler...")
 
     # We get a train_loader with the full training data (no validation split here)
-    train_loader, _, _, _ = get_dataloaders(
+    train_loader, _, _, _, _ = get_dataloaders(
         dataset_name=dataset_name,
         model_name=model_wrapper.model_name,
+        train_dataset=train_dataset,
         subset_percentage=subset_percentage,
         seed=seed,
         validation_split=0.0
