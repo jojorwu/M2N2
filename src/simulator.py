@@ -15,7 +15,7 @@ from .model_wrapper import ModelWrapper
 from .evolution import specialize, evaluate, select_mates, merge, mutate, finetune, create_next_generation
 from .data import get_dataloaders
 from .visualization import plot_fitness_history
-from .utils import set_seed
+from .utils import set_seed, _calculate_metrics
 from .enums import ModelName, DatasetName
 from typing import List, Tuple, Dict, Any, Optional
 from torch.utils.data import DataLoader
@@ -51,6 +51,7 @@ class EvolutionSimulator:
     population: List[ModelWrapper]
     fitness_history: List[Tuple[float, float]]
     validation_loader: DataLoader
+    train_dataset: torch.utils.data.Dataset
     current_generation: int
     num_classes: int
 
@@ -133,7 +134,7 @@ class EvolutionSimulator:
     def _initialize_dataloaders(self) -> None:
         """Creates the necessary DataLoaders for the experiment."""
         logger.info("--- Creating DataLoaders ---")
-        _, self.validation_loader, _, self.num_classes = get_dataloaders(
+        _, self.validation_loader, self.test_loader, self.num_classes, self.train_dataset = get_dataloaders(
             dataset_name=self.dataset_name,
             model_name=self.model_config,
             batch_size=self.batch_size,
@@ -182,6 +183,7 @@ class EvolutionSimulator:
             specialize(
                 model_wrapper,
                 dataset_name=self.dataset_name,
+                train_dataset=self.train_dataset,
                 epochs=self.specialize_epochs,
                 precision=self.precision_config,
                 seed=self.seed,
@@ -199,6 +201,7 @@ class EvolutionSimulator:
                     specialize(
                         model_wrapper,
                         dataset_name=self.dataset_name,
+                        train_dataset=self.train_dataset,
                         epochs=self.specialize_epochs,
                         precision=self.precision_config,
                         seed=self.seed,
@@ -222,7 +225,10 @@ class EvolutionSimulator:
         logger.info("--- Evaluating Population on Test Set ---")
         for model_wrapper in self.population:
             if not model_wrapper.fitness_is_current:
-                evaluate(model_wrapper, dataset_name=self.dataset_name, subset_percentage=self.subset_percentage, seed=self.seed)
+                overall_accuracy, per_class_accuracy = _calculate_metrics(model_wrapper, self.test_loader)
+                model_wrapper.fitness = overall_accuracy
+                model_wrapper.per_class_fitness = per_class_accuracy
+                model_wrapper.fitness_is_current = True
 
         best_fitness = max([m.fitness for m in self.population])
         avg_fitness = sum([m.fitness for m in self.population]) / len(self.population)
@@ -325,7 +331,7 @@ class EvolutionSimulator:
     def _run_evolution_phase(self, generation: int) -> None:
         """Handles the mating, mutation, and selection of models."""
         logger.info("--- Mating and Evolution ---")
-        parent1, parent2 = select_mates(self.population, dataset_name=self.dataset_name, subset_percentage=self.subset_percentage, seed=self.seed)
+        parent1, parent2 = select_mates(self.population)
 
         if parent1 and parent2:
             # Crossover
@@ -348,6 +354,7 @@ class EvolutionSimulator:
             finetune(
                 child,
                 dataset_name=self.dataset_name,
+                train_dataset=self.train_dataset,
                 validation_loader=self.validation_loader,
                 epochs=self.finetune_epochs,
                 precision=self.precision_config,
@@ -363,7 +370,7 @@ class EvolutionSimulator:
                 child,
                 self.population_size,
                 dataset_name=self.dataset_name,
-                seed=self.seed
+                test_loader=self.test_loader
             )
         else:
             logger.info("Population will carry over to the next generation without changes.")
