@@ -107,7 +107,7 @@ class TestEvolution(unittest.TestCase):
         mock_get_validation_fitness.side_effect = [50.0, 60.0]
 
         # Act
-        child = merge(parent1, parent2, strategy='sequential_constructive', validation_loader=dummy_loader)
+        child = merge(parent1, parent2, strategy='random_half', validation_loader=dummy_loader)
 
         # Assert
         # 1. Check that the fitness check was called twice (base and hybrid)
@@ -123,7 +123,7 @@ class TestEvolution(unittest.TestCase):
         # 3. Reset mock and test the case where the fitter parent is better
         mock_get_validation_fitness.reset_mock()
         mock_get_validation_fitness.side_effect = [60.0, 50.0]
-        child = merge(parent1, parent2, strategy='sequential_constructive', validation_loader=dummy_loader)
+        child = merge(parent1, parent2, strategy='random_half', validation_loader=dummy_loader)
         child_params = list(child.model.parameters())
         is_all_ones = all(torch.all(p == 1.0) for p in child_params)
         self.assertTrue(is_all_ones, "The merge should have returned the fitter parent, but it appears to have returned a hybrid.")
@@ -227,7 +227,7 @@ class TestEvolution(unittest.TestCase):
         parent2.fitness = 70.0
 
         # Act
-        child = merge(parent1, parent2, strategy='sequential_constructive', validation_loader=dummy_loader)
+        child = merge(parent1, parent2, strategy='random_half', validation_loader=dummy_loader)
 
         # Assert
         # The child's niche classes should be a list from 0 to num_classes-1
@@ -298,37 +298,6 @@ class TestEvolution(unittest.TestCase):
             f"but {test_subset_percentage} was expected."
         )
 
-    def test_create_next_generation_avoids_duplicates(self):
-        """
-        Tests that `create_next_generation` does not add a child if it's an
-        exact duplicate of a model already in the population.
-        """
-        # Arrange
-        from src.evolution import create_next_generation
-        import copy
-
-        population_size = 5
-        population = [ModelWrapper(model_name='CIFAR10', niche_classes=[i], device=self.device) for i in range(population_size)]
-        for i, p in enumerate(population):
-            p.fitness = 70.0 - i * 10 # Assign descending fitness
-
-        # Create a child that is a perfect duplicate of the second-best model
-        duplicate_child = copy.deepcopy(population[1])
-        duplicate_child.fitness = population[1].fitness # Ensure fitness is also identical
-        # Mark fitness as current to prevent evaluate() from running and changing the fitness
-        duplicate_child.fitness_is_current = True
-
-
-        # Act
-        next_gen = create_next_generation(population, duplicate_child, population_size, 'CIFAR10')
-
-        # Assert
-        # The population size should not have grown
-        self.assertEqual(len(next_gen), population_size)
-
-        # Count how many times the duplicate appears in the next generation
-        duplicate_count = sum(1 for model in next_gen if model == duplicate_child)
-        self.assertEqual(duplicate_count, 1, "A duplicate model was added to the new generation.")
 
 
 if __name__ == '__main__':

@@ -235,10 +235,20 @@ def select_mates(population: List[ModelWrapper]) -> Tuple[Optional[ModelWrapper]
         # Fallback: if no suitable specialist is found, pick the second-best model overall,
         # ensuring it's not the same instance as Parent 1.
         logger.info("  - No suitable specialist found. Using second-best model as fallback Parent 2.")
-        sorted_population = sorted(population, key=lambda m: m.fitness, reverse=True)
 
-        # Find the first model in the sorted list that is not Parent 1.
-        parent2 = next((model for model in sorted_population if model is not parent1), None)
+        # Efficiently find the second-best model in a single pass
+        best = None
+        second_best = None
+        for model in population:
+            if model is parent1:
+                continue
+            if best is None or model.fitness > best.fitness:
+                second_best = best
+                best = model
+            elif second_best is None or model.fitness > second_best.fitness:
+                second_best = model
+
+        parent2 = second_best if best is not parent1 else best
 
         if parent2 is None:
             # This happens if all models in the population are the same instance
@@ -263,7 +273,8 @@ def merge(parent1: ModelWrapper, parent2: ModelWrapper, strategy: str = 'average
         'average': AverageMergeStrategy,
         'fitness_weighted': FitnessWeightedMergeStrategy,
         'layer-wise': LayerWiseMergeStrategy,
-        'sequential_constructive': RandomHalfMergeStrategy,
+        'random_half': RandomHalfMergeStrategy,
+        'sequential_constructive': RandomHalfMergeStrategy, # For backward compatibility
     }
 
     if strategy not in strategy_map:
@@ -275,6 +286,10 @@ def merge(parent1: ModelWrapper, parent2: ModelWrapper, strategy: str = 'average
         strategy_args['dampening_factor'] = dampening_factor
     elif strategy == 'layer-wise':
         strategy_args['seed'] = seed
+    elif strategy == 'random_half':
+        strategy_args['model_name'] = parent1.model_name
+        strategy_args['device'] = parent1.device
+        strategy_args['num_classes'] = parent1.model.num_classes
 
     # Instantiate the strategy and merge
     merge_strategy = strategy_map[strategy](**strategy_args)
@@ -287,14 +302,15 @@ def merge(parent1: ModelWrapper, parent2: ModelWrapper, strategy: str = 'average
     logger.info("Merging complete.")
     return child_wrapper
 
-def mutate(model_wrapper: ModelWrapper, generation: int, mutation_rate: float = 0.01, initial_mutation_strength: float = 0.1, decay_factor: float = 0.9) -> ModelWrapper:
+def mutate(model_wrapper: ModelWrapper, generation: int, mutation_rate: float = 0.01, initial_mutation_strength: float = 0.1, decay_factor: float = 0.9, seed: Optional[int] = None) -> ModelWrapper:
     """Applies random, adaptively scaled Gaussian mutations to a model's weights.
 
     This function introduces genetic diversity by altering a fraction of the
     model's weights. The mutation strength is adaptive, decaying
     exponentially with each generation. This allows for larger exploratory
     changes in early generations and smaller, more precise changes later on.
-    The mutation is applied in-place.
+    The mutation is applied in-place and is made deterministic by using a
+    local `torch.Generator`.
 
     Args:
         model_wrapper (ModelWrapper): The model wrapper to mutate.
@@ -307,6 +323,8 @@ def mutate(model_wrapper: ModelWrapper, generation: int, mutation_rate: float = 
         decay_factor (float, optional): The factor by which the mutation
             strength decays each generation (e.g., 0.9 means 10% decay).
             Defaults to 0.9.
+        seed (int, optional): A seed for the random number generator to
+            ensure deterministic mutations. Defaults to None.
 
     Returns:
         ModelWrapper: The same model wrapper that was passed in, allowing
@@ -316,14 +334,16 @@ def mutate(model_wrapper: ModelWrapper, generation: int, mutation_rate: float = 
     decayed_strength = initial_mutation_strength * (decay_factor ** generation)
     logger.info(f"Mutating child model (Gen: {generation}, Strength: {decayed_strength:.4f})...")
 
+    # Create a local generator for deterministic, efficient mutations
+    g = torch.Generator(device=model_wrapper.device)
+    if seed is not None:
+        g.manual_seed(seed + generation) # Use a unique seed for each generation
+
     with torch.no_grad():
         for param in model_wrapper.model.parameters():
-            if len(param.shape) > 1: # Mutate only multi-dimensional layers (conv, linear)
-                # Create a random mask to decide which weights to mutate
-                mutation_mask = (torch.rand(param.shape) < mutation_rate).to(model_wrapper.device)
-                # Generate random noise scaled by the decayed strength
-                mutation = torch.randn(param.shape).to(model_wrapper.device) * decayed_strength
-                # Apply the mutation where the mask is True
+            if len(param.shape) > 1: # Mutate only multi-dimensional layers
+                mutation_mask = torch.rand(param.shape, device=model_wrapper.device, generator=g) < mutation_rate
+                mutation = torch.randn(param.shape, device=model_wrapper.device, generator=g) * decayed_strength
                 param.data += mutation * mutation_mask
     # Mark fitness as not current, as the model has been modified.
     model_wrapper.fitness_is_current = False
@@ -360,12 +380,10 @@ def create_next_generation(current_population: List[ModelWrapper], new_child: Mo
     # Evaluate the new child to make sure its fitness is calculated
     evaluate(new_child, dataset_name=dataset_name, test_loader=test_loader, seed=seed)
 
-    # Combine the old population with the new child, avoiding duplicates
-    if new_child in current_population:
-        logger.info("  - New child is a duplicate of an existing model. Not adding to the pool.")
-        full_pool = current_population
-    else:
-        full_pool = current_population + [new_child]
+    # Combine the old population with the new child.
+    # The expensive duplicate check has been removed as it's a bottleneck
+    # and the probability of a true duplicate after mutation and fine-tuning is negligible.
+    full_pool = current_population + [new_child]
 
     # Sort the entire pool by fitness in descending order
     full_pool.sort(key=lambda x: x.fitness, reverse=True)

@@ -171,14 +171,13 @@ def get_dataloaders(dataset_name: DatasetName = DatasetName.CIFAR10, model_name:
 
     train_subset, validation_subset = random_split(full_train_dataset, [train_size, val_size], generator=g)
 
-    # Performance optimizations for DataLoader
-    # These are only effective when using a GPU.
-    dataloader_kwargs = {}
+    # Performance optimizations for DataLoader.
+    # `num_workers` > 0 enables multi-process data loading, which is beneficial
+    # on both CPU and GPU systems by leveraging multiple cores.
+    # `pin_memory` is only effective when using a GPU.
+    dataloader_kwargs = {'num_workers': 4}
     if torch.cuda.is_available():
-        dataloader_kwargs = {
-            'num_workers': 4,
-            'pin_memory': True
-        }
+        dataloader_kwargs['pin_memory'] = True
 
     train_loader = DataLoader(dataset=train_subset, batch_size=batch_size, shuffle=True, generator=g, **dataloader_kwargs)
     validation_loader = DataLoader(dataset=validation_subset, batch_size=batch_size, shuffle=False, **dataloader_kwargs)

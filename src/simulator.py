@@ -352,7 +352,8 @@ class EvolutionSimulator:
                 generation=generation,
                 mutation_rate=self.mutation_rate,
                 initial_mutation_strength=self.initial_mutation_strength,
-                decay_factor=self.mutation_decay_factor
+                decay_factor=self.mutation_decay_factor,
+                seed=self.seed
             )
             # Fine-tuning
             finetune(

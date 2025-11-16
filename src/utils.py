@@ -56,11 +56,19 @@ def _calculate_accuracy(model_wrapper: ModelWrapper, data_loader: DataLoader, ba
     return 100 * correct / total if total > 0 else 0.0
 
 
-def _get_validation_fitness(model_wrapper: ModelWrapper, validation_loader: DataLoader, batch: Optional[Any] = None) -> float:
+from typing import Dict
+
+def _get_validation_fitness(model_wrapper: ModelWrapper, validation_loader: DataLoader, batch: Optional[Any] = None, model_state_dict: Optional[Dict[str, torch.Tensor]] = None) -> float:
     """
     Calculates a fitness score using a provided validation loader or a single
-    batch.
+    batch. Can optionally load a new state dict into the model before
+    evaluation, which is useful for evaluating temporary or hybrid models
+    without creating a new ModelWrapper instance.
     """
+    # If a state dict is provided, load it into the model for this evaluation.
+    if model_state_dict:
+        model_wrapper.model.load_state_dict(model_state_dict)
+
     return _calculate_accuracy(model_wrapper, validation_loader, batch=batch)
 
 

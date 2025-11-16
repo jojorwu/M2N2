@@ -53,7 +53,20 @@ class RandomHalfMergeStrategy(MergeStrategy):
     A fast, heuristic-based merge strategy that creates a hybrid by taking
     half the layers from the weaker parent, then performs a single validation
     check to decide whether to keep the hybrid or the original fitter parent.
+    This strategy is stateful and reuses a single model object for all
+    evaluations to reduce overhead.
     """
+    def __init__(self, model_name: str, device: torch.device, num_classes: int):
+        self.model_name = model_name
+        self.device = device
+        self.num_classes = num_classes
+        # Create a single, reusable model wrapper for all fitness evaluations.
+        self._reusable_wrapper = ModelWrapper(
+            model_name=self.model_name,
+            niche_classes=list(range(self.num_classes)),
+            device=self.device,
+            num_classes=self.num_classes
+        )
 
     def merge(self, parent1: ModelWrapper, parent2: ModelWrapper, validation_loader: Optional[DataLoader] = None) -> Dict[str, torch.Tensor]:
         if validation_loader is None:
@@ -82,22 +95,20 @@ class RandomHalfMergeStrategy(MergeStrategy):
                 hybrid_state_dict[key] = weaker_state_dict[key]
 
         # --- Single Validation Step ---
-        # Create temporary model wrappers for evaluation
-        num_classes = fitter_parent.model.num_classes
-        base_model_wrapper = ModelWrapper(model_name=fitter_parent.model_name, niche_classes=list(range(num_classes)), device=fitter_parent.device, num_classes=num_classes)
-        base_model_wrapper.model.load_state_dict(fitter_state_dict)
-
-        hybrid_model_wrapper = ModelWrapper(model_name=fitter_parent.model_name, niche_classes=list(range(num_classes)), device=fitter_parent.device, num_classes=num_classes)
-        hybrid_model_wrapper.model.load_state_dict(hybrid_state_dict)
-
         # Use a single batch for quick validation to avoid overfitting on the validation set
         try:
             validation_batch = next(iter(validation_loader))
         except StopIteration:
             raise ValueError("Validation loader is empty. Cannot use this merge strategy.")
 
-        base_fitness = _get_validation_fitness(base_model_wrapper, validation_loader, batch=validation_batch)
-        hybrid_fitness = _get_validation_fitness(hybrid_model_wrapper, validation_loader, batch=validation_batch)
+        # Temporarily store the original state of the reusable wrapper
+        original_state_dict = self._reusable_wrapper.model.state_dict()
+
+        base_fitness = _get_validation_fitness(self._reusable_wrapper, validation_loader, batch=validation_batch, model_state_dict=fitter_state_dict)
+        hybrid_fitness = _get_validation_fitness(self._reusable_wrapper, validation_loader, batch=validation_batch, model_state_dict=hybrid_state_dict)
+
+        # Restore the original state of the reusable wrapper
+        self._reusable_wrapper.model.load_state_dict(original_state_dict)
 
         logger.info(f"  - Fitter Parent Fitness (1 batch): {base_fitness:.2f}%")
         logger.info(f"  - Hybrid Model Fitness (1 batch): {hybrid_fitness:.2f}%")
