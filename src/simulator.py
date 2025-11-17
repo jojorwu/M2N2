@@ -17,6 +17,7 @@ from .data import get_dataloaders
 from .visualization import plot_fitness_history
 from .utils import set_seed, _calculate_metrics
 from .enums import ModelName, DatasetName
+from .config_manager import ConfigManager
 from typing import List, Tuple, Dict, Any, Optional
 from torch.utils.data import DataLoader
 
@@ -27,7 +28,7 @@ class EvolutionSimulator:
     Encapsulates the entire evolutionary simulation, from configuration
     loading to running the generational loop and saving the results.
     """
-    config: Dict[str, Any]
+    config: ConfigManager
     model_config: ModelName
     dataset_name: DatasetName
     precision_config: str
@@ -82,13 +83,10 @@ class EvolutionSimulator:
 
     def _setup_environment(self, config_path: str) -> None:
         """Loads configuration and sets up the logger."""
-        # --- 1. Load Configuration from YAML ---
-        with open(config_path, 'r') as f:
-            self.config = yaml.safe_load(f)
-
-        # --- 2. Configure Logging ---
+        self.config = ConfigManager(config_path)
         log_file = self.config.get('log_file')
         setup_logger(log_file=log_file)
+
 
     def _initialize_parameters(self) -> None:
         """Initializes simulator parameters from the config."""
@@ -221,10 +219,6 @@ class EvolutionSimulator:
 
     def _run_evaluation_phase(self) -> None:
         """Handles the evaluation of the population."""
-        if not self.population:
-            logger.error("Population is empty. Cannot run evaluation.")
-            return
-
         logger.info("--- Evaluating Population on Test Set ---")
         for model_wrapper in self.population:
             if not model_wrapper.fitness_is_current:

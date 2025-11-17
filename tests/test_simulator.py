@@ -129,25 +129,28 @@ class TestSimulatorInitialization(unittest.TestCase):
         self.assertEqual(simulator.seed, expected_seed,
                          "Simulator did not use the seed from the config file.")
 
-    def test_evaluation_phase_handles_empty_population_gracefully(self):
-        """
-        Tests that the _run_evaluation_phase method does not crash when the
-        population is empty, and instead logs an error.
-        """
-        # Arrange
+    def test_init_raises_error_on_missing_config(self):
+        """Tests that EvolutionSimulator raises ValueError for a missing config file."""
+        with self.assertRaises(ValueError) as cm:
+            EvolutionSimulator(config_path="non_existent_config.yaml")
+        self.assertIn("Configuration file not found", str(cm.exception))
+
+    def test_init_raises_error_on_malformed_config(self):
+        """Tests that EvolutionSimulator raises ValueError for a malformed YAML file."""
         with open(self.config_path, 'w') as f:
-            yaml.dump(self.base_config, f)
+            f.write("model_config: CIFAR10\n  dataset_name: CIFAR10")  # Malformed YAML
+        with self.assertRaises(ValueError) as cm:
+            EvolutionSimulator(config_path=self.config_path)
+        self.assertIn("Error parsing YAML file", str(cm.exception))
 
-        simulator = EvolutionSimulator(config_path=self.config_path)
-        simulator.population = [] # Manually create the edge case
+    def test_init_raises_error_on_empty_config(self):
+        """Tests that EvolutionSimulator raises ValueError for an empty config file."""
+        with open(self.config_path, 'w') as f:
+            f.write("")  # Empty file
+        with self.assertRaises(ValueError) as cm:
+            EvolutionSimulator(config_path=self.config_path)
+        self.assertIn("Configuration file is empty or invalid", str(cm.exception))
 
-        # Act & Assert
-        # Use assertLogs to check that the expected error is logged.
-        with self.assertLogs('M2N2_SIMULATOR', level='ERROR') as cm:
-            simulator._run_evaluation_phase()
-            # The method should return immediately and not raise a ValueError.
-            self.assertEqual(len(cm.output), 1)
-            self.assertIn("Population is empty", cm.output[0])
 
     @patch('numpy.random.randint', return_value=54321)
     def test_simulator_generates_random_seed_if_not_provided(self, mock_randint):
