@@ -129,6 +129,26 @@ class TestSimulatorInitialization(unittest.TestCase):
         self.assertEqual(simulator.seed, expected_seed,
                          "Simulator did not use the seed from the config file.")
 
+    def test_evaluation_phase_handles_empty_population_gracefully(self):
+        """
+        Tests that the _run_evaluation_phase method does not crash when the
+        population is empty, and instead logs an error.
+        """
+        # Arrange
+        with open(self.config_path, 'w') as f:
+            yaml.dump(self.base_config, f)
+
+        simulator = EvolutionSimulator(config_path=self.config_path)
+        simulator.population = [] # Manually create the edge case
+
+        # Act & Assert
+        # Use assertLogs to check that the expected error is logged.
+        with self.assertLogs('M2N2_SIMULATOR', level='ERROR') as cm:
+            simulator._run_evaluation_phase()
+            # The method should return immediately and not raise a ValueError.
+            self.assertEqual(len(cm.output), 1)
+            self.assertIn("Population is empty", cm.output[0])
+
     @patch('numpy.random.randint', return_value=54321)
     def test_simulator_generates_random_seed_if_not_provided(self, mock_randint):
         """

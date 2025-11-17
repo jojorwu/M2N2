@@ -221,6 +221,10 @@ class EvolutionSimulator:
 
     def _run_evaluation_phase(self) -> None:
         """Handles the evaluation of the population."""
+        if not self.population:
+            logger.error("Population is empty. Cannot run evaluation.")
+            return
+
         logger.info("--- Evaluating Population on Test Set ---")
         for model_wrapper in self.population:
             if not model_wrapper.fitness_is_current:
@@ -343,7 +347,8 @@ class EvolutionSimulator:
                 parent1, parent2,
                 strategy=self.config.get('merge_strategy', 'average'),
                 validation_loader=self.validation_loader,
-                seed=self.seed
+                seed=self.seed,
+                dampening_factor=self.dampening_factor
             )
             # Mutation
             child = mutate(

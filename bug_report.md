@@ -1,4 +1,4 @@
-**File:** `src/merge_strategies.py`
-**Line Numbers:** 140-146
-**Description:** The `FitnessWeightedMergeStrategy` incorrectly calculates merge weights when both parent models have negative fitness scores. The current implementation uses a dampening factor and then normalizes the weights by dividing by the sum of the dampened fitnesses. If both parents have negative fitness and the `dampening_factor` is not large enough to make the dampened fitnesses positive, the total can be negative. This inverts the weights, assigning a higher weight to the parent with the lower (more negative) fitness score, which is the opposite of the intended behavior.
-**Fix Strategy:** I will replace the simple normalization with a softmax function. A softmax will convert the fitness scores (even negative ones) into a valid probability distribution, ensuring that the fitter parent always receives a higher weight. I will also remove the `dampening_factor`, as it is no longer necessary with the softmax approach.
+**File:** `src/simulator.py`
+**Line Number:** 241
+**Description:** The `_run_evaluation_phase` method in `EvolutionSimulator` is not robust to an empty population. If `self.population` is an empty list (an edge case that could occur from a loading error or a bug in the selection process), the line `best_fitness = max([m.fitness for m in self.population])` will raise a `ValueError`, causing the entire simulation to crash.
+**Fix Strategy:** I will add a guard clause at the beginning of the method to check if `self.population` is empty. If it is, the method will log an error and return immediately, preventing the `ValueError` and allowing the simulation to handle the situation more gracefully.
