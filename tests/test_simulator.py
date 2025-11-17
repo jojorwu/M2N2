@@ -178,7 +178,7 @@ class TestSimulatorInitialization(unittest.TestCase):
 
         # 3. Instantiate the simulator and verify its initial state
         simulator = EvolutionSimulator(config_path=self.config_path)
-        self.assertEqual(simulator.merge_strategy, 'average')
+        self.assertEqual(simulator.config['merge_strategy'], 'average')
         self.assertEqual(simulator.mutation_rate, 0.1)
 
         # Act
@@ -188,7 +188,7 @@ class TestSimulatorInitialization(unittest.TestCase):
         simulator.run()
 
         # Assert
-        self.assertEqual(simulator.merge_strategy, 'fitness_weighted',
+        self.assertEqual(simulator.config['merge_strategy'], 'fitness_weighted',
                          "Merge strategy was not dynamically updated.")
         self.assertEqual(simulator.mutation_rate, 0.99,
                          "Mutation rate was not dynamically updated.")

@@ -84,13 +84,14 @@ def _load_full_datasets(dataset_name: DatasetName, model_name: ModelName):
         raise ValueError(f"Unsupported dataset: {dataset_name}. Please use 'CIFAR10', 'MNIST', or 'LLM'.")
     return full_train_dataset, full_test_dataset, num_classes
 
-def get_dataloaders(dataset_name: DatasetName = DatasetName.CIFAR10, model_name: Optional[ModelName] = None, batch_size: int = 64, niche_classes: Optional[List[int]] = None, subset_percentage: float = 1.0, validation_split: float = 0.1, seed: Optional[int] = None):
+def get_dataloaders(dataset_name: DatasetName = DatasetName.CIFAR10, model_name: Optional[ModelName] = None, batch_size: int = 64, niche_classes: Optional[List[int]] = None, subset_percentage: float = 1.0, validation_split: float = 0.1, seed: Optional[int] = None, train_dataset: Optional[Dataset] = None):
     """Creates and returns PyTorch DataLoaders for a specified dataset.
 
     This function prepares a dataset for training and testing. It can serve
     the full dataset, a "niche" subset of specific classes, or a random
     subset for rapid testing. It also partitions the training set to create
-    a validation loader.
+    a validation loader. To improve performance, it can accept a pre-loaded
+    training dataset to avoid redundant disk I/O.
 
     Args:
         dataset_name (str, optional): The name of the dataset to load.
@@ -107,11 +108,14 @@ def get_dataloaders(dataset_name: DatasetName = DatasetName.CIFAR10, model_name:
             specifying the fraction of the dataset to use. Defaults to 1.0.
         validation_split (float, optional): The proportion of the training
             set to use for validation. Defaults to 0.1.
+        train_dataset (Dataset, optional): A pre-loaded training dataset. If
+            provided, the function will skip loading the training data from
+            disk. Defaults to None.
 
     Returns:
-        tuple[DataLoader, DataLoader, DataLoader, int]: A tuple containing the
-            training, validation, and test DataLoaders, and the number of
-            classes.
+        tuple[DataLoader, DataLoader, DataLoader, int, Dataset]: A tuple
+            containing the training, validation, and test DataLoaders, the
+            number of classes, and the training dataset object.
 
     Raises:
         ValueError: If an unsupported `dataset_name` is provided.
@@ -119,13 +123,21 @@ def get_dataloaders(dataset_name: DatasetName = DatasetName.CIFAR10, model_name:
     if seed is not None:
         set_seed(seed)
 
-    full_train_dataset, full_test_dataset, num_classes = _load_full_datasets(dataset_name, model_name)
+    if train_dataset is None:
+        full_train_dataset, full_test_dataset, num_classes = _load_full_datasets(dataset_name, model_name)
+    else:
+        full_train_dataset = train_dataset
+        _, full_test_dataset, num_classes = _load_full_datasets(dataset_name, model_name)
+
 
     if subset_percentage < 1.0:
-        num_train = int(len(full_train_dataset) * subset_percentage)
-        train_indices = np.random.permutation(len(full_train_dataset))[:num_train]
-        full_train_dataset = Subset(full_train_dataset, train_indices)
+        # Only apply subset percentage to the training set if it was NOT pre-loaded.
+        if train_dataset is None:
+            num_train = int(len(full_train_dataset) * subset_percentage)
+            train_indices = np.random.permutation(len(full_train_dataset))[:num_train]
+            full_train_dataset = Subset(full_train_dataset, train_indices)
 
+        # Always apply subset percentage to the test set for consistency.
         num_test = int(len(full_test_dataset) * subset_percentage)
         test_indices = np.random.permutation(len(full_test_dataset))[:num_test]
         full_test_dataset = Subset(full_test_dataset, test_indices)
@@ -139,6 +151,15 @@ def get_dataloaders(dataset_name: DatasetName = DatasetName.CIFAR10, model_name:
 
     # Split training data into training and validation using torch's random_split
     num_train = len(full_train_dataset)
+
+    # Add a guard against trying to create a split when the dataset is empty
+    if num_train == 0:
+        empty_dataset = Subset(full_train_dataset, [])
+        train_loader = DataLoader(dataset=empty_dataset, batch_size=batch_size)
+        validation_loader = DataLoader(dataset=empty_dataset, batch_size=batch_size)
+        test_loader = DataLoader(dataset=full_test_dataset, batch_size=batch_size, shuffle=False)
+        return train_loader, validation_loader, test_loader, num_classes, full_train_dataset
+
     split = int(np.floor(validation_split * num_train))
     train_size = num_train - split
     val_size = split
@@ -150,11 +171,19 @@ def get_dataloaders(dataset_name: DatasetName = DatasetName.CIFAR10, model_name:
 
     train_subset, validation_subset = random_split(full_train_dataset, [train_size, val_size], generator=g)
 
-    train_loader = DataLoader(dataset=train_subset, batch_size=batch_size, shuffle=True, generator=g)
-    validation_loader = DataLoader(dataset=validation_subset, batch_size=batch_size, shuffle=False)
-    test_loader = DataLoader(dataset=full_test_dataset, batch_size=batch_size, shuffle=False)
+    # Performance optimizations for DataLoader.
+    # `num_workers` > 0 enables multi-process data loading, which is beneficial
+    # on both CPU and GPU systems by leveraging multiple cores.
+    # `pin_memory` is only effective when using a GPU.
+    dataloader_kwargs = {'num_workers': 4}
+    if torch.cuda.is_available():
+        dataloader_kwargs['pin_memory'] = True
 
-    return train_loader, validation_loader, test_loader, num_classes
+    train_loader = DataLoader(dataset=train_subset, batch_size=batch_size, shuffle=True, generator=g, **dataloader_kwargs)
+    validation_loader = DataLoader(dataset=validation_subset, batch_size=batch_size, shuffle=False, **dataloader_kwargs)
+    test_loader = DataLoader(dataset=full_test_dataset, batch_size=batch_size, shuffle=False, **dataloader_kwargs)
+
+    return train_loader, validation_loader, test_loader, num_classes, full_train_dataset
 
 if __name__ == '__main__':
     print("--- Testing DataLoaders with Validation Split ---")
