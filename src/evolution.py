@@ -263,7 +263,7 @@ def select_mates(population: List[ModelWrapper]) -> Tuple[Optional[ModelWrapper]
         logger.info("  - Could not select a pair of parents.")
         return None, None
 
-def merge(parent1: ModelWrapper, parent2: ModelWrapper, strategy: str = 'average', validation_loader: Optional[DataLoader] = None, seed: Optional[int] = None, dampening_factor: float = 25.0) -> ModelWrapper:
+def merge(parent1: ModelWrapper, parent2: ModelWrapper, strategy: str = 'average', validation_loader: Optional[DataLoader] = None, seed: Optional[int] = None) -> ModelWrapper:
     """
     Merges two parent models into a new child model using a specified strategy.
     """
@@ -282,9 +282,7 @@ def merge(parent1: ModelWrapper, parent2: ModelWrapper, strategy: str = 'average
 
     # Prepare arguments for the strategy constructor
     strategy_args = {}
-    if strategy == 'fitness_weighted':
-        strategy_args['dampening_factor'] = dampening_factor
-    elif strategy == 'layer-wise':
+    if strategy == 'layer-wise':
         strategy_args['seed'] = seed
     elif strategy == 'random_half':
         strategy_args['model_name'] = parent1.model_name

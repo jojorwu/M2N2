@@ -123,27 +123,22 @@ class RandomHalfMergeStrategy(MergeStrategy):
 
 
 class FitnessWeightedMergeStrategy(MergeStrategy):
-    """Merges models using a fitness-weighted average of their weights."""
-
-    def __init__(self, dampening_factor: float = 25.0):
-        self.dampening_factor = dampening_factor
-
+    """
+    Merges models using a fitness-weighted average of their weights,
+    calculated with a softmax function to handle negative fitness values.
+    """
     def merge(self, parent1: ModelWrapper, parent2: ModelWrapper, validation_loader: Optional[DataLoader] = None) -> Dict[str, torch.Tensor]:
         parent1_state_dict = parent1.model.state_dict()
         parent2_state_dict = parent2.model.state_dict()
         child_model_state_dict = copy.deepcopy(parent1_state_dict)
 
-        dampened_fitness1 = parent1.fitness + self.dampening_factor
-        dampened_fitness2 = parent2.fitness + self.dampening_factor
-        total_dampened_fitness = dampened_fitness1 + dampened_fitness2
+        # Use softmax to ensure weights are a valid probability distribution
+        # and correctly handle negative fitness values.
+        fitness_tensor = torch.tensor([parent1.fitness, parent2.fitness])
+        weights = torch.softmax(fitness_tensor, dim=0)
+        weight1, weight2 = weights[0].item(), weights[1].item()
 
-        if total_dampened_fitness == 0:
-            weight1, weight2 = 0.5, 0.5
-        else:
-            weight1 = dampened_fitness1 / total_dampened_fitness
-            weight2 = dampened_fitness2 / total_dampened_fitness
-
-        logger.info(f"  - Dampened weights: Parent 1 ({weight1:.2f}), Parent 2 ({weight2:.2f})")
+        logger.info(f"  - Softmax weights: Parent 1 ({weight1:.2f}), Parent 2 ({weight2:.2f})")
 
         for key in child_model_state_dict:
             child_model_state_dict[key] = (parent1_state_dict[key] * weight1) + (parent2_state_dict[key] * weight2)

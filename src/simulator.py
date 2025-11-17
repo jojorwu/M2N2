@@ -343,8 +343,7 @@ class EvolutionSimulator:
                 parent1, parent2,
                 strategy=self.config.get('merge_strategy', 'average'),
                 validation_loader=self.validation_loader,
-                seed=self.seed,
-                dampening_factor=self.dampening_factor
+                seed=self.seed
             )
             # Mutation
             child = mutate(
